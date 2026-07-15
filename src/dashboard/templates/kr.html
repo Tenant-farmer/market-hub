@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% set active = 'kr' %}
+{% block title %}KR 섹터 — market-hub{% endblock %}
+{% block head %}
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+{% endblock %}
+{% block body %}
+<h1>KR 섹터 로테이션 (KOSPI 업종)</h1>
+<div class="sub">기준일 {{ date }} · 벤치마크 코스피 · RS = 벤치마크 대비 초과수익(%p) ·
+주도점수 = 3개월 RS 40% + 1개월 RS 35% + 모멘텀 25% (업종 간 백분위)</div>
+
+{% include "_market_core.html" %}
+
+<h1 style="margin-top:24px">수급 — 투자자별 순매수</h1>
+<div class="sub">단위 원 · 시장 단위 일별 합산 (KRX)</div>
+<div class="grid2">
+  <div class="card">
+    <div class="sub" style="margin-bottom:6px">시장 수급 누적</div>
+    <table>
+      <thead><tr><th style="text-align:left">시장</th><th>투자자</th><th>5일 누적</th><th>20일 누적</th></tr></thead>
+      <tbody>
+      {% for f in mflows %}
+        <tr>
+          <td style="text-align:left">{{ f.mkt }}</td>
+          <td>{{ f.inv_ko }}</td>
+          <td class="{{ 'pos' if f.d5 > 0 else 'neg' }}">{{ f.d5_fmt }}</td>
+          <td class="{{ 'pos' if f.d20 > 0 else 'neg' }}">{{ f.d20_fmt }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card">
+    <div class="sub" style="margin-bottom:6px">기간 순매수 상위 종목 (최근 90일)</div>
+    <table>
+      <thead><tr><th style="text-align:left">외국인</th><th></th><th style="text-align:left">기관</th><th></th></tr></thead>
+      <tbody>
+      {% for i in range(top_n) %}
+        <tr>
+          <td style="text-align:left;color:var(--ink-2)">{{ top_foreign[i].name if i < top_foreign|length }}</td>
+          <td class="pos">{{ top_foreign[i].amt if i < top_foreign|length }}</td>
+          <td style="text-align:left;color:var(--ink-2)">{{ top_inst[i].name if i < top_inst|length }}</td>
+          <td class="pos">{{ top_inst[i].amt if i < top_inst|length }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<h1 style="margin-top:24px">KR 주도주 (KOSPI)</h1>
+<div class="sub">종목 주도점수 = 시장대비 RS + 업종대비 RS + 거래량급증 (KOSPI 내 백분위)</div>
+<div class="card" style="overflow-x:auto">
+  <table>
+    <thead><tr>
+      <th>#</th><th>종목</th><th style="text-align:left">이름</th><th>업종</th><th>시가총액</th>
+      <th>주도점수</th><th>RS 1M (시장)</th><th>RS 1M (업종)</th><th>거래량</th><th>52주 고점比</th>
+    </tr></thead>
+    <tbody>
+    {% for r in krl %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td style="text-align:left"><strong>{{ r.code }}</strong></td>
+        <td style="text-align:left;color:var(--ink-2)">{{ r.name }}</td>
+        <td><span class="chip">{{ r.sector_name }}</span></td>
+        <td style="color:var(--ink-2)">{{ r.mcap_fmt or '–' }}</td>
+        <td><strong>{{ '%.0f'|format(r.score) if r.score is not none else '–' }}</strong></td>
+        <td class="{{ 'pos' if r.rs_mkt and r.rs_mkt > 0 else 'neg' if r.rs_mkt and r.rs_mkt < 0 }}">{{ '%+.1f'|format(r.rs_mkt) if r.rs_mkt is not none else '–' }}</td>
+        <td class="{{ 'pos' if r.rs_sec and r.rs_sec > 0 else 'neg' if r.rs_sec and r.rs_sec < 0 }}">{{ '%+.1f'|format(r.rs_sec) if r.rs_sec is not none else '–' }}</td>
+        <td>{{ '%.2fx'|format(r.vol_surge) if r.vol_surge is not none else '–' }}</td>
+        <td>{{ '%.0f%%'|format(r.high_prox * 100) if r.high_prox is not none else '–' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

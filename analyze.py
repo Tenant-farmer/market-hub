@@ -47,13 +47,49 @@ def run_us():
     con.close()
 
 
+def run_kr():
+    cfg = config.load()["kr"]
+    sectors = cfg["sector_codes"]
+    bench = cfg["benchmark"]
+
+    con = db.connect()
+    relative_strength.compute(con, "kr_sector", sectors, bench)
+    rotation.compute(con, "kr_sector", sectors, bench)
+    overheat.compute(con, "kr_sector", sectors + [bench])
+    leaders.compute_sector(con, "kr_sector")
+    n = leaders.compute_stocks(con, scope="kr_stock", market="KR", bench=bench)
+    print(f"kr_stock leader rows: {n}")
+
+    names = {
+        r["stock_code"]: r["name"]
+        for r in con.execute("SELECT stock_code, name FROM sector_map WHERE market='KR_INDEX'")
+    }
+    _, rows = store.pivot_latest(
+        con, "kr_sector",
+        {"rs21": "rs_21", "rs63": "rs_63", "quad": "quadrant", "score": "leader_score"},
+        date=store.latest_date(con, "kr_sector", "rs_21"),
+        order_by="(score IS NULL), score DESC",
+    )
+    print(f"{'code':6} {'name':12} {'score':>6} {'rs21':>6} {'rs63':>6} {'quad':>10}")
+    for r in rows[:12]:
+        quad = QUAD_NAMES.get(int(r["quad"]), "-") if r["quad"] is not None else "-"
+        print(f"{r['code']:6} {names.get(r['code'], ''):12} "
+              f"{r['score'] if r['score'] is not None else '-':>6} "
+              f"{r['rs21'] if r['rs21'] is not None else '-':>6} "
+              f"{r['rs63'] if r['rs63'] is not None else '-':>6} {quad:>10}")
+    con.close()
+
+
 def main():
     p = argparse.ArgumentParser(description="market-hub 분석")
     p.add_argument("--us", action="store_true", help="미국 섹터 분석")
+    p.add_argument("--kr", action="store_true", help="한국 섹터 분석 (KRX 데이터 필요)")
     args = p.parse_args()
     if args.us:
         run_us()
-    else:
+    if args.kr:
+        run_kr()
+    if not (args.us or args.kr):
         p.print_help()
 
 

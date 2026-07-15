@@ -31,4 +31,5 @@ def us():
         names=cfg.get("names", {}), symbols=cfg["symbols"],
         quad=QUAD, quad_ko=QUAD_KO,
         cards=queries.leader_cards(ranking, cfg.get("names", {})),
+        price_label="최근 1년 (수정종가)",
     )

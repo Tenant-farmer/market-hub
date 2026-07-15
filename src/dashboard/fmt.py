@@ -11,6 +11,15 @@ QUAD_DESC = {
 ACTION_KO = {"new": "신규", "add": "확대", "trim": "축소", "exit": "청산"}
 
 
+def fmt_krw(v: float) -> str:
+    a = abs(v)
+    if a >= 1e12:
+        return f"{v / 1e12:,.1f}조"
+    if a >= 1e8:
+        return f"{v / 1e8:,.0f}억"
+    return f"{v / 1e4:,.0f}만"
+
+
 def fmt_usd(v: float) -> str:
     a = abs(v)
     if a >= 1e12:

@@ -9,7 +9,9 @@ import argparse
 
 from dotenv import load_dotenv
 
-from src.collectors import base, gurus, kr_flows, kr_sectors, sentiment, us_sectors, us_stocks
+from src.collectors import (
+    base, gurus, kr_flows, kr_sectors, kr_stocks, sentiment, us_sectors, us_stocks,
+)
 
 
 def main():
@@ -18,6 +20,7 @@ def main():
     p.add_argument("--us", action="store_true", help="미국 섹터 ETF EOD")
     p.add_argument("--us-stocks", action="store_true", help="미국 개별종목 (S&P500)")
     p.add_argument("--kr", action="store_true", help="KR 업종지수 (KRX 계정 필요)")
+    p.add_argument("--kr-stocks", action="store_true", help="KR 개별종목 KOSPI (KRX 계정 필요)")
     p.add_argument("--kr-flows", action="store_true", help="KR 투자자별 수급 (KRX 계정 필요)")
     p.add_argument("--kr-map", action="store_true", help="KR 업종 구성종목 갱신 (주 1회)")
     p.add_argument("--gurus", action="store_true", help="구루 13F (SEC EDGAR)")
@@ -36,6 +39,9 @@ def main():
         ran = True
     if args.kr or args.all:
         base.run_collector("kr_sectors", lambda con: kr_sectors.collect(con, days=days))
+        ran = True
+    if args.kr_stocks or args.all:
+        base.run_collector("kr_stocks", lambda con: kr_stocks.collect(con, days=days))
         ran = True
     if args.kr_map:
         base.run_collector("kr_map", kr_sectors.refresh_constituents)
