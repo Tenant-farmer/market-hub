@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% set active = 'overview' %}
+{% block title %}개요 — market-hub{% endblock %}
+{% block body %}
+<h1>종합 개요</h1>
+<div class="sub">US 기준일 {{ us_date }} · KR 기준일 {{ kr_date }}</div>
+
+{# ---- 시장 온도 ---- #}
+<div class="cards3" style="grid-template-columns: repeat(4, 1fr)">
+  <div class="card">
+    <div class="sub" style="margin-bottom:2px">S&P 500 (SPY)</div>
+    <div class="score">{{ '%.0f'|format(spy.close) if spy else '–' }}</div>
+    {% if spy and spy.ret21 is not none %}
+    <div class="reason"><span class="{{ 'pos' if spy.ret21 > 0 else 'neg' }}">{{ '%+.1f%%'|format(spy.ret21) }}</span> · 최근 1개월</div>
+    {% endif %}
+  </div>
+  <div class="card">
+    <div class="sub" style="margin-bottom:2px">코스피</div>
+    <div class="score">{{ '{:,.0f}'.format(kospi.close) if kospi else '–' }}</div>
+    {% if kospi and kospi.ret21 is not none %}
+    <div class="reason"><span class="{{ 'pos' if kospi.ret21 > 0 else 'neg' }}">{{ '%+.1f%%'|format(kospi.ret21) }}</span> · 최근 1개월</div>
+    {% endif %}
+  </div>
+  <div class="card">
+    <div class="sub" style="margin-bottom:2px">Fear &amp; Greed</div>
+    <div class="score">{{ '%.0f'|format(fng.value) if fng else '–' }}</div>
+    <div class="reason">{{ fng_label or '' }} {% if fng %}· {{ fng.date }}{% endif %}</div>
+  </div>
+  <div class="card">
+    <div class="sub" style="margin-bottom:2px">VIX</div>
+    <div class="score">{{ '%.1f'|format(vix.value) if vix else '–' }}</div>
+    <div class="reason">{% if vix %}{{ vix.date }}{% endif %}</div>
+  </div>
+</div>
+
+{# ---- 주도 섹터 TOP3 ---- #}
+<div class="grid2">
+  <div class="card">
+    <div class="sub" style="margin-bottom:8px">US 주도 섹터 · <a href="/us" style="color:var(--accent);text-decoration:none">섹터 보기</a> · <a href="/leaders" style="color:var(--accent);text-decoration:none">주도주 보기</a></div>
+    {% for c in us_cards %}
+    <div style="display:flex;align-items:baseline;gap:8px;padding:5px 0;border-bottom:1px solid var(--grid)">
+      <span class="rankb">{{ loop.index }}</span>
+      <strong>{{ c.name }}</strong>
+      <span style="color:var(--muted)">{{ c.code }}</span>
+      <span style="margin-left:auto;font-weight:700">{{ '%.0f'|format(c.score) }}</span>
+      {% if c.hot %}<span class="hot">⚠</span>{% endif %}
+    </div>
+    <div class="reason" style="margin:2px 0 6px 30px">{{ c.reason }}</div>
+    {% endfor %}
+  </div>
+  <div class="card">
+    <div class="sub" style="margin-bottom:8px">KR 주도 업종 · <a href="/kr" style="color:var(--accent);text-decoration:none">섹터 보기</a> · <a href="/kr-leaders" style="color:var(--accent);text-decoration:none">주도주 보기</a></div>
+    {% for c in kr_cards %}
+    <div style="display:flex;align-items:baseline;gap:8px;padding:5px 0;border-bottom:1px solid var(--grid)">
+      <span class="rankb">{{ loop.index }}</span>
+      <strong>{{ c.name }}</strong>
+      <span style="color:var(--muted)">{{ c.code }}</span>
+      <span style="margin-left:auto;font-weight:700">{{ '%.0f'|format(c.score) }}</span>
+      {% if c.hot %}<span class="hot">⚠</span>{% endif %}
+    </div>
+    <div class="reason" style="margin:2px 0 6px 30px">{{ c.reason }}</div>
+    {% endfor %}
+  </div>
+</div>
+
+{# ---- 과열 + KR 시장 수급 ---- #}
+<div class="grid2" style="margin-top:16px">
+  <div class="card">
+    <div class="sub" style="margin-bottom:8px">⚠ 과열 신호 (RSI≥75 또는 200일선 +15% 이상)</div>
+    <div style="margin-bottom:6px"><span style="color:var(--muted);font-size:12px">US</span>
+      {% for h in hot_us %}<span class="chip hot" style="margin-left:6px">{{ h }}</span>{% else %} <span style="color:var(--muted)">없음</span>{% endfor %}
+    </div>
+    <div><span style="color:var(--muted);font-size:12px">KR</span>
+      {% for h in hot_kr %}<span class="chip hot" style="margin-left:6px">{{ h }}</span>{% else %} <span style="color:var(--muted)">없음</span>{% endfor %}
+    </div>
+  </div>
+  <div class="card">
+    <div class="sub" style="margin-bottom:6px">KR 시장 수급 누적 (원)</div>
+    <table>
+      <thead><tr><th style="text-align:left">시장</th><th>투자자</th><th>5일</th><th>20일</th></tr></thead>
+      <tbody>
+      {% for f in mflows %}
+        <tr>
+          <td style="text-align:left">{{ f.mkt }}</td>
+          <td>{{ f.inv_ko }}</td>
+          <td class="{{ 'pos' if f.d5 > 0 else 'neg' }}">{{ f.d5_fmt }}</td>
+          <td class="{{ 'pos' if f.d20 > 0 else 'neg' }}">{{ f.d20_fmt }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{# ---- 수급 상위 종목 + 신선도 ---- #}
+<div class="grid2" style="margin-top:16px">
+  <div class="card">
+    <div class="sub" style="margin-bottom:6px">KR 순매수 상위 (최근 90일)</div>
+    <table>
+      <thead><tr><th style="text-align:left">외국인</th><th></th><th style="text-align:left">기관</th><th></th></tr></thead>
+      <tbody>
+      {% for i in range(5) %}
+        <tr>
+          <td style="text-align:left;color:var(--ink-2)">{{ top_foreign[i].name if i < top_foreign|length }}</td>
+          <td class="pos">{{ top_foreign[i].amt if i < top_foreign|length }}</td>
+          <td style="text-align:left;color:var(--ink-2)">{{ top_inst[i].name if i < top_inst|length }}</td>
+          <td class="pos">{{ top_inst[i].amt if i < top_inst|length }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card">
+    <div class="sub" style="margin-bottom:6px">데이터 신선도 · <a href="/health" style="color:var(--accent);text-decoration:none">전체 이력</a></div>
+    <table>
+      <thead><tr><th style="text-align:left">수집기</th><th>마지막 실행</th><th>상태</th></tr></thead>
+      <tbody>
+      {% for f in fresh %}
+        <tr>
+          <td style="text-align:left">{{ f.collector }}</td>
+          <td style="color:var(--muted)">{{ f.run_at[:16] }}</td>
+          <td class="{{ 'pos' if f.status == 'ok' else 'neg' }}">{{ f.status }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

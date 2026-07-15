@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% set active = 'kr_leaders' %}
+{% block title %}KR 주도주 — market-hub{% endblock %}
+{% block body %}
+<h1>KR 주도주 (KOSPI)</h1>
+<div class="sub">
+  기준일 {{ date }} ·
+  지금 주도 업종: {% for s in top_sectors %}<a href="/kr-leaders?sector={{ s }}" style="color:var(--accent);text-decoration:none">{{ names.get(s, s) }}</a>{{ " · " if not loop.last }}{% endfor %} ·
+  주도점수 = 시장대비 RS + 업종대비 RS + 거래량급증 (KOSPI 내 백분위) · 시총 {{ min_mcap_label }} 이상
+</div>
+
+<div class="pills">
+  <a href="/kr-leaders" class="{{ 'on' if not sector }}">전체</a>
+  {% for s in sectors %}
+    <a href="/kr-leaders?sector={{ s }}" class="{{ 'on' if s == sector }}">{{ names.get(s, s) }}</a>
+  {% endfor %}
+</div>
+
+<div class="card" style="overflow-x:auto">
+  <table>
+    <thead><tr>
+      <th>#</th><th>종목</th><th style="text-align:left">이름</th><th>업종</th><th>시가총액</th>
+      <th>주도점수</th><th>RS 1M (시장)</th><th>RS 1M (업종)</th><th>거래량</th><th>52주 고점比</th>
+    </tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td style="text-align:left"><strong>{{ r.code }}</strong></td>
+        <td style="text-align:left;color:var(--ink-2)">{{ r.name }}</td>
+        <td><span class="chip">{{ r.sector_name }}</span></td>
+        <td style="color:var(--ink-2)">{{ r.mcap_fmt or '–' }}</td>
+        <td><strong>{{ '%.0f'|format(r.score) if r.score is not none else '–' }}</strong></td>
+        <td class="{{ 'pos' if r.rs_mkt and r.rs_mkt > 0 else 'neg' if r.rs_mkt and r.rs_mkt < 0 }}">{{ '%+.1f'|format(r.rs_mkt) if r.rs_mkt is not none else '–' }}</td>
+        <td class="{{ 'pos' if r.rs_sec and r.rs_sec > 0 else 'neg' if r.rs_sec and r.rs_sec < 0 }}">{{ '%+.1f'|format(r.rs_sec) if r.rs_sec is not none else '–' }}</td>
+        <td>{{ '%.2fx'|format(r.vol_surge) if r.vol_surge is not none else '–' }}</td>
+        <td>{{ '%.0f%%'|format(r.high_prox * 100) if r.high_prox is not none else '–' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <div class="sub" style="margin-top:8px">52주 고점比는 시세 이력이 252거래일 쌓이면 표시됩니다.</div>
+</div>
+{% endblock %}

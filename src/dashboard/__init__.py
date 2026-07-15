@@ -4,8 +4,8 @@ from flask import Flask
 
 def create_app() -> Flask:
     app = Flask(__name__)
-    from src.dashboard.pages import gurus, health, kr, leaders, us
+    from src.dashboard.pages import gurus, health, kr, kr_leaders, leaders, overview, us
 
-    for mod in (us, kr, leaders, gurus, health):
+    for mod in (overview, us, kr, leaders, kr_leaders, gurus, health):
         app.register_blueprint(mod.bp)
     return app

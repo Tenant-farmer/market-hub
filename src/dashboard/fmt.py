@@ -9,6 +9,19 @@ QUAD_DESC = {
     4: "개선 사분면 · 진입 중",
 }
 ACTION_KO = {"new": "신규", "add": "확대", "trim": "축소", "exit": "청산"}
+INV_KO = {"foreign": "외국인", "institution": "기관", "individual": "개인"}
+
+
+def fng_label(v: float) -> str:
+    if v < 25:
+        return "극단적 공포"
+    if v < 45:
+        return "공포"
+    if v <= 55:
+        return "중립"
+    if v <= 75:
+        return "탐욕"
+    return "극단적 탐욕"
 
 
 def fmt_krw(v: float) -> str:

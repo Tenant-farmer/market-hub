@@ -1,6 +1,7 @@
 """대시보드 페이지 공용 조회."""
+from src import config
 from src.analytics import store
-from src.dashboard.fmt import QUAD_DESC
+from src.dashboard.fmt import INV_KO, QUAD_DESC, fmt_krw
 
 RANKING_ALIASES = {
     "score": "leader_score",
@@ -83,3 +84,127 @@ def prices(con, sym: str, n: int = 260):
         (sym, n),
     ).fetchall()
     return [{"time": r["date"], "value": round(r["close"], 2)} for r in reversed(rows)]
+
+
+def market_flows(con):
+    """시장 단위 수급: (시장, 투자자)별 최근 5일/20일 누적."""
+    rows = con.execute(
+        "SELECT code, date, investor, net_value FROM investor_flows "
+        "WHERE scope='market' ORDER BY date DESC"
+    ).fetchall()
+    series: dict[tuple, list[float]] = {}
+    for r in rows:
+        series.setdefault((r["code"], r["investor"]), []).append(r["net_value"])
+    out = []
+    for mkt in ("KOSPI", "KOSDAQ"):
+        for inv in ("foreign", "institution", "individual"):
+            vals = series.get((mkt, inv), [])
+            if not vals:
+                continue
+            d5, d20 = sum(vals[:5]), sum(vals[:20])
+            out.append({
+                "mkt": mkt, "inv_ko": INV_KO[inv],
+                "d5": d5, "d20": d20,
+                "d5_fmt": fmt_krw(d5), "d20_fmt": fmt_krw(d20),
+            })
+    return out
+
+
+def top_flow_stocks(con, investor: str, n: int = 10):
+    rows = con.execute(
+        """
+        SELECT f.code, f.net_value, m.name
+        FROM investor_flows f
+        LEFT JOIN sector_map m ON m.stock_code = f.code
+        WHERE f.scope='stock' AND f.investor=?
+        ORDER BY f.net_value DESC LIMIT ?
+        """,
+        (investor, n),
+    ).fetchall()
+    return [{"name": r["name"] or r["code"], "amt": fmt_krw(r["net_value"])} for r in rows]
+
+
+def kr_leaders(con, sector: str = "", n: int = 50):
+    """KR 주도주 (시총 하한 필터)."""
+    date_row = con.execute(
+        "SELECT MAX(date) d FROM analytics_daily WHERE scope='kr_stock'"
+    ).fetchone()
+    if date_row["d"] is None:
+        return []
+    min_mcap = config.load()["kr"]["leader_min_mcap"]
+    where = "a.scope='kr_stock' AND a.date=?"
+    params: list = [min_mcap, date_row["d"]]
+    if sector:
+        where += " AND m.sector_code=?"
+        params.append(sector)
+    params.append(n)
+    rows = con.execute(
+        f"""
+        SELECT a.code, m.name, m.sector_code, m.sector_name, sm.mcap,
+               MAX(CASE WHEN a.metric='leader_score' THEN a.value END) score,
+               MAX(CASE WHEN a.metric='rs_mkt_21' THEN a.value END)   rs_mkt,
+               MAX(CASE WHEN a.metric='rs_sec_21' THEN a.value END)   rs_sec,
+               MAX(CASE WHEN a.metric='vol_surge' THEN a.value END)   vol_surge,
+               MAX(CASE WHEN a.metric='high_prox' THEN a.value END)   high_prox
+        FROM analytics_daily a
+        JOIN sector_map m ON m.stock_code = a.code AND m.market = 'KR'
+        JOIN stock_meta sm ON sm.symbol = a.code AND sm.mcap >= ?
+        WHERE {where}
+        GROUP BY a.code ORDER BY score DESC LIMIT ?
+        """,
+        params,
+    ).fetchall()
+    return [dict(r) | {"mcap_fmt": fmt_krw(r["mcap"]) if r["mcap"] else None} for r in rows]
+
+
+def bench_snapshot(con, sym: str):
+    """벤치마크 카드: 최근 종가 + 21거래일 수익률(%)."""
+    rows = con.execute(
+        "SELECT date, close FROM prices_daily WHERE symbol=? ORDER BY date DESC LIMIT 22",
+        (sym,),
+    ).fetchall()
+    if not rows:
+        return None
+    last = rows[0]
+    ret21 = (last["close"] / rows[-1]["close"] - 1) * 100 if len(rows) >= 22 else None
+    return {"date": last["date"], "close": last["close"], "ret21": ret21}
+
+
+def sentiment_latest(con):
+    """지표별 최신값: {metric: {date, value}}."""
+    rows = con.execute(
+        "SELECT metric, date, value FROM sentiment_daily sd "
+        "WHERE date = (SELECT MAX(date) FROM sentiment_daily WHERE metric = sd.metric)"
+    ).fetchall()
+    return {r["metric"]: {"date": r["date"], "value": r["value"]} for r in rows}
+
+
+def overheat_list(con, scope: str, names: dict):
+    """현재 과열 플래그가 켜진 코드 목록."""
+    date = store.latest_date(con, scope, "overheat")
+    if date is None:
+        return []
+    rows = con.execute(
+        "SELECT code FROM analytics_daily WHERE scope=? AND date=? AND metric='overheat' AND value=1",
+        (scope, date),
+    ).fetchall()
+    return [names.get(r["code"], r["code"]) for r in rows]
+
+
+def freshness(con):
+    """수집기별 마지막 실행 상태."""
+    rows = con.execute(
+        """
+        SELECT collector, run_at, status, rows FROM collector_runs cr
+        WHERE id = (SELECT MAX(id) FROM collector_runs WHERE collector = cr.collector)
+        ORDER BY collector
+        """
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def kr_index_names(con) -> dict:
+    return {
+        r["stock_code"]: r["name"]
+        for r in con.execute("SELECT stock_code, name FROM sector_map WHERE market='KR_INDEX'")
+    }

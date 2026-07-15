@@ -8,12 +8,6 @@ from src.dashboard.fmt import QUAD, QUAD_KO
 bp = Blueprint("us", __name__)
 
 
-@bp.get("/")
-def home():
-    # 개요 페이지가 생기기 전까지 US 뷰를 직접 렌더 (redirect는 프리뷰 헬스체크가 못 따라감)
-    return us()
-
-
 @bp.get("/us")
 def us():
     cfg = config.load()["us"]
