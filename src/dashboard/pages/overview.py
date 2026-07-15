@@ -37,6 +37,8 @@ def home():
     mflows = queries.market_flows(con)
     top_foreign = queries.top_flow_stocks(con, "foreign", 5)
     top_inst = queries.top_flow_stocks(con, "institution", 5)
+    sflows = queries.sector_flows(con, kr_names)
+    sflows_in, sflows_out = sflows[:5], [s for s in reversed(sflows[-5:]) if s["tot_1w"] < 0]
 
     fresh = queries.freshness(con)
     con.close()
@@ -48,5 +50,6 @@ def home():
         us_cards=us_cards, kr_cards=kr_cards,
         hot_us=hot_us, hot_kr=hot_kr,
         mflows=mflows, top_foreign=top_foreign, top_inst=top_inst,
+        sflows_in=sflows_in, sflows_out=sflows_out,
         fresh=fresh,
     )

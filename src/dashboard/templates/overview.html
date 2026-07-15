@@ -92,6 +92,38 @@
   </div>
 </div>
 
+{# ---- KR 업종 수급 ---- #}
+{% if sflows_in %}
+<div class="card" style="margin-top:16px;overflow-x:auto">
+  <div class="sub" style="margin-bottom:6px">KR 업종 수급 — 외국인+기관 순매수 (KOSPI, 1주 기준 정렬)</div>
+  <table>
+    <thead><tr>
+      <th style="text-align:left">업종</th><th>외국인 1주</th><th>기관 1주</th><th>합산 1주</th><th>합산 1개월</th>
+    </tr></thead>
+    <tbody>
+    {% for s in sflows_in %}
+      <tr>
+        <td style="text-align:left"><strong>유입</strong> {{ s.name }}</td>
+        <td class="{{ 'pos' if s.f_1w_v > 0 else 'neg' }}">{{ s.f_1w }}</td>
+        <td class="{{ 'pos' if s.i_1w_v > 0 else 'neg' }}">{{ s.i_1w }}</td>
+        <td class="{{ 'pos' if s.tot_1w > 0 else 'neg' }}"><strong>{{ s.tot_1w_fmt }}</strong></td>
+        <td class="{{ 'pos' if s.tot_1m > 0 else 'neg' }}">{{ s.tot_1m_fmt }}</td>
+      </tr>
+    {% endfor %}
+    {% for s in sflows_out %}
+      <tr>
+        <td style="text-align:left;color:var(--muted)"><strong>유출</strong> {{ s.name }}</td>
+        <td class="{{ 'pos' if s.f_1w_v > 0 else 'neg' }}">{{ s.f_1w }}</td>
+        <td class="{{ 'pos' if s.i_1w_v > 0 else 'neg' }}">{{ s.i_1w }}</td>
+        <td class="{{ 'pos' if s.tot_1w > 0 else 'neg' }}"><strong>{{ s.tot_1w_fmt }}</strong></td>
+        <td class="{{ 'pos' if s.tot_1m > 0 else 'neg' }}">{{ s.tot_1m_fmt }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
 {# ---- 수급 상위 종목 + 신선도 ---- #}
 <div class="grid2" style="margin-top:16px">
   <div class="card">

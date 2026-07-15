@@ -67,4 +67,25 @@ def collect(con, days: int = 7) -> int:
     )
     con.commit()
 
+    # 3) 업종 롤업 (KOSPI 전종목 → 업종 합산, 1주/1개월 창)
+    #    상위 N만으론 매도 쪽이 빠져 왜곡되므로 전종목 API 응답을 그대로 합산한다
+    smap = {
+        r["stock_code"]: r["sector_code"]
+        for r in con.execute("SELECT stock_code, sector_code FROM sector_map WHERE market='KR'")
+    }
+    for win_days, scope in ((7, "sector_1w"), (30, "sector_1m")):
+        w_ymd = (end - timedelta(days=win_days)).strftime("%Y%m%d")
+        for inv_kr, inv in (("외국인", "foreign"), ("기관합계", "institution")):
+            try:
+                df = stock.get_market_net_purchases_of_equities(w_ymd, e_ymd, "KOSPI", inv_kr)
+            except Exception:
+                continue
+            agg: dict[str, float] = {}
+            for tkr, r in df.iterrows():
+                sec = smap.get(tkr)
+                if sec:
+                    agg[sec] = agg.get(sec, 0.0) + float(r["순매수거래대금"])
+            rows += [(scope, sec, end.isoformat(), inv, v, None) for sec, v in agg.items()]
+            time.sleep(1)
+
     return db.upsert(con, "investor_flows", FLOW_COLS, rows)

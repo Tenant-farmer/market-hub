@@ -111,17 +111,46 @@ def market_flows(con):
 
 
 def top_flow_stocks(con, investor: str, n: int = 10):
+    # 스냅샷이 매일 쌓이므로 최신 수집분만
     rows = con.execute(
         """
         SELECT f.code, f.net_value, m.name
         FROM investor_flows f
         LEFT JOIN sector_map m ON m.stock_code = f.code
         WHERE f.scope='stock' AND f.investor=?
+          AND f.date = (SELECT MAX(date) FROM investor_flows WHERE scope='stock')
         ORDER BY f.net_value DESC LIMIT ?
         """,
         (investor, n),
     ).fetchall()
     return [{"name": r["name"] or r["code"], "amt": fmt_krw(r["net_value"])} for r in rows]
+
+
+def sector_flows(con, names: dict):
+    """KR 업종 수급 (외국인/기관 × 1주/1개월). 합산 1주 기준 정렬된 리스트."""
+    by_sec: dict[str, dict[str, float]] = {}
+    for scope, tag in (("sector_1w", "1w"), ("sector_1m", "1m")):
+        rows = con.execute(
+            "SELECT code, investor, net_value FROM investor_flows f "
+            "WHERE scope=? AND date=(SELECT MAX(date) FROM investor_flows WHERE scope=?)",
+            (scope, scope),
+        ).fetchall()
+        for r in rows:
+            d = by_sec.setdefault(r["code"], {})
+            d[f"{r['investor'][0]}_{tag}"] = r["net_value"]   # f_1w, i_1w, f_1m, i_1m
+    out = []
+    for sec, d in by_sec.items():
+        tot_1w = d.get("f_1w", 0) + d.get("i_1w", 0)
+        tot_1m = d.get("f_1m", 0) + d.get("i_1m", 0)
+        out.append({
+            "name": names.get(sec, sec),
+            "f_1w": fmt_krw(d.get("f_1w", 0)), "i_1w": fmt_krw(d.get("i_1w", 0)),
+            "f_1w_v": d.get("f_1w", 0), "i_1w_v": d.get("i_1w", 0),
+            "tot_1w": tot_1w, "tot_1w_fmt": fmt_krw(tot_1w),
+            "tot_1m": tot_1m, "tot_1m_fmt": fmt_krw(tot_1m),
+        })
+    out.sort(key=lambda x: x["tot_1w"], reverse=True)
+    return out
 
 
 def kr_leaders(con, sector: str = "", n: int = 50):
