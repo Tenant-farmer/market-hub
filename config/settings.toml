@@ -1,0 +1,63 @@
+# market-hub 설정 — 티커, 섹터명, 분석 파라미터
+
+[us]
+benchmark = "SPY"
+# 벤치마크 2종 + SPDR 섹터 11종 + 반도체
+symbols = [
+    "SPY", "QQQ",
+    "XLK", "XLC", "XLY", "XLP", "XLE", "XLF", "XLV", "XLI", "XLB", "XLRE", "XLU",
+    "SMH",
+]
+vix = "^VIX"
+
+[us.names]
+SPY = "S&P 500"
+QQQ = "나스닥 100"
+XLK = "기술"
+XLC = "커뮤니케이션"
+XLY = "임의소비재"
+XLP = "필수소비재"
+XLE = "에너지"
+XLF = "금융"
+XLV = "헬스케어"
+XLI = "산업재"
+XLB = "소재"
+XLRE = "리츠"
+XLU = "유틸리티"
+SMH = "반도체"
+
+[kr]
+benchmark = "1001"          # KOSPI 지수 코드
+markets = ["KOSPI", "KOSDAQ"]
+flows_top_n = 100           # 투자자별 순매수 상위 종목 수
+
+[gurus]
+quarters = 3                # 매니저당 수집 분기 수 (diff에 최소 2 필요)
+managers = [
+    { name = "버크셔 해서웨이 (버핏)", cik = "1067983" },
+    { name = "사이언 (마이클 버리)", cik = "1649339" },
+    { name = "퍼싱스퀘어 (애크먼)", cik = "1336528" },
+    { name = "듀케인 (드러켄밀러)", cik = "1536411" },
+    { name = "브리지워터 (달리오)", cik = "1350694" },
+    { name = "르네상스 테크놀로지", cik = "1037389" },
+]
+
+[analytics]
+rs_windows = [5, 21, 63]    # 1주/1개월/3개월 (거래일)
+rrg_window = 63             # RS-ratio 산출 구간
+rrg_momentum = 21           # RS-momentum 산출 구간
+rsi_period = 14
+overheat_rsi = 75.0
+overheat_ma_dev = 0.15      # 200MA 대비 +15% 이상이면 과열 플래그
+ma_long = 200
+
+[analytics.leader_weights]
+rs_market = 0.35            # 시장 대비 RS
+rs_sector = 0.25            # 소속 섹터 대비 RS
+volume_surge = 0.20         # 거래량 급증 (20일 평균 대비)
+flow_streak = 0.20          # (KR) 외인+기관 순매수 연속일
+
+[analytics.sector_leader_weights]
+rs_63 = 0.40                # 3개월 상대강도 (추세 주도력)
+rs_21 = 0.35                # 1개월 상대강도 (현재 강도)
+rs_mom = 0.25               # RRG 모멘텀 (힘의 방향)

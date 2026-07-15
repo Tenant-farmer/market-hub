@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% set active = 'us' %}
+{% block title %}US 섹터 — market-hub{% endblock %}
+{% block head %}
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+{% endblock %}
+{% block body %}
+<h1>US 섹터 로테이션</h1>
+<div class="sub">기준일 {{ date }} · 벤치마크 SPY · RS = 벤치마크 대비 초과수익(%p) ·
+주도점수 = 3개월 RS 40% + 1개월 RS 35% + 모멘텀 25% (섹터 간 백분위)</div>
+
+{% if cards %}
+<div class="cards3">
+  {% for c in cards %}
+  <div class="card">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span class="rankb">{{ loop.index }}</span>
+      <strong>{{ c.name }}</strong>
+      <span style="color:var(--muted)">{{ c.code }}</span>
+      {% if c.hot %}<span class="hot">⚠ 과열</span>{% endif %}
+    </div>
+    <div class="score">{{ '%.0f'|format(c.score) }}<span style="font-size:13px;color:var(--muted)"> /100</span></div>
+    <div class="reason">{{ c.reason }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="sub" style="margin-bottom:6px">RRG 사분면 (63일 상대강도 × 21일 모멘텀, 궤적 12주)</div>
+  <div id="rrg" style="height:560px"></div>
+</div>
+
+<div class="card" style="margin-top:16px;overflow-x:auto">
+    <table>
+      <thead><tr>
+        <th>심볼</th><th>섹터</th><th>주도점수</th><th>1M %</th><th>RS 1M</th><th>RS 3M</th><th>사분면</th><th>체류</th><th>RSI</th><th></th>
+      </tr></thead>
+      <tbody>
+      {% for r in ranking %}
+        <tr>
+          <td><a href="/us?sym={{ r.code }}" style="color:var(--accent);text-decoration:none">{{ r.code }}</a></td>
+          <td style="text-align:left;color:var(--ink-2)">{{ names.get(r.code, '') }}</td>
+          <td><strong>{{ '%.0f'|format(r.score) if r.score is not none else '–' }}</strong></td>
+          <td class="{{ 'pos' if r.ret21 and r.ret21 > 0 else 'neg' if r.ret21 and r.ret21 < 0 }}">{{ '%+.1f'|format(r.ret21) if r.ret21 is not none else '–' }}</td>
+          <td class="{{ 'pos' if r.rs21 and r.rs21 > 0 else 'neg' if r.rs21 and r.rs21 < 0 }}">{{ '%+.1f'|format(r.rs21) if r.rs21 is not none else '–' }}</td>
+          <td class="{{ 'pos' if r.rs63 and r.rs63 > 0 else 'neg' if r.rs63 and r.rs63 < 0 }}">{{ '%+.1f'|format(r.rs63) if r.rs63 is not none else '–' }}</td>
+          <td>{% if r.quad %}<span class="chip">{{ quad_ko[r.quad|int] }} {{ quad[r.quad|int] }}</span>{% else %}–{% endif %}</td>
+          <td>{% if r.streak and r.streak > 0 %}<span class="{{ 'pos' if r.streak >= 21 }}">{{ r.streak|int }}일</span>{% else %}–{% endif %}</td>
+          <td>{{ '%.0f'|format(r.rsi) if r.rsi is not none else '–' }}</td>
+          <td>{% if r.hot %}<span class="hot">⚠ 과열</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+</div>
+
+<div class="card" style="margin-top:16px">
+  <div class="pills">
+    {% for s in symbols %}
+      <a href="/us?sym={{ s }}" class="{{ 'on' if s == sym }}">{{ s }}</a>
+    {% endfor %}
+  </div>
+  <div class="sub" style="margin-bottom:6px">{{ sym }} · {{ names.get(sym, '') }} · 최근 1년 (수정종가)</div>
+  <div id="price" style="height:320px"></div>
+</div>
+
+<script>
+const TRAILS = {{ trails|tojson }};
+const PRICES = {{ prices|tojson }};
+const QUAD_COLOR = { 1: "#0ca30c", 2: "#fab219", 3: "#d03b3b", 4: "#3987e5" };
+
+// ---- RRG scatter ----
+(function () {
+  const codes = Object.keys(TRAILS).filter(c => TRAILS[c].length > 0);
+  let xs = [], ys = [];
+  codes.forEach(c => TRAILS[c].forEach(p => { xs.push(p[1]); ys.push(p[2]); }));
+  const pad = 0.6;
+  const xr = [Math.min(...xs, 100) - pad, Math.max(...xs, 100) + pad];
+  const yr = [Math.min(...ys, 100) - pad, Math.max(...ys, 100) + pad];
+
+  const traces = [];
+  codes.forEach(c => {
+    const t = TRAILS[c];
+    const last = t[t.length - 1];
+    const quad = (last[1] >= 100) ? (last[2] >= 100 ? 1 : 2) : (last[2] >= 100 ? 4 : 3);
+    traces.push({   // 궤적
+      x: t.map(p => p[1]), y: t.map(p => p[2]),
+      mode: "lines+markers", type: "scatter",
+      line: { color: "rgba(137,135,129,0.45)", width: 1.5 },
+      marker: { size: 4, color: "rgba(137,135,129,0.45)" },
+      hovertemplate: c + " %{customdata}<br>ratio %{x:.1f} · mom %{y:.1f}<extra></extra>",
+      customdata: t.map(p => p[0]),
+      showlegend: false,
+    });
+    traces.push({   // 현재 위치 + 직접 라벨
+      x: [last[1]], y: [last[2]],
+      mode: "markers+text", type: "scatter",
+      marker: { size: 10, color: QUAD_COLOR[quad], line: { color: "#1a1a19", width: 2 } },
+      text: [c], textposition: "top center",
+      textfont: { color: "#c3c2b7", size: 11 },
+      hovertemplate: c + " " + last[0] + "<br>ratio %{x:.1f} · mom %{y:.1f}<extra></extra>",
+      showlegend: false,
+    });
+  });
+
+  const shade = (x0, x1, y0, y1, color) => ({
+    type: "rect", x0, x1, y0, y1, line: { width: 0 },
+    fillcolor: color, layer: "below",
+  });
+  Plotly.newPlot("rrg", traces, {
+    paper_bgcolor: "#1a1a19", plot_bgcolor: "#1a1a19",
+    font: { color: "#c3c2b7", family: "system-ui, sans-serif", size: 12 },
+    margin: { l: 44, r: 16, t: 8, b: 40 },
+    xaxis: { title: "RS-ratio", range: xr, gridcolor: "#2c2c2a", zeroline: false },
+    yaxis: { title: "RS-momentum", range: yr, gridcolor: "#2c2c2a", zeroline: false },
+    shapes: [
+      shade(100, xr[1], 100, yr[1], "rgba(12,163,12,0.06)"),     // Leading
+      shade(100, xr[1], yr[0], 100, "rgba(250,178,25,0.06)"),    // Weakening
+      shade(xr[0], 100, yr[0], 100, "rgba(208,59,59,0.06)"),     // Lagging
+      shade(xr[0], 100, 100, yr[1], "rgba(57,135,229,0.06)"),    // Improving
+      { type: "line", x0: 100, x1: 100, y0: yr[0], y1: yr[1], line: { color: "#383835", width: 1 } },
+      { type: "line", x0: xr[0], x1: xr[1], y0: 100, y1: 100, line: { color: "#383835", width: 1 } },
+    ],
+    annotations: [
+      { x: xr[1], y: yr[1], text: "주도", showarrow: false, xanchor: "right", font: { color: "#898781", size: 11 } },
+      { x: xr[1], y: yr[0], text: "약화", showarrow: false, xanchor: "right", yanchor: "bottom", font: { color: "#898781", size: 11 } },
+      { x: xr[0], y: yr[0], text: "침체", showarrow: false, xanchor: "left", yanchor: "bottom", font: { color: "#898781", size: 11 } },
+      { x: xr[0], y: yr[1], text: "개선", showarrow: false, xanchor: "left", font: { color: "#898781", size: 11 } },
+    ],
+  }, { displayModeBar: false, responsive: true });
+})();
+
+// ---- 가격 차트 (Lightweight Charts) ----
+(function () {
+  const el = document.getElementById("price");
+  const chart = LightweightCharts.createChart(el, {
+    layout: { background: { color: "#1a1a19" }, textColor: "#898781" },
+    grid: { vertLines: { color: "#2c2c2a" }, horzLines: { color: "#2c2c2a" } },
+    rightPriceScale: { borderColor: "#383835" },
+    timeScale: { borderColor: "#383835" },
+    height: 320,
+  });
+  const series = chart.addAreaSeries({
+    lineColor: "#3987e5", lineWidth: 2,
+    topColor: "rgba(57,135,229,0.25)", bottomColor: "rgba(57,135,229,0.02)",
+  });
+  series.setData(PRICES);
+  chart.timeScale().fitContent();
+  new ResizeObserver(() => chart.applyOptions({ width: el.clientWidth })).observe(el);
+})();
+</script>
+{% endblock %}

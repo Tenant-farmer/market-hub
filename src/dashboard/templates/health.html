@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% set active = 'health' %}
+{% block title %}상태 — market-hub{% endblock %}
+{% block body %}
+<h1>수집기 상태</h1>
+<div class="sub">최근 30회 실행</div>
+<div class="card" style="overflow-x:auto">
+  <table>
+    <thead><tr><th>수집기</th><th>실행 시각</th><th>상태</th><th>rows</th><th style="text-align:left">메시지</th></tr></thead>
+    <tbody>
+    {% for r in runs %}
+      <tr>
+        <td style="text-align:left">{{ r.collector }}</td>
+        <td>{{ r.run_at }}</td>
+        <td class="{{ 'pos' if r.status == 'ok' else 'neg' }}">{{ r.status }}</td>
+        <td>{{ r.rows }}</td>
+        <td style="text-align:left;color:var(--muted);max-width:480px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.message or '' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

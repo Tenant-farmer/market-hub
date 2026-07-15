@@ -1,0 +1,6 @@
+yfinance
+pandas
+requests
+flask
+python-dotenv
+pykrx>=1.2.8

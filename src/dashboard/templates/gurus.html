@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% set active = 'gurus' %}
+{% block title %}구루 13F — market-hub{% endblock %}
+{% block body %}
+<h1>구루 13F</h1>
+<div class="sub">SEC EDGAR 13F-HR · 분기 공시 (최대 45일 지연) · (PUT)/(CALL)은 옵션 포지션 — 방향에 주의 · 매니저별 최신 분기 기준</div>
+
+{% if consensus %}
+<div class="card" style="margin-bottom:16px">
+  <div class="sub" style="margin-bottom:6px">컨센서스 — 최근 분기에 2명 이상이 신규/확대한 종목</div>
+  <table>
+    <thead><tr><th style="text-align:left">종목</th><th>매니저 수</th><th>합산 증가액</th><th style="text-align:left">누가</th></tr></thead>
+    <tbody>
+    {% for c in consensus %}
+      <tr>
+        <td style="text-align:left"><strong>{{ c.name }}</strong></td>
+        <td>{{ c.n }}</td>
+        <td class="pos">{{ c.delta }}</td>
+        <td style="text-align:left;color:var(--muted);font-size:12px">{{ c.who }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="grid2">
+  {% for m in managers %}
+  <div class="card">
+    <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px">
+      <strong>{{ m.name }}</strong>
+      <span style="color:var(--muted);font-size:12px">{{ m.quarter }} · 제출 {{ m.filed }}</span>
+    </div>
+    <table style="margin-bottom:10px">
+      <thead><tr><th style="text-align:left">보유 상위</th><th>비중</th><th>평가액</th></tr></thead>
+      <tbody>
+      {% for h in m.holdings %}
+        <tr>
+          <td style="text-align:left;color:var(--ink-2)">{{ h.name }}</td>
+          <td>{{ '%.1f%%'|format(h.pct) }}</td>
+          <td style="color:var(--muted)">{{ h.value }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% if m.changes %}
+    <div class="sub" style="margin-bottom:4px">분기 변화 (상위)</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">
+      {% for c in m.changes %}
+        <span class="chip" style="color:{{ 'var(--up)' if c.action in ('new','add') else 'var(--warn)' if c.action=='trim' else 'var(--down)' }}">
+          {{ c.action_ko }} {{ c.name }} {{ c.delta }}
+        </span>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
