@@ -78,5 +78,6 @@ def leaders_page():
         date=date, rows=rows, sector=sector,
         sectors=sectors, top_sectors=top_sectors, names=names,
         sym=sym, sym_name=sym_name, sym_prices=sym_prices, tv_symbol=tv_symbol,
+        tv_embed_ok=True,   # 미국 심볼은 위젯 재배포 허용
         back_url=f"/leaders?sector={sector}" if sector else "/leaders",
     )

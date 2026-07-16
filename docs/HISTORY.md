@@ -102,6 +102,9 @@
 - 미국 심볼의 거래소 프리픽스(NYSE/NASDAQ)는 tradingview-screener 응답의 ticker 컬럼을
   stock_meta.tv_symbol로 저장해 해결, KR은 "KRX:"+종목코드
 - 한계: 위젯은 익명 모드라 그린 그림이 TV 계정에 저장되지 않음 (세션 한정)
+- **KRX는 위젯에서 표시 불가** ("TradingView에서만 제공되는 심볼" 알림): 거래소 데이터
+  재배포 라이선스 제한 — tradingview.com 본편에선 되고 임베드에선 차단. 설정으로 못 풂
+  → KR 종목은 tv_embed_ok=False로 자체 LWC 차트 직행 + "TV 앱에서 열기" 링크, US만 위젯
 
 ### 대시보드 상시 가동
 - 이슈: 세션 프리뷰로 띄운 서버가 턴 종료 시 꺼져 "웹이 안 들어가짐" 반복
