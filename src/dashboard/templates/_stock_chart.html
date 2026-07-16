@@ -1,0 +1,30 @@
+{# 종목 차트 카드 — 컨텍스트: sym, sym_name, sym_prices, back_url #}
+<script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+<div class="card" style="margin-bottom:16px">
+  <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
+    <strong style="font-size:16px">{{ sym }}</strong>
+    <span style="color:var(--ink-2)">{{ sym_name }}</span>
+    <span class="sub">최근 1년 · 종가</span>
+    <a href="{{ back_url }}" style="margin-left:auto;color:var(--muted);text-decoration:none">✕ 닫기</a>
+  </div>
+  <div id="stockchart" style="height:340px"></div>
+</div>
+<script>
+(function () {
+  const el = document.getElementById("stockchart");
+  const chart = LightweightCharts.createChart(el, {
+    layout: { background: { color: "#1a1a19" }, textColor: "#898781" },
+    grid: { vertLines: { color: "#2c2c2a" }, horzLines: { color: "#2c2c2a" } },
+    rightPriceScale: { borderColor: "#383835" },
+    timeScale: { borderColor: "#383835" },
+    height: 340,
+  });
+  const series = chart.addAreaSeries({
+    lineColor: "#3987e5", lineWidth: 2,
+    topColor: "rgba(57,135,229,0.25)", bottomColor: "rgba(57,135,229,0.02)",
+  });
+  series.setData({{ sym_prices|tojson }});
+  chart.timeScale().fitContent();
+  new ResizeObserver(() => chart.applyOptions({ width: el.clientWidth })).observe(el);
+})();
+</script>

@@ -2,6 +2,7 @@
 from flask import Blueprint, render_template, request
 
 from src import config, db
+from src.dashboard import queries
 from src.dashboard.fmt import fmt_usd
 
 bp = Blueprint("leaders", __name__)
@@ -13,6 +14,19 @@ def leaders_page():
     names = cfg.get("names", {})
     sector = request.args.get("sector", "")
     con = db.connect()
+
+    # 티커 클릭 → 차트
+    sym = request.args.get("sym", "")
+    sym_name, sym_prices = "", []
+    if sym:
+        nrow = con.execute(
+            "SELECT name FROM sector_map WHERE stock_code=? AND market='US_STOCK'", (sym,)
+        ).fetchone()
+        if nrow:
+            sym_name = nrow["name"]
+            sym_prices = queries.prices(con, sym)
+        else:
+            sym = ""
 
     date_row = con.execute(
         "SELECT MAX(date) d FROM analytics_daily WHERE scope='us_stock'"
@@ -59,4 +73,6 @@ def leaders_page():
         "leaders.html",
         date=date, rows=rows, sector=sector,
         sectors=sectors, top_sectors=top_sectors, names=names,
+        sym=sym, sym_name=sym_name, sym_prices=sym_prices,
+        back_url=f"/leaders?sector={sector}" if sector else "/leaders",
     )

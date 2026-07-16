@@ -16,6 +16,8 @@
   {% endfor %}
 </div>
 
+{% if sym %}{% include "_stock_chart.html" %}{% endif %}
+
 <div class="card" style="overflow-x:auto">
   <table>
     <thead><tr>
@@ -24,9 +26,9 @@
     </tr></thead>
     <tbody>
     {% for r in rows %}
-      <tr>
+      <tr{% if r.code == sym %} style="background:rgba(57,135,229,.10)"{% endif %}>
         <td>{{ loop.index }}</td>
-        <td style="text-align:left"><strong>{{ r.code }}</strong></td>
+        <td style="text-align:left"><a href="/kr-leaders?{% if sector %}sector={{ sector }}&amp;{% endif %}sym={{ r.code }}" style="color:var(--accent);text-decoration:none"><strong>{{ r.code }}</strong></a></td>
         <td style="text-align:left;color:var(--ink-2)">{{ r.name }}</td>
         <td><span class="chip">{{ r.sector_name }}</span></td>
         <td style="color:var(--ink-2)">{{ r.mcap_fmt or '–' }}</td>

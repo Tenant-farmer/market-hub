@@ -17,6 +17,19 @@ def kr_leaders_page():
         "SELECT MAX(date) d FROM analytics_daily WHERE scope='kr_stock'"
     ).fetchone()
     rows = queries.kr_leaders(con, sector=sector)
+
+    # 종목 클릭 → 차트
+    sym = request.args.get("sym", "")
+    sym_name, sym_prices = "", []
+    if sym:
+        nrow = con.execute(
+            "SELECT name FROM sector_map WHERE stock_code=? AND market='KR'", (sym,)
+        ).fetchone()
+        if nrow:
+            sym_name = nrow["name"]
+            sym_prices = queries.prices(con, sym)
+        else:
+            sym = ""
     top_sectors = [
         r["code"] for r in con.execute(
             "SELECT code FROM analytics_daily WHERE scope='kr_sector' AND metric='leader_score' "
@@ -29,4 +42,6 @@ def kr_leaders_page():
         date=date_row["d"], rows=rows, sector=sector,
         sectors=cfg["sector_codes"], top_sectors=top_sectors, names=names,
         min_mcap_label=f"{cfg['leader_min_mcap'] / 1e8:,.0f}억",
+        sym=sym, sym_name=sym_name, sym_prices=sym_prices,
+        back_url=f"/kr-leaders?sector={sector}" if sector else "/kr-leaders",
     )
