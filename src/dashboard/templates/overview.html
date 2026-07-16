@@ -26,9 +26,26 @@
   {{ bench_card('코스피', kospi, kospi_regime) }}
   {{ bench_card('코스닥', kosdaq, kosdaq_regime) }}
   <div class="card">
-    <div class="sub" style="margin-bottom:2px">Fear &amp; Greed</div>
-    <div class="score">{{ '%.0f'|format(fng.value) if fng else '–' }}</div>
-    <div class="reason">{{ fng_label or '' }} {% if fng %}· {{ fng.date }}{% endif %}</div>
+    <div class="sub" style="margin-bottom:2px">Fear &amp; Greed {% if fng %}<span style="float:right;color:var(--muted)">{{ fng.date }}</span>{% endif %}</div>
+    {% if fng %}
+    <svg viewBox="0 0 200 132" style="width:100%;max-width:210px;display:block;margin:0 auto">
+      <path d="M 20 100 A 80 80 0 0 1 43.43 43.43" stroke="#d03b3b" stroke-width="14" fill="none"/>
+      <path d="M 43.43 43.43 A 80 80 0 0 1 87.49 20.98" stroke="#ec835a" stroke-width="14" fill="none"/>
+      <path d="M 87.49 20.98 A 80 80 0 0 1 112.51 20.98" stroke="#fab219" stroke-width="14" fill="none"/>
+      <path d="M 112.51 20.98 A 80 80 0 0 1 156.57 43.43" stroke="#199e70" stroke-width="14" fill="none"/>
+      <path d="M 156.57 43.43 A 80 80 0 0 1 180 100" stroke="#0ca30c" stroke-width="14" fill="none"/>
+      <g transform="rotate({{ fng_angle }} 100 100)">
+        <line x1="100" y1="100" x2="100" y2="34" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+      </g>
+      <circle cx="100" cy="100" r="4.5" fill="#fff"/>
+      <text x="100" y="88" text-anchor="middle" font-size="26" font-weight="500" fill="#ffffff">{{ '%.0f'|format(fng.value) }}</text>
+      <text x="100" y="122" text-anchor="middle" font-size="13" fill="{{ fng_color }}">{{ fng_label }}</text>
+      <text x="20" y="120" text-anchor="middle" font-size="10" fill="#898781">0</text>
+      <text x="180" y="120" text-anchor="middle" font-size="10" fill="#898781">100</text>
+    </svg>
+    {% else %}
+    <div class="score">–</div>
+    {% endif %}
   </div>
 </div>
 

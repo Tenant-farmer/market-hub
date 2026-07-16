@@ -28,6 +28,12 @@ def home():
     macro = queries.macro_context(con)
     senti = queries.sentiment_latest(con)
     fng = senti.get("fear_greed")
+    fng_angle = round(fng["value"] * 1.8 - 90, 1) if fng else None
+    fng_color = None
+    if fng:
+        v = fng["value"]
+        fng_color = ("#e66767" if v <= 25 else "#ec835a" if v < 45 else
+                     "#fab219" if v <= 55 else "#199e70" if v < 75 else "#0ca30c")
     vix = senti.get("vix")
 
     # 주도 섹터 TOP3 (양국)
@@ -55,6 +61,7 @@ def home():
         qqq=qqq, kosdaq=kosdaq, qqq_regime=qqq_regime, kosdaq_regime=kosdaq_regime,
         spy_regime=spy_regime, kospi_regime=kospi_regime, macro=macro,
         fng=fng, fng_label=fng_label(fng["value"]) if fng else None, vix=vix,
+        fng_angle=fng_angle, fng_color=fng_color,
         us_date=us_date, kr_date=kr_date,
         us_cards=us_cards, kr_cards=kr_cards,
         hot_us=hot_us, hot_kr=hot_kr,
