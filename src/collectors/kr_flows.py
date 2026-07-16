@@ -73,7 +73,7 @@ def collect(con, days: int = 7) -> int:
         r["stock_code"]: r["sector_code"]
         for r in con.execute("SELECT stock_code, sector_code FROM sector_map WHERE market='KR'")
     }
-    for win_days, scope in ((7, "sector_1w"), (30, "sector_1m")):
+    for win_days, scope in ((7, "sector_1w"), (30, "sector_1m"), (91, "sector_3m")):
         w_ymd = (end - timedelta(days=win_days)).strftime("%Y%m%d")
         for inv_kr, inv in (("외국인", "foreign"), ("기관합계", "institution")):
             try:

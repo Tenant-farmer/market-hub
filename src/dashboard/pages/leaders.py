@@ -28,6 +28,7 @@ def leaders_page():
         f"""
         SELECT a.code, m.name, m.sector_code, sm.mcap,
                MAX(CASE WHEN a.metric='leader_score' THEN a.value END) score,
+               MAX(CASE WHEN a.metric='ret_21' THEN a.value END)      ret21,
                MAX(CASE WHEN a.metric='rs_mkt_21' THEN a.value END)   rs_mkt,
                MAX(CASE WHEN a.metric='rs_sec_21' THEN a.value END)   rs_sec,
                MAX(CASE WHEN a.metric='vol_surge' THEN a.value END)   vol_surge,

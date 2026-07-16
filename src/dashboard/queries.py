@@ -127,9 +127,9 @@ def top_flow_stocks(con, investor: str, n: int = 10):
 
 
 def sector_flows(con, names: dict):
-    """KR 업종 수급 (외국인/기관 × 1주/1개월). 합산 1주 기준 정렬된 리스트."""
+    """KR 업종 수급 (외국인/기관 × 1주/1개월/3개월). 합산 1주 기준 정렬된 리스트."""
     by_sec: dict[str, dict[str, float]] = {}
-    for scope, tag in (("sector_1w", "1w"), ("sector_1m", "1m")):
+    for scope, tag in (("sector_1w", "1w"), ("sector_1m", "1m"), ("sector_3m", "3m")):
         rows = con.execute(
             "SELECT code, investor, net_value FROM investor_flows f "
             "WHERE scope=? AND date=(SELECT MAX(date) FROM investor_flows WHERE scope=?)",
@@ -137,17 +137,19 @@ def sector_flows(con, names: dict):
         ).fetchall()
         for r in rows:
             d = by_sec.setdefault(r["code"], {})
-            d[f"{r['investor'][0]}_{tag}"] = r["net_value"]   # f_1w, i_1w, f_1m, i_1m
+            d[f"{r['investor'][0]}_{tag}"] = r["net_value"]   # f_1w, i_1w, ...
     out = []
     for sec, d in by_sec.items():
         tot_1w = d.get("f_1w", 0) + d.get("i_1w", 0)
         tot_1m = d.get("f_1m", 0) + d.get("i_1m", 0)
+        tot_3m = d.get("f_3m", 0) + d.get("i_3m", 0)
         out.append({
             "name": names.get(sec, sec),
             "f_1w": fmt_krw(d.get("f_1w", 0)), "i_1w": fmt_krw(d.get("i_1w", 0)),
             "f_1w_v": d.get("f_1w", 0), "i_1w_v": d.get("i_1w", 0),
             "tot_1w": tot_1w, "tot_1w_fmt": fmt_krw(tot_1w),
             "tot_1m": tot_1m, "tot_1m_fmt": fmt_krw(tot_1m),
+            "tot_3m": tot_3m, "tot_3m_fmt": fmt_krw(tot_3m),
         })
     out.sort(key=lambda x: x["tot_1w"], reverse=True)
     return out
@@ -171,6 +173,7 @@ def kr_leaders(con, sector: str = "", n: int = 50):
         f"""
         SELECT a.code, m.name, m.sector_code, m.sector_name, sm.mcap,
                MAX(CASE WHEN a.metric='leader_score' THEN a.value END) score,
+               MAX(CASE WHEN a.metric='ret_21' THEN a.value END)      ret21,
                MAX(CASE WHEN a.metric='rs_mkt_21' THEN a.value END)   rs_mkt,
                MAX(CASE WHEN a.metric='rs_sec_21' THEN a.value END)   rs_sec,
                MAX(CASE WHEN a.metric='vol_surge' THEN a.value END)   vol_surge,

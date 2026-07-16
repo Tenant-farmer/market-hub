@@ -47,16 +47,14 @@ def compute_sector(con, scope: str) -> int:
 
 
 def compute_stocks(con, scope: str = "us_stock", market: str = "US_STOCK",
-                   bench: str = "SPY", window: int = 21) -> int:
-    """종목 주도점수: 시장대비 RS + 소속섹터대비 RS + 거래량 급증 (백분위 가중합).
+                   bench: str = "SPY") -> int:
+    """종목 주도점수 v2 — 6성분 백분위 가중합.
 
-    부가 지표로 52주 고점 대비 위치(high_prox)도 저장 (점수 미반영, 표시용).
+    3개월 시장RS 25% + 1개월 시장RS 20% + 1개월 절대수익 20%
+    + 52주 고점比 20% + 1개월 업종RS 10% + 거래량 급증 5%
+    (가중치는 settings [analytics.leader_weights])
     """
-    w_cfg = config.load()["analytics"]["leader_weights"]
-    # flow_streak은 KR 수급 전용 — 없는 시장은 나머지 가중치를 재정규화
-    w = {k: w_cfg[k] for k in ("rs_market", "rs_sector", "volume_surge")}
-    tot = sum(w.values())
-    w = {k: v / tot for k, v in w.items()}
+    w = config.load()["analytics"]["leader_weights"]
 
     smap = {
         r["stock_code"]: r["sector_code"]
@@ -71,35 +69,48 @@ def compute_stocks(con, scope: str = "us_stock", market: str = "US_STOCK",
     vol = load_field(con, stocks, "volume").reindex(px.index)
     stocks = [s for s in stocks if s in px.columns]
 
-    ret = px.pct_change(window, fill_method=None).iloc[-1]
-    rs_mkt = {s: ret[s] - ret[bench] for s in stocks if pd.notna(ret.get(s))}
-    rs_sec = {
-        s: ret[s] - ret[smap[s]]
-        for s in rs_mkt
-        if smap[s] in ret.index and pd.notna(ret[smap[s]])
-    }
+    ret21 = px.pct_change(21, fill_method=None).iloc[-1]
+    ret63 = px.pct_change(63, fill_method=None).iloc[-1]
     v5 = vol.tail(5).mean()
     v20 = vol.tail(20).mean()
-    vsurge = {s: v5[s] / v20[s] for s in rs_sec if pd.notna(v5.get(s)) and v20.get(s)}
     hi52 = px[stocks].rolling(252, min_periods=120).max().iloc[-1]
     last = px[stocks].iloc[-1]
 
-    universe = sorted(set(rs_mkt) & set(rs_sec) & set(vsurge))
-    if not universe:
+    comp: dict[str, dict[str, float]] = {}
+    for s in stocks:
+        sec = smap[s]
+        if (pd.isna(ret21.get(s)) or pd.isna(ret63.get(s))
+                or sec not in ret21.index or pd.isna(ret21[sec])
+                or pd.isna(v5.get(s)) or not v20.get(s)
+                or pd.isna(hi52.get(s)) or hi52[s] <= 0):
+            continue
+        comp[s] = {
+            "rs_mkt_21": ret21[s] - ret21[bench],
+            "rs_mkt_63": ret63[s] - ret63[bench],
+            "abs_21": ret21[s],
+            "high_prox": float(last[s] / hi52[s]),
+            "rs_sec_21": ret21[s] - ret21[sec],
+            "vol_surge": v5[s] / v20[s],
+        }
+    if not comp:
         return 0
-    p_mkt = _pct_rank({s: rs_mkt[s] for s in universe})
-    p_sec = _pct_rank({s: rs_sec[s] for s in universe})
-    p_vol = _pct_rank({s: vsurge[s] for s in universe})
+
+    ranks = {
+        k: _pct_rank({s: c[k] for s, c in comp.items()})
+        for k in ("rs_mkt_21", "rs_mkt_63", "abs_21", "high_prox", "rs_sec_21", "vol_surge")
+    }
 
     date = px.index[-1]
     out = []
-    for s in universe:
-        score = 100 * (w["rs_market"] * p_mkt[s] + w["rs_sector"] * p_sec[s] + w["volume_surge"] * p_vol[s])
+    for s, c in comp.items():
+        score = 100 * sum(w[k] * ranks[k][s] for k in ranks)
         out.append((date, scope, s, "leader_score", round(score, 1)))
-        out.append((date, scope, s, "rs_mkt_21", round(rs_mkt[s] * 100, 2)))
-        out.append((date, scope, s, "rs_sec_21", round(rs_sec[s] * 100, 2)))
-        out.append((date, scope, s, "vol_surge", round(vsurge[s], 2)))
-        if pd.notna(hi52.get(s)) and hi52[s] > 0:
-            out.append((date, scope, s, "high_prox", round(float(last[s] / hi52[s]), 4)))
-    metrics = ["leader_score", "rs_mkt_21", "rs_sec_21", "vol_surge", "high_prox"]
+        out.append((date, scope, s, "ret_21", round(c["abs_21"] * 100, 2)))
+        out.append((date, scope, s, "rs_mkt_21", round(c["rs_mkt_21"] * 100, 2)))
+        out.append((date, scope, s, "rs_mkt_63", round(c["rs_mkt_63"] * 100, 2)))
+        out.append((date, scope, s, "rs_sec_21", round(c["rs_sec_21"] * 100, 2)))
+        out.append((date, scope, s, "vol_surge", round(c["vol_surge"], 2)))
+        out.append((date, scope, s, "high_prox", round(c["high_prox"], 4)))
+    metrics = ["leader_score", "ret_21", "rs_mkt_21", "rs_mkt_63",
+               "rs_sec_21", "vol_surge", "high_prox"]
     return store.replace_metrics(con, scope, metrics, out)

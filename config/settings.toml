@@ -58,11 +58,15 @@ overheat_rsi = 75.0
 overheat_ma_dev = 0.15      # 200MA 대비 +15% 이상이면 과열 플래그
 ma_long = 200
 
+# 종목 주도점수 v2 — 백테스트: 기존 대비 월평균 +0.92→+2.40%p, 승률 62→75% (16회, 참고치)
+# 주의: 모멘텀 집중이라 급반전 달의 낙폭은 더 큼 — 과열 플래그·체류일과 함께 볼 것
 [analytics.leader_weights]
-rs_market = 0.35            # 시장 대비 RS
-rs_sector = 0.25            # 소속 섹터 대비 RS
-volume_surge = 0.20         # 거래량 급증 (20일 평균 대비)
-flow_streak = 0.20          # (KR) 외인+기관 순매수 연속일
+rs_mkt_63 = 0.25            # 3개월 시장대비 RS (추세의 몸통)
+rs_mkt_21 = 0.20            # 1개월 시장대비 RS (지금의 힘)
+abs_21 = 0.20               # 1개월 절대수익 (하락장 "버티기" 필터)
+high_prox = 0.20            # 52주 고점比 (신고가 근접)
+rs_sec_21 = 0.10            # 1개월 업종대비 RS (업종 내 대장)
+vol_surge = 0.05            # 거래량 급증 (참여 확인용)
 
 [analytics.sector_leader_weights]
 rs_63 = 0.40                # 3개월 상대강도 (추세 주도력)

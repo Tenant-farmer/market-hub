@@ -98,7 +98,7 @@
   <div class="sub" style="margin-bottom:6px">KR 업종 수급 — 외국인+기관 순매수 (KOSPI, 1주 기준 정렬)</div>
   <table>
     <thead><tr>
-      <th style="text-align:left">업종</th><th>외국인 1주</th><th>기관 1주</th><th>합산 1주</th><th>합산 1개월</th>
+      <th style="text-align:left">업종</th><th>외국인 1주</th><th>기관 1주</th><th>합산 1주</th><th>합산 1개월</th><th>합산 3개월</th>
     </tr></thead>
     <tbody>
     {% for s in sflows_in %}
@@ -108,6 +108,7 @@
         <td class="{{ 'pos' if s.i_1w_v > 0 else 'neg' }}">{{ s.i_1w }}</td>
         <td class="{{ 'pos' if s.tot_1w > 0 else 'neg' }}"><strong>{{ s.tot_1w_fmt }}</strong></td>
         <td class="{{ 'pos' if s.tot_1m > 0 else 'neg' }}">{{ s.tot_1m_fmt }}</td>
+        <td class="{{ 'pos' if s.tot_3m > 0 else 'neg' }}">{{ s.tot_3m_fmt }}</td>
       </tr>
     {% endfor %}
     {% for s in sflows_out %}
@@ -117,6 +118,7 @@
         <td class="{{ 'pos' if s.i_1w_v > 0 else 'neg' }}">{{ s.i_1w }}</td>
         <td class="{{ 'pos' if s.tot_1w > 0 else 'neg' }}"><strong>{{ s.tot_1w_fmt }}</strong></td>
         <td class="{{ 'pos' if s.tot_1m > 0 else 'neg' }}">{{ s.tot_1m_fmt }}</td>
+        <td class="{{ 'pos' if s.tot_3m > 0 else 'neg' }}">{{ s.tot_3m_fmt }}</td>
       </tr>
     {% endfor %}
     </tbody>
