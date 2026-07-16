@@ -95,6 +95,14 @@
 - LWC에는 그리기 도구가 내장돼 있지 않음 → priceLine(수평선)·2점 LineSeries(추세선)로 직접 구현
 - 시간 키 주의: LWC 클릭 이벤트의 time은 BusinessDay 객체로 올 수 있어 "YYYY-MM-DD" 문자열로 정규화
 
+### 종목 차트에 트레이딩뷰 공식 위젯 탭 (그리기 툴바 포함)
+- 요구: TV 차트의 그리기 도구들 — LWC로 전부 재구현은 비현실적 (TV의 핵심 상품)
+- 해결: 공식 임베드 위젯을 기본 탭으로 (풀 툴바·지표), 기존 LWC는 "간단 차트" 탭으로 공존
+  + "TV 앱에서 열기" 링크 (본계정 저장용)
+- 미국 심볼의 거래소 프리픽스(NYSE/NASDAQ)는 tradingview-screener 응답의 ticker 컬럼을
+  stock_meta.tv_symbol로 저장해 해결, KR은 "KRX:"+종목코드
+- 한계: 위젯은 익명 모드라 그린 그림이 TV 계정에 저장되지 않음 (세션 한정)
+
 ### 대시보드 상시 가동
 - 이슈: 세션 프리뷰로 띄운 서버가 턴 종료 시 꺼져 "웹이 안 들어가짐" 반복
 - 해결: 작업 스케줄러 "market-hub-dashboard" (로그인 시 pythonw app.py 자동 시작, 상시 localhost:5000)

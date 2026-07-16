@@ -63,8 +63,13 @@ def refresh_market_caps(con) -> int:
     from tradingview_screener import Query
 
     con.execute(
-        "CREATE TABLE IF NOT EXISTS stock_meta (symbol TEXT PRIMARY KEY, mcap REAL, as_of TEXT)"
+        "CREATE TABLE IF NOT EXISTS stock_meta "
+        "(symbol TEXT PRIMARY KEY, mcap REAL, tv_symbol TEXT, as_of TEXT)"
     )
+    cols = [r["name"] for r in con.execute("PRAGMA table_info(stock_meta)")]
+    if "tv_symbol" not in cols:
+        con.execute("ALTER TABLE stock_meta ADD COLUMN tv_symbol TEXT")
+
     _, df = (
         Query()
         .select("name", "market_cap_basic")
@@ -81,8 +86,9 @@ def refresh_market_caps(con) -> int:
     for _, r in df.iterrows():
         sym = str(r["name"]).replace(".", "-")  # TV 'BRK.B' → 우리 표기 'BRK-B'
         if sym in known and pd.notna(r["market_cap_basic"]):
-            rows.append((sym, float(r["market_cap_basic"]), today))
-    return db.upsert(con, "stock_meta", ["symbol", "mcap", "as_of"], rows)
+            # ticker 컬럼 = "NASDAQ:AAPL" — 위젯 임베드에 필요한 거래소 프리픽스
+            rows.append((sym, float(r["market_cap_basic"]), str(r["ticker"]), today))
+    return db.upsert(con, "stock_meta", ["symbol", "mcap", "tv_symbol", "as_of"], rows)
 
 
 def collect(con, days: int = 7) -> int:

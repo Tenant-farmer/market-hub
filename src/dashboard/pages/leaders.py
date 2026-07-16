@@ -17,7 +17,7 @@ def leaders_page():
 
     # 티커 클릭 → 차트
     sym = request.args.get("sym", "")
-    sym_name, sym_prices = "", []
+    sym_name, sym_prices, tv_symbol = "", [], ""
     if sym:
         nrow = con.execute(
             "SELECT name FROM sector_map WHERE stock_code=? AND market='US_STOCK'", (sym,)
@@ -25,6 +25,10 @@ def leaders_page():
         if nrow:
             sym_name = nrow["name"]
             sym_prices = queries.ohlcv(con, sym)
+            tvrow = con.execute(
+                "SELECT tv_symbol FROM stock_meta WHERE symbol=?", (sym,)
+            ).fetchone()
+            tv_symbol = (tvrow["tv_symbol"] if tvrow and tvrow["tv_symbol"] else sym)
         else:
             sym = ""
 
@@ -73,6 +77,6 @@ def leaders_page():
         "leaders.html",
         date=date, rows=rows, sector=sector,
         sectors=sectors, top_sectors=top_sectors, names=names,
-        sym=sym, sym_name=sym_name, sym_prices=sym_prices,
+        sym=sym, sym_name=sym_name, sym_prices=sym_prices, tv_symbol=tv_symbol,
         back_url=f"/leaders?sector={sector}" if sector else "/leaders",
     )

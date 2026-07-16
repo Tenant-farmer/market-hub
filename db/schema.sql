@@ -82,9 +82,10 @@ CREATE TABLE IF NOT EXISTS guru_changes (
 );
 
 CREATE TABLE IF NOT EXISTS stock_meta (
-    symbol TEXT PRIMARY KEY,
-    mcap   REAL,                    -- 시가총액 (USD)
-    as_of  TEXT
+    symbol    TEXT PRIMARY KEY,
+    mcap      REAL,                 -- 시가총액 (USD/KRW)
+    tv_symbol TEXT,                 -- 트레이딩뷰 심볼 (예: NASDAQ:AAPL) — 위젯 임베드용
+    as_of     TEXT
 );
 
 CREATE TABLE IF NOT EXISTS collector_runs (

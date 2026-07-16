@@ -21,9 +21,36 @@
   <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
     <strong style="font-size:16px">{{ sym }}</strong>
     <span style="color:var(--ink-2)">{{ sym_name }}</span>
-    <span class="sub">최근 1년 · 일봉</span>
-    <a href="{{ back_url }}" style="margin-left:auto;color:var(--muted);text-decoration:none">✕ 닫기</a>
+    <button class="tbtn on" id="tab-tv-btn">트레이딩뷰</button>
+    <button class="tbtn" id="tab-lwc-btn">간단 차트</button>
+    <a href="https://kr.tradingview.com/chart/?symbol={{ tv_symbol|urlencode }}" target="_blank"
+       style="margin-left:auto;color:var(--accent);text-decoration:none;font-size:12px">TV 앱에서 열기 ↗</a>
+    <a href="{{ back_url }}" style="color:var(--muted);text-decoration:none">✕ 닫기</a>
   </div>
+
+  {# ---- 탭 1: 트레이딩뷰 공식 위젯 (그리기 툴바 포함) ---- #}
+  <div id="tab-tv">
+    <div id="tv_widget" style="height:620px"></div>
+  </div>
+  <script src="https://s3.tradingview.com/tv.js"></script>
+  <script>
+    new TradingView.widget({
+      container_id: "tv_widget",
+      symbol: {{ tv_symbol|tojson }},
+      interval: "D",
+      timezone: "Asia/Seoul",
+      theme: "dark",
+      style: "1",
+      locale: "kr",
+      autosize: true,
+      hide_side_toolbar: false,
+      allow_symbol_change: false,
+      withdateranges: true,
+    });
+  </script>
+
+  {# ---- 탭 2: 간단 차트 (LWC — 우리 데이터, 선 저장) ---- #}
+  <div id="tab-lwc" style="display:none">
   <div class="tbar">
     <button class="tbtn on" id="b-candle">캔들</button>
     <button class="tbtn" id="b-line">라인</button>
@@ -42,7 +69,18 @@
     <div id="ohlc-legend"></div>
     <div id="stockchart" style="height:520px"></div>
   </div>
+  </div>{# /tab-lwc #}
 </div>
+<script>
+(function () {
+  const tv = document.getElementById("tab-tv"), lwc = document.getElementById("tab-lwc");
+  const bt = document.getElementById("tab-tv-btn"), bl = document.getElementById("tab-lwc-btn");
+  bt.onclick = () => { tv.style.display = ""; lwc.style.display = "none";
+    bt.classList.add("on"); bl.classList.remove("on"); };
+  bl.onclick = () => { tv.style.display = "none"; lwc.style.display = "";
+    bl.classList.add("on"); bt.classList.remove("on"); };
+})();
+</script>
 <script>
 (function () {
   const OHLCV = {{ sym_prices|tojson }};
