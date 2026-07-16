@@ -283,6 +283,73 @@ def macro_context(con) -> list[dict]:
     return out
 
 
+def theme_radar(con, surge_pct: float = 30.0, top: int = 5) -> list[dict]:
+    """테마 레이더 (관찰용) — 업종별 1개월 +30% 급등 종목 수 + 거래대금 쏠림.
+
+    매매 신호가 아님: 추격 백테스트(scripts/theme_chase_backtest.py) 결과
+    급등주 추격은 중앙값 -14%의 복권 구조. '지금 돈이 노는 곳' 관찰용.
+    """
+    date_row = con.execute(
+        "SELECT MAX(date) d FROM analytics_daily WHERE scope='kr_stock' AND metric='ret_21'"
+    ).fetchone()
+    if not date_row["d"]:
+        return []
+    rows = con.execute(
+        """
+        SELECT m.sector_code, m.sector_name, m.name, a.value ret21
+        FROM analytics_daily a
+        JOIN sector_map m ON m.stock_code = a.code AND m.market = 'KR'
+        WHERE a.scope='kr_stock' AND a.metric='ret_21' AND a.date=? AND a.value >= ?
+        ORDER BY a.value DESC
+        """,
+        (date_row["d"], surge_pct),
+    ).fetchall()
+    vshare = {
+        r["code"]: r["value"] for r in con.execute(
+            "SELECT code, value FROM analytics_daily WHERE scope='kr_sector' "
+            "AND metric='val_share_ratio' AND date="
+            "(SELECT MAX(date) FROM analytics_daily WHERE scope='kr_sector' AND metric='val_share_ratio')"
+        )
+    }
+    by_sec: dict[str, dict] = {}
+    for r in rows:
+        d = by_sec.setdefault(r["sector_code"], {
+            "name": r["sector_name"], "kq": r["sector_code"].startswith("2"),
+            "count": 0, "tops": [],
+        })
+        d["count"] += 1
+        if len(d["tops"]) < 3:
+            d["tops"].append(f"{r['name']} +{r['ret21']:.0f}%")
+    ranked = sorted(by_sec.items(), key=lambda x: -x[1]["count"])[:top]
+    out = []
+    for code, d in ranked:
+        d["vshare"] = vshare.get(code)
+        out.append(d)
+    return out
+
+
+def market_ratio(con, num: str = "2001", den: str = "1001", ma: int = 50):
+    """코스닥/코스피 상대비율 — 어느 시장이 아웃퍼폼 중인가 (비율의 50일선 기준)."""
+    rows = con.execute(
+        """
+        SELECT a.date, a.close / b.close v
+        FROM prices_daily a JOIN prices_daily b ON b.date = a.date AND b.symbol = ?
+        WHERE a.symbol = ? ORDER BY a.date DESC LIMIT 300
+        """,
+        (den, num),
+    ).fetchall()
+    vals = [r["v"] for r in reversed(rows)]
+    if len(vals) < ma + 63:
+        return None
+    cur = vals[-1]
+    return {
+        "ratio": cur,
+        "chg21": (cur / vals[-22] - 1) * 100,
+        "chg63": (cur / vals[-64] - 1) * 100,
+        "above": cur >= sum(vals[-ma:]) / ma,
+    }
+
+
 def classify_vix_signal(vix: float, vvix: float, cooling: bool, fng: float | None = None) -> dict:
     """매수 신호등 — 근거: scripts/vvix_backtest.py + fng_backtest.py.
 

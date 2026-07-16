@@ -24,7 +24,21 @@
   {{ bench_card('S&P 500 (SPY)', spy, spy_regime) }}
   {{ bench_card('나스닥 100 (QQQ)', qqq, qqq_regime) }}
   {{ bench_card('코스피', kospi, kospi_regime) }}
-  {{ bench_card('코스닥', kosdaq, kosdaq_regime) }}
+  <div class="card">
+    <div class="sub" style="margin-bottom:2px">코스닥</div>
+    <div class="score">{{ '{:,.0f}'.format(kosdaq.close) if kosdaq else '–' }}</div>
+    {% if kosdaq and kosdaq.ret21 is not none %}
+    <div class="reason"><span class="{{ 'pos' if kosdaq.ret21 > 0 else 'neg' }}">{{ '%+.1f%%'|format(kosdaq.ret21) }}</span> · 최근 1개월</div>
+    {% endif %}
+    {% if kosdaq_regime %}
+    <div class="reason"><span class="{{ 'pos' if kosdaq_regime.above else 'neg' }}">●</span>
+      200일선 {{ '위' if kosdaq_regime.above else '아래' }} {{ '%+.1f%%'|format(kosdaq_regime.dev) }}</div>
+    {% endif %}
+    {% if kq_ratio %}
+    <div class="reason">vs 코스피 {{ '%+.1f%%'|format(kq_ratio.chg21) }} (1M) ·
+      <span class="{{ 'pos' if kq_ratio.above else 'neg' }}">{{ '코스닥 우위' if kq_ratio.above else '코스피 우위' }}</span></div>
+    {% endif %}
+  </div>
   <div class="card">
     <div class="sub" style="margin-bottom:2px">Fear &amp; Greed {% if fng %}<span style="float:right;color:var(--muted)">{{ fng.date }}</span>{% endif %}</div>
     {% if fng %}

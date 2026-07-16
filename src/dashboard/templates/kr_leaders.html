@@ -9,10 +9,17 @@
   주도점수 v2 = 3개월 시장RS 25% + 1개월 시장RS 20% + 절대수익 20% + 52주고점比 20% + 업종RS 10% + 거래량 5% · 시총 {{ min_mcap_label }} 이상
 </div>
 
-<div class="pills">
+<div class="pills" style="margin-bottom:4px">
+  <span class="sub" style="align-self:center;min-width:52px">코스피</span>
   <a href="/kr-leaders" class="{{ 'on' if not sector }}">전체</a>
-  {% for s in sectors %}
-    <a href="/kr-leaders?sector={{ s }}" class="{{ 'on' if s == sector }}">{{ names.get(s, s) }}{{ ' KQ' if s.startswith('2') }}</a>
+  {% for s in sectors_kp %}
+    <a href="/kr-leaders?sector={{ s }}" class="{{ 'on' if s == sector }}">{{ names.get(s, s) }}</a>
+  {% endfor %}
+</div>
+<div class="pills">
+  <span class="sub" style="align-self:center;min-width:52px;color:var(--warn)">코스닥</span>
+  {% for s in sectors_kq %}
+    <a href="/kr-leaders?sector={{ s }}" class="{{ 'on' if s == sector }}">{{ names.get(s, s) }}</a>
   {% endfor %}
 </div>
 

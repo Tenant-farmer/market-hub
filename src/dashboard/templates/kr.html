@@ -11,4 +11,26 @@
 주도점수 = 3개월 RS 40% + 1개월 RS 35% + 모멘텀 25% (업종 간 백분위)</div>
 
 {% include "_market_core.html" %}
+
+{% if radar %}
+<div class="card" style="margin-top:16px;overflow-x:auto">
+  <div class="sub" style="margin-bottom:6px">🔥 테마 레이더 — 업종별 1개월 +30% 급등 종목 (관찰용 ·
+    <span title="급등주 추격 백테스트: 승률 35%, 중앙값 -14%의 복권 구조 (scripts/theme_chase_backtest.py)">⚠ 추격 매수는 중앙값 -14%</span>)</div>
+  <table>
+    <thead><tr>
+      <th style="text-align:left">업종</th><th>급등 종목</th><th>거래대금 쏠림</th><th style="text-align:left">대표 (1개월)</th>
+    </tr></thead>
+    <tbody>
+    {% for t in radar %}
+      <tr>
+        <td style="text-align:left"><strong>{{ t.name }}</strong>{% if t.kq %} <span class="chip">KQ</span>{% endif %}</td>
+        <td>{{ t.count }}개</td>
+        <td>{% if t.vshare %}<span class="{{ 'pos' if t.vshare >= 1.15 }}">{{ '%.2fx'|format(t.vshare) }}</span>{% else %}–{% endif %}</td>
+        <td style="text-align:left;color:var(--ink-2)">{{ t.tops|join(' · ') }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
 {% endblock %}

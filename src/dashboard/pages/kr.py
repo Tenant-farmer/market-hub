@@ -21,10 +21,11 @@ def kr():
         sym = "1013"
     prices = queries.prices(con, sym)
     cards = queries.leader_cards(ranking, names)
+    radar = queries.theme_radar(con)
     con.close()
     return render_template(
         "kr.html",
         date=date, ranking=ranking, trails=trails, prices=prices, sym=sym,
         names=names, symbols=symbols, quad=QUAD, quad_ko=QUAD_KO, cards=cards,
-        price_label="최근 1년 (지수)",
+        price_label="최근 1년 (지수)", radar=radar,
     )
