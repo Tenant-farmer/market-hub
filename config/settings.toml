@@ -38,6 +38,10 @@ sector_codes = [
     "1025", "1026", "1045", "1046", "1047",
 ]
 
+[macro]
+# 시장 컨텍스트 지표 (^VIX는 us_sectors가 이미 수집 — 중복 제외)
+symbols = ["CL=F", "GC=F", "^TNX", "^IRX", "HYG"]
+
 [gurus]
 quarters = 3                # 매니저당 수집 분기 수 (diff에 최소 2 필요)
 managers = [

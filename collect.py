@@ -10,7 +10,7 @@ import argparse
 from dotenv import load_dotenv
 
 from src.collectors import (
-    base, gurus, kr_flows, kr_sectors, kr_stocks, sentiment, us_sectors, us_stocks,
+    base, gurus, kr_flows, kr_sectors, kr_stocks, macro, sentiment, us_sectors, us_stocks,
 )
 
 
@@ -23,6 +23,7 @@ def main():
     p.add_argument("--kr-stocks", action="store_true", help="KR 개별종목 KOSPI (KRX 계정 필요)")
     p.add_argument("--kr-flows", action="store_true", help="KR 투자자별 수급 (KRX 계정 필요)")
     p.add_argument("--kr-map", action="store_true", help="KR 업종 구성종목 갱신 (주 1회)")
+    p.add_argument("--macro", action="store_true", help="매크로 (WTI/금/금리/HYG)")
     p.add_argument("--gurus", action="store_true", help="구루 13F (SEC EDGAR)")
     p.add_argument("--sentiment", action="store_true", help="심리지표 (F&G, 풋콜, VIX)")
     p.add_argument("--all", action="store_true", help="전체 수집 (KR은 계정 있을 때만)")
@@ -48,6 +49,9 @@ def main():
         ran = True
     if args.kr_flows or args.all:
         base.run_collector("kr_flows", lambda con: kr_flows.collect(con, days=days))
+        ran = True
+    if args.macro or args.all:
+        base.run_collector("macro", lambda con: macro.collect(con, days=days))
         ran = True
     if args.gurus or args.all:
         base.run_collector("gurus", gurus.collect)

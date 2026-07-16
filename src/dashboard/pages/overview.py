@@ -21,6 +21,7 @@ def home():
     kospi = queries.bench_snapshot(con, "1001")
     spy_regime = queries.regime(con, "SPY")
     kospi_regime = queries.regime(con, "1001")
+    macro = queries.macro_context(con)
     senti = queries.sentiment_latest(con)
     fng = senti.get("fear_greed")
     vix = senti.get("vix")
@@ -47,7 +48,7 @@ def home():
     return render_template(
         "overview.html",
         spy=spy, kospi=kospi,
-        spy_regime=spy_regime, kospi_regime=kospi_regime,
+        spy_regime=spy_regime, kospi_regime=kospi_regime, macro=macro,
         fng=fng, fng_label=fng_label(fng["value"]) if fng else None, vix=vix,
         us_date=us_date, kr_date=kr_date,
         us_cards=us_cards, kr_cards=kr_cards,

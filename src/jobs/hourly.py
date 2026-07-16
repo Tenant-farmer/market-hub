@@ -17,7 +17,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from src import db
-from src.collectors import base, gurus, kr_flows, kr_sectors, kr_stocks, sentiment, us_sectors, us_stocks
+from src.collectors import (
+    base, gurus, kr_flows, kr_sectors, kr_stocks, macro, sentiment, us_sectors, us_stocks,
+)
 
 
 def _ran_today(con, collector: str) -> bool:
@@ -38,6 +40,7 @@ def main():
     morning = 600 <= hm <= 859
 
     base.run_collector("sentiment", sentiment.collect)
+    base.run_collector("macro", lambda c: macro.collect(c, days=5))
 
     con = db.connect()
     ran_kr = ran_us = False

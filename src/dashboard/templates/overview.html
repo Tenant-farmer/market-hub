@@ -6,7 +6,7 @@
 <div class="sub">US 기준일 {{ us_date }} · KR 기준일 {{ kr_date }}</div>
 
 {# ---- 시장 온도 ---- #}
-<div class="cards3" style="grid-template-columns: repeat(4, 1fr)">
+<div class="cards3">
   <div class="card">
     <div class="sub" style="margin-bottom:2px">S&P 500 (SPY)</div>
     <div class="score">{{ '%.0f'|format(spy.close) if spy else '–' }}</div>
@@ -36,12 +36,26 @@
     <div class="score">{{ '%.0f'|format(fng.value) if fng else '–' }}</div>
     <div class="reason">{{ fng_label or '' }} {% if fng %}· {{ fng.date }}{% endif %}</div>
   </div>
-  <div class="card">
-    <div class="sub" style="margin-bottom:2px">VIX</div>
-    <div class="score">{{ '%.1f'|format(vix.value) if vix else '–' }}</div>
-    <div class="reason">{% if vix %}{{ vix.date }}{% endif %}</div>
-  </div>
 </div>
+
+{# ---- 시장 컨텍스트 (매크로) ---- #}
+{% if macro %}
+<div class="cards6">
+  {% for m in macro %}
+  <div class="card" style="padding:12px">
+    <div class="sub" style="margin-bottom:2px">{{ m.icon }} {{ m.label }}</div>
+    <div class="score" style="font-size:22px">{{ m.val }}</div>
+    <div class="reason"><span class="{{ 'pos' if m.chg_up else 'neg' }}">{{ m.chg }}</span></div>
+    <div class="rangebar"><div class="mark" style="left:{{ m.pos }}%"></div></div>
+    <div class="reason" style="display:flex;justify-content:space-between;color:var(--muted)">
+      <span>{{ m.lo }}</span><span>{{ m.hi }}</span>
+    </div>
+    <div class="reason">30일 평균 <span class="{{ 'pos' if m.ma_up else 'neg' }}">{{ m.ma }}</span></div>
+    <div class="reason">1년 백분위 상위 {{ m.top }}%</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
 
 {# ---- 주도 섹터 TOP3 ---- #}
 <div class="grid2">
