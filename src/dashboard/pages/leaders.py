@@ -24,7 +24,7 @@ def leaders_page():
         ).fetchone()
         if nrow:
             sym_name = nrow["name"]
-            sym_prices = queries.prices(con, sym)
+            sym_prices = queries.ohlcv(con, sym)
         else:
             sym = ""
 

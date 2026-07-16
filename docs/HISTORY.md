@@ -89,6 +89,12 @@
 - 공용 파셜 `_stock_chart.html` (Lightweight Charts), 선택 행 하이라이트, 섹터 필터 유지
 - 데이터 추가 없음 — 이미 수집 중인 prices_daily 재사용
 
+### 종목 차트 → 분석 도구로 확장 (520px)
+- 캔들/라인 토글, 거래량 히스토그램, MA 20/60/120 토글, OHLC+등락률 레전드(십자선 연동)
+- 수평선(클릭 1번)·추세선(클릭 2번) 그리기 — 종목별 localStorage 저장(새로고침에도 유지), 지우기 버튼
+- LWC에는 그리기 도구가 내장돼 있지 않음 → priceLine(수평선)·2점 LineSeries(추세선)로 직접 구현
+- 시간 키 주의: LWC 클릭 이벤트의 time은 BusinessDay 객체로 올 수 있어 "YYYY-MM-DD" 문자열로 정규화
+
 ### 대시보드 상시 가동
 - 이슈: 세션 프리뷰로 띄운 서버가 턴 종료 시 꺼져 "웹이 안 들어가짐" 반복
 - 해결: 작업 스케줄러 "market-hub-dashboard" (로그인 시 pythonw app.py 자동 시작, 상시 localhost:5000)

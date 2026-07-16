@@ -79,6 +79,25 @@ def trails(con, scope: str, points: int = 12, step: int = 5):
     return out
 
 
+def ohlcv(con, sym: str, n: int = 260):
+    """캔들차트용 OHLCV. Lightweight Charts 형식."""
+    rows = con.execute(
+        "SELECT date, open, high, low, close, volume FROM prices_daily "
+        "WHERE symbol=? AND open IS NOT NULL AND close IS NOT NULL "
+        "ORDER BY date DESC LIMIT ?",
+        (sym, n),
+    ).fetchall()
+    return [
+        {
+            "time": r["date"],
+            "open": round(r["open"], 2), "high": round(r["high"], 2),
+            "low": round(r["low"], 2), "close": round(r["close"], 2),
+            "volume": r["volume"] or 0,
+        }
+        for r in reversed(rows)
+    ]
+
+
 def prices(con, sym: str, n: int = 260):
     rows = con.execute(
         "SELECT date, close FROM prices_daily WHERE symbol=? ORDER BY date DESC LIMIT ?",

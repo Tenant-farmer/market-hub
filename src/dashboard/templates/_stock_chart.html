@@ -1,30 +1,217 @@
-{# 종목 차트 카드 — 컨텍스트: sym, sym_name, sym_prices, back_url #}
+{# 종목 분석 차트 — 컨텍스트: sym, sym_name, sym_prices(OHLCV), back_url
+   기능: 캔들/라인 토글, 거래량, MA 20/60/120, 수평선/추세선 그리기(종목별 localStorage 저장) #}
 <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+  .tbar { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:8px; }
+  .tbtn {
+    background:none; border:1px solid var(--border); border-radius:999px;
+    color:var(--ink-2); font-size:12px; padding:3px 10px; cursor:pointer;
+    font-family:inherit;
+  }
+  .tbtn.on { color:var(--ink); border-color:var(--accent); background:rgba(57,135,229,.12); }
+  .tbtn:hover { color:var(--ink); }
+  #chartwrap { position:relative; }
+  #ohlc-legend {
+    position:absolute; top:8px; left:8px; z-index:10; pointer-events:none;
+    font-size:12px; color:var(--ink-2); font-variant-numeric:tabular-nums;
+    background:rgba(26,26,25,.75); padding:2px 8px; border-radius:6px;
+  }
+</style>
 <div class="card" style="margin-bottom:16px">
   <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px">
     <strong style="font-size:16px">{{ sym }}</strong>
     <span style="color:var(--ink-2)">{{ sym_name }}</span>
-    <span class="sub">최근 1년 · 종가</span>
+    <span class="sub">최근 1년 · 일봉</span>
     <a href="{{ back_url }}" style="margin-left:auto;color:var(--muted);text-decoration:none">✕ 닫기</a>
   </div>
-  <div id="stockchart" style="height:340px"></div>
+  <div class="tbar">
+    <button class="tbtn on" id="b-candle">캔들</button>
+    <button class="tbtn" id="b-line">라인</button>
+    <span style="color:var(--baseline)">|</span>
+    <button class="tbtn on" id="b-vol">거래량</button>
+    <button class="tbtn on" id="b-ma20">MA20</button>
+    <button class="tbtn" id="b-ma60">MA60</button>
+    <button class="tbtn" id="b-ma120">MA120</button>
+    <span style="color:var(--baseline)">|</span>
+    <button class="tbtn" id="b-hline">수평선</button>
+    <button class="tbtn" id="b-trend">추세선</button>
+    <button class="tbtn" id="b-clear">지우기</button>
+    <span class="sub" id="draw-hint"></span>
+  </div>
+  <div id="chartwrap">
+    <div id="ohlc-legend"></div>
+    <div id="stockchart" style="height:520px"></div>
+  </div>
 </div>
 <script>
 (function () {
+  const OHLCV = {{ sym_prices|tojson }};
+  const SYM = {{ sym|tojson }};
+  const LS_KEY = "mh-draw-" + SYM;
   const el = document.getElementById("stockchart");
+  const legend = document.getElementById("ohlc-legend");
+  const hint = document.getElementById("draw-hint");
+
   const chart = LightweightCharts.createChart(el, {
     layout: { background: { color: "#1a1a19" }, textColor: "#898781" },
     grid: { vertLines: { color: "#2c2c2a" }, horzLines: { color: "#2c2c2a" } },
     rightPriceScale: { borderColor: "#383835" },
     timeScale: { borderColor: "#383835" },
-    height: 340,
+    crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+    height: 520,
   });
-  const series = chart.addAreaSeries({
+
+  // ---- 시리즈 ----
+  const candle = chart.addCandlestickSeries({
+    upColor: "#0ca30c", downColor: "#d03b3b", borderVisible: false,
+    wickUpColor: "#0ca30c", wickDownColor: "#d03b3b",
+  });
+  candle.setData(OHLCV);
+
+  const area = chart.addAreaSeries({
     lineColor: "#3987e5", lineWidth: 2,
     topColor: "rgba(57,135,229,0.25)", bottomColor: "rgba(57,135,229,0.02)",
+    visible: false,
   });
-  series.setData({{ sym_prices|tojson }});
+  area.setData(OHLCV.map(d => ({ time: d.time, value: d.close })));
+
+  const volume = chart.addHistogramSeries({
+    priceScaleId: "vol", priceFormat: { type: "volume" },
+    priceLineVisible: false, lastValueVisible: false,
+  });
+  chart.priceScale("vol").applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+  volume.setData(OHLCV.map(d => ({
+    time: d.time, value: d.volume,
+    color: d.close >= d.open ? "rgba(12,163,12,0.35)" : "rgba(208,59,59,0.35)",
+  })));
+
+  function maData(n) {
+    const out = [];
+    let sum = 0;
+    for (let i = 0; i < OHLCV.length; i++) {
+      sum += OHLCV[i].close;
+      if (i >= n) sum -= OHLCV[i - n].close;
+      if (i >= n - 1) out.push({ time: OHLCV[i].time, value: sum / n });
+    }
+    return out;
+  }
+  const maCfg = { 20: "#c98500", 60: "#199e70", 120: "#9085e9" };
+  const mas = {};
+  for (const [n, color] of Object.entries(maCfg)) {
+    mas[n] = chart.addLineSeries({
+      color, lineWidth: 1, priceLineVisible: false, lastValueVisible: false,
+      crosshairMarkerVisible: false, visible: n === "20",
+    });
+    mas[n].setData(maData(+n));
+  }
+
   chart.timeScale().fitContent();
   new ResizeObserver(() => chart.applyOptions({ width: el.clientWidth })).observe(el);
+
+  // ---- OHLC 레전드 ----
+  const fmt = v => v >= 1000 ? v.toLocaleString() : v.toFixed(2);
+  function showLegend(d, prev) {
+    if (!d) { legend.textContent = ""; return; }
+    const chg = prev ? ((d.close / prev.close - 1) * 100) : null;
+    const col = d.close >= d.open ? "#0ca30c" : "#e66767";
+    legend.innerHTML =
+      `시 ${fmt(d.open)} · 고 ${fmt(d.high)} · 저 ${fmt(d.low)} · 종 <span style="color:${col}">${fmt(d.close)}</span>` +
+      (chg === null ? "" : ` <span style="color:${chg >= 0 ? "#0ca30c" : "#e66767"}">(${chg >= 0 ? "+" : ""}${chg.toFixed(2)}%)</span>`);
+  }
+  const byTime = Object.fromEntries(OHLCV.map((d, i) => [d.time, i]));
+  const tkey = t => typeof t === "object"
+    ? `${t.year}-${String(t.month).padStart(2, "0")}-${String(t.day).padStart(2, "0")}` : t;
+  showLegend(OHLCV[OHLCV.length - 1], OHLCV[OHLCV.length - 2]);
+  chart.subscribeCrosshairMove(p => {
+    if (!p.time) { showLegend(OHLCV[OHLCV.length - 1], OHLCV[OHLCV.length - 2]); return; }
+    const i = byTime[tkey(p.time)];
+    if (i !== undefined) showLegend(OHLCV[i], OHLCV[i - 1]);
+  });
+
+  // ---- 그리기 (수평선/추세선, localStorage 저장) ----
+  let mode = null, trendStart = null;
+  const priceLines = [], trendSeries = [];
+  const saved = JSON.parse(localStorage.getItem(LS_KEY) || '{"h":[],"t":[]}');
+
+  function addHLine(price, persist) {
+    priceLines.push(candle.createPriceLine({
+      price, color: "#3987e5", lineWidth: 1,
+      lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: true,
+    }));
+    if (persist) { saved.h.push(price); save(); }
+  }
+  function addTrend(t1, p1, t2, p2, persist) {
+    if (t1 === t2) return;
+    const s = chart.addLineSeries({
+      color: "#3987e5", lineWidth: 1, priceLineVisible: false,
+      lastValueVisible: false, crosshairMarkerVisible: false,
+    });
+    const pts = [{ time: t1, value: p1 }, { time: t2, value: p2 }]
+      .sort((a, b) => a.time < b.time ? -1 : 1);
+    s.setData(pts);
+    trendSeries.push(s);
+    if (persist) { saved.t.push([t1, p1, t2, p2]); save(); }
+  }
+  function save() { localStorage.setItem(LS_KEY, JSON.stringify(saved)); }
+
+  saved.h.forEach(p => addHLine(p, false));
+  saved.t.forEach(([t1, p1, t2, p2]) => addTrend(t1, p1, t2, p2, false));
+
+  chart.subscribeClick(p => {
+    if (!mode || !p.point) return;
+    const price = candle.coordinateToPrice(p.point.y);
+    if (price == null) return;
+    if (mode === "hline") {
+      addHLine(Math.round(price * 100) / 100, true);
+    } else if (mode === "trend") {
+      if (p.time === undefined) return;
+      const t = tkey(p.time);
+      if (!trendStart) {
+        trendStart = { t, price };
+        hint.textContent = "끝점을 클릭하세요";
+      } else {
+        addTrend(trendStart.t, trendStart.price, t, Math.round(price * 100) / 100, true);
+        trendStart = null;
+        hint.textContent = "시작점을 클릭하세요";
+      }
+    }
+  });
+
+  // ---- 툴바 ----
+  const B = id => document.getElementById(id);
+  function setMode(m) {
+    mode = mode === m ? null : m;
+    trendStart = null;
+    B("b-hline").classList.toggle("on", mode === "hline");
+    B("b-trend").classList.toggle("on", mode === "trend");
+    hint.textContent = mode === "hline" ? "차트를 클릭하면 그 가격에 수평선"
+      : mode === "trend" ? "시작점을 클릭하세요" : "";
+  }
+  B("b-hline").onclick = () => setMode("hline");
+  B("b-trend").onclick = () => setMode("trend");
+  B("b-clear").onclick = () => {
+    priceLines.forEach(l => candle.removePriceLine(l));
+    trendSeries.forEach(s => chart.removeSeries(s));
+    priceLines.length = trendSeries.length = 0;
+    saved.h = []; saved.t = []; save();
+  };
+  B("b-candle").onclick = () => {
+    candle.applyOptions({ visible: true }); area.applyOptions({ visible: false });
+    B("b-candle").classList.add("on"); B("b-line").classList.remove("on");
+  };
+  B("b-line").onclick = () => {
+    candle.applyOptions({ visible: false }); area.applyOptions({ visible: true });
+    B("b-line").classList.add("on"); B("b-candle").classList.remove("on");
+  };
+  B("b-vol").onclick = () => {
+    const on = !B("b-vol").classList.toggle("on");
+    volume.applyOptions({ visible: !on });
+  };
+  for (const n of [20, 60, 120]) {
+    B("b-ma" + n).onclick = () => {
+      const on = B("b-ma" + n).classList.toggle("on");
+      mas[n].applyOptions({ visible: on });
+    };
+  }
 })();
 </script>
