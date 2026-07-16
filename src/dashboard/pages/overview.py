@@ -18,9 +18,13 @@ def home():
 
     # 시장 온도 카드 (+ 200일선 레짐 신호등)
     spy = queries.bench_snapshot(con, "SPY")
+    qqq = queries.bench_snapshot(con, "QQQ")
     kospi = queries.bench_snapshot(con, "1001")
+    kosdaq = queries.bench_snapshot(con, "2001")
     spy_regime = queries.regime(con, "SPY")
+    qqq_regime = queries.regime(con, "QQQ")
     kospi_regime = queries.regime(con, "1001")
+    kosdaq_regime = queries.regime(con, "2001")
     macro = queries.macro_context(con)
     senti = queries.sentiment_latest(con)
     fng = senti.get("fear_greed")
@@ -48,6 +52,7 @@ def home():
     return render_template(
         "overview.html",
         spy=spy, kospi=kospi,
+        qqq=qqq, kosdaq=kosdaq, qqq_regime=qqq_regime, kosdaq_regime=kosdaq_regime,
         spy_regime=spy_regime, kospi_regime=kospi_regime, macro=macro,
         fng=fng, fng_label=fng_label(fng["value"]) if fng else None, vix=vix,
         us_date=us_date, kr_date=kr_date,

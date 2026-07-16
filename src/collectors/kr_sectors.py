@@ -20,7 +20,7 @@ def collect(con, days: int = 7) -> int:
     from pykrx import stock
 
     cfg = config.load()["kr"]
-    codes = [cfg["benchmark"]] + cfg["sector_codes"]
+    codes = [cfg["benchmark"]] + cfg.get("extra_indices", []) + cfg["sector_codes"]
     end = date.today().strftime("%Y%m%d")
     start = (date.today() - timedelta(days=days)).strftime("%Y%m%d")
     today = date.today().isoformat()

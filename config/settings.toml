@@ -28,6 +28,7 @@ SMH = "반도체"
 
 [kr]
 benchmark = "1001"          # 코스피
+extra_indices = ["2001"]    # 코스닥 종합 (시장온도 카드용)
 markets = ["KOSPI", "KOSDAQ"]
 flows_top_n = 100           # 투자자별 순매수 상위 종목 수
 leader_min_mcap = 300000000000   # KR 주도주 시총 하한 (3천억) — 초소형 급등주 제외

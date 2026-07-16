@@ -6,31 +6,25 @@
 <div class="sub">US 기준일 {{ us_date }} · KR 기준일 {{ kr_date }}</div>
 
 {# ---- 시장 온도 ---- #}
-<div class="cards3">
+{% macro bench_card(title, snap, reg, fmt='{:,.0f}') %}
   <div class="card">
-    <div class="sub" style="margin-bottom:2px">S&P 500 (SPY)</div>
-    <div class="score">{{ '%.0f'|format(spy.close) if spy else '–' }}</div>
-    {% if spy and spy.ret21 is not none %}
-    <div class="reason"><span class="{{ 'pos' if spy.ret21 > 0 else 'neg' }}">{{ '%+.1f%%'|format(spy.ret21) }}</span> · 최근 1개월</div>
+    <div class="sub" style="margin-bottom:2px">{{ title }}</div>
+    <div class="score">{{ fmt.format(snap.close) if snap else '–' }}</div>
+    {% if snap and snap.ret21 is not none %}
+    <div class="reason"><span class="{{ 'pos' if snap.ret21 > 0 else 'neg' }}">{{ '%+.1f%%'|format(snap.ret21) }}</span> · 최근 1개월</div>
     {% endif %}
-    {% if spy_regime %}
-    <div class="reason"><span class="{{ 'pos' if spy_regime.above else 'neg' }}">●</span>
-      200일선 {{ '위' if spy_regime.above else '아래' }} {{ '%+.1f%%'|format(spy_regime.dev) }}
-      · {{ '신규진입 OK' if spy_regime.above else '신규진입 주의' }}</div>
+    {% if reg %}
+    <div class="reason"><span class="{{ 'pos' if reg.above else 'neg' }}">●</span>
+      200일선 {{ '위' if reg.above else '아래' }} {{ '%+.1f%%'|format(reg.dev) }}
+      · {{ '신규진입 OK' if reg.above else '신규진입 주의' }}</div>
     {% endif %}
   </div>
-  <div class="card">
-    <div class="sub" style="margin-bottom:2px">코스피</div>
-    <div class="score">{{ '{:,.0f}'.format(kospi.close) if kospi else '–' }}</div>
-    {% if kospi and kospi.ret21 is not none %}
-    <div class="reason"><span class="{{ 'pos' if kospi.ret21 > 0 else 'neg' }}">{{ '%+.1f%%'|format(kospi.ret21) }}</span> · 최근 1개월</div>
-    {% endif %}
-    {% if kospi_regime %}
-    <div class="reason"><span class="{{ 'pos' if kospi_regime.above else 'neg' }}">●</span>
-      200일선 {{ '위' if kospi_regime.above else '아래' }} {{ '%+.1f%%'|format(kospi_regime.dev) }}
-      · {{ '신규진입 OK' if kospi_regime.above else '신규진입 주의' }}</div>
-    {% endif %}
-  </div>
+{% endmacro %}
+<div class="cards3" style="grid-template-columns: repeat(5, 1fr)">
+  {{ bench_card('S&P 500 (SPY)', spy, spy_regime) }}
+  {{ bench_card('나스닥 100 (QQQ)', qqq, qqq_regime) }}
+  {{ bench_card('코스피', kospi, kospi_regime) }}
+  {{ bench_card('코스닥', kosdaq, kosdaq_regime) }}
   <div class="card">
     <div class="sub" style="margin-bottom:2px">Fear &amp; Greed</div>
     <div class="score">{{ '%.0f'|format(fng.value) if fng else '–' }}</div>
