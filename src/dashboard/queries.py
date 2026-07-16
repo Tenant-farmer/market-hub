@@ -10,6 +10,7 @@ RANKING_ALIASES = {
     "rs63": "rs_63",
     "quad": "quadrant",
     "streak": "lead_streak",
+    "vshare": "val_share_ratio",
     "rsi": "rsi",
     "hot": "overheat",
 }
@@ -200,6 +201,19 @@ def bench_snapshot(con, sym: str):
     last = rows[0]
     ret21 = (last["close"] / rows[-1]["close"] - 1) * 100 if len(rows) >= 22 else None
     return {"date": last["date"], "close": last["close"], "ret21": ret21}
+
+
+def regime(con, sym: str, ma_days: int = 200):
+    """시장 레짐: 종가 vs 200일 이평 — 모멘텀 크래시 회피용 신호등."""
+    rows = con.execute(
+        "SELECT close FROM prices_daily WHERE symbol=? ORDER BY date DESC LIMIT ?",
+        (sym, ma_days),
+    ).fetchall()
+    if len(rows) < ma_days:
+        return None
+    closes = [r["close"] for r in rows]
+    ma = sum(closes) / len(closes)
+    return {"above": closes[0] >= ma, "dev": (closes[0] / ma - 1) * 100}
 
 
 def sentiment_latest(con):

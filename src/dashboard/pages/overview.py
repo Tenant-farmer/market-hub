@@ -16,9 +16,11 @@ def home():
     us_names = us_cfg.get("names", {})
     kr_names = queries.kr_index_names(con)
 
-    # 시장 온도 카드
+    # 시장 온도 카드 (+ 200일선 레짐 신호등)
     spy = queries.bench_snapshot(con, "SPY")
     kospi = queries.bench_snapshot(con, "1001")
+    spy_regime = queries.regime(con, "SPY")
+    kospi_regime = queries.regime(con, "1001")
     senti = queries.sentiment_latest(con)
     fng = senti.get("fear_greed")
     vix = senti.get("vix")
@@ -45,6 +47,7 @@ def home():
     return render_template(
         "overview.html",
         spy=spy, kospi=kospi,
+        spy_regime=spy_regime, kospi_regime=kospi_regime,
         fng=fng, fng_label=fng_label(fng["value"]) if fng else None, vix=vix,
         us_date=us_date, kr_date=kr_date,
         us_cards=us_cards, kr_cards=kr_cards,

@@ -13,12 +13,22 @@
     {% if spy and spy.ret21 is not none %}
     <div class="reason"><span class="{{ 'pos' if spy.ret21 > 0 else 'neg' }}">{{ '%+.1f%%'|format(spy.ret21) }}</span> · 최근 1개월</div>
     {% endif %}
+    {% if spy_regime %}
+    <div class="reason"><span class="{{ 'pos' if spy_regime.above else 'neg' }}">●</span>
+      200일선 {{ '위' if spy_regime.above else '아래' }} {{ '%+.1f%%'|format(spy_regime.dev) }}
+      · {{ '신규진입 OK' if spy_regime.above else '신규진입 주의' }}</div>
+    {% endif %}
   </div>
   <div class="card">
     <div class="sub" style="margin-bottom:2px">코스피</div>
     <div class="score">{{ '{:,.0f}'.format(kospi.close) if kospi else '–' }}</div>
     {% if kospi and kospi.ret21 is not none %}
     <div class="reason"><span class="{{ 'pos' if kospi.ret21 > 0 else 'neg' }}">{{ '%+.1f%%'|format(kospi.ret21) }}</span> · 최근 1개월</div>
+    {% endif %}
+    {% if kospi_regime %}
+    <div class="reason"><span class="{{ 'pos' if kospi_regime.above else 'neg' }}">●</span>
+      200일선 {{ '위' if kospi_regime.above else '아래' }} {{ '%+.1f%%'|format(kospi_regime.dev) }}
+      · {{ '신규진입 OK' if kospi_regime.above else '신규진입 주의' }}</div>
     {% endif %}
   </div>
   <div class="card">

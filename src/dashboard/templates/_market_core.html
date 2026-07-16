@@ -26,7 +26,7 @@
 <div class="card" style="margin-top:16px;overflow-x:auto">
     <table>
       <thead><tr>
-        <th>심볼</th><th>섹터</th><th>주도점수</th><th>1M %</th><th>RS 1M</th><th>RS 3M</th><th>사분면</th><th>체류</th><th>RSI</th><th></th>
+        <th>심볼</th><th>섹터</th><th>주도점수</th><th>1M %</th><th>RS 1M</th><th>RS 3M</th><th>사분면</th><th>체류</th><th title="최근 5일 거래대금 점유율 / 60일 평균 (1.0 = 평소 수준)">거래대금</th><th>RSI</th><th></th>
       </tr></thead>
       <tbody>
       {% for r in ranking %}
@@ -39,6 +39,7 @@
           <td class="{{ 'pos' if r.rs63 and r.rs63 > 0 else 'neg' if r.rs63 and r.rs63 < 0 }}">{{ '%+.1f'|format(r.rs63) if r.rs63 is not none else '–' }}</td>
           <td>{% if r.quad %}<span class="chip">{{ quad_ko[r.quad|int] }} {{ quad[r.quad|int] }}</span>{% else %}–{% endif %}</td>
           <td>{% if r.streak and r.streak > 0 %}<span class="{{ 'pos' if r.streak >= 21 }}">{{ r.streak|int }}일</span>{% else %}–{% endif %}</td>
+          <td>{% if r.vshare is not none %}<span class="{{ 'pos' if r.vshare >= 1.15 else 'neg' if r.vshare <= 0.85 }}">{{ '%.2fx'|format(r.vshare) }}</span>{% else %}–{% endif %}</td>
           <td>{{ '%.0f'|format(r.rsi) if r.rsi is not none else '–' }}</td>
           <td>{% if r.hot %}<span class="hot">⚠ 과열</span>{% endif %}</td>
         </tr>

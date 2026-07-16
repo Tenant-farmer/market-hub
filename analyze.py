@@ -5,7 +5,7 @@ python analyze.py --us   # 미국 섹터 RS/로테이션/과열 계산 + 콘솔 
 import argparse
 
 from src import config, db
-from src.analytics import leaders, overheat, relative_strength, rotation, store
+from src.analytics import leaders, overheat, participation, relative_strength, rotation, store
 
 QUAD_NAMES = {1: "Leading", 2: "Weakening", 3: "Lagging", 4: "Improving"}
 
@@ -20,6 +20,8 @@ def run_us():
     rotation.compute(con, "us_sector", sectors, bench)
     overheat.compute(con, "us_sector", sectors + [bench])
     leaders.compute_sector(con, "us_sector")
+    participation.compute(con, "us_sector", "US_STOCK",
+                          anchor_date=store.latest_date(con, "us_sector", "rs_21"))
     n = leaders.compute_stocks(con)
     print(f"us_stock leader rows: {n}")
 
@@ -57,6 +59,8 @@ def run_kr():
     rotation.compute(con, "kr_sector", sectors, bench)
     overheat.compute(con, "kr_sector", sectors + [bench])
     leaders.compute_sector(con, "kr_sector")
+    participation.compute(con, "kr_sector", "KR",
+                          anchor_date=store.latest_date(con, "kr_sector", "rs_21"))
     n = leaders.compute_stocks(con, scope="kr_stock", market="KR", bench=bench)
     print(f"kr_stock leader rows: {n}")
 
