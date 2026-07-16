@@ -20,7 +20,8 @@ def collect(con, days: int = 7) -> int:
     from pykrx import stock
 
     cfg = config.load()["kr"]
-    codes = [cfg["benchmark"]] + cfg.get("extra_indices", []) + cfg["sector_codes"]
+    codes = ([cfg["benchmark"]] + cfg.get("extra_indices", [])
+             + cfg["sector_codes"] + cfg.get("kosdaq_sector_codes", []))
     end = date.today().strftime("%Y%m%d")
     start = (date.today() - timedelta(days=days)).strftime("%Y%m%d")
     today = date.today().isoformat()
@@ -51,7 +52,7 @@ def refresh_constituents(con) -> int:
     cfg = config.load()["kr"]
     today = date.today().isoformat()
     rows = []
-    for code in cfg["sector_codes"]:
+    for code in cfg["sector_codes"] + cfg.get("kosdaq_sector_codes", []):
         sector_name = stock.get_index_ticker_name(code)
         for tkr in stock.get_index_portfolio_deposit_file(code):
             rows.append((tkr, "KR", code, sector_name,

@@ -12,7 +12,7 @@
 <div class="pills">
   <a href="/kr-leaders" class="{{ 'on' if not sector }}">전체</a>
   {% for s in sectors %}
-    <a href="/kr-leaders?sector={{ s }}" class="{{ 'on' if s == sector }}">{{ names.get(s, s) }}</a>
+    <a href="/kr-leaders?sector={{ s }}" class="{{ 'on' if s == sector }}">{{ names.get(s, s) }}{{ ' KQ' if s.startswith('2') }}</a>
   {% endfor %}
 </div>
 

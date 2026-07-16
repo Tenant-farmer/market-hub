@@ -41,7 +41,8 @@ def kr_leaders_page():
     return render_template(
         "kr_leaders.html",
         date=date_row["d"], rows=rows, sector=sector,
-        sectors=cfg["sector_codes"], top_sectors=top_sectors, names=names,
+        sectors=cfg["sector_codes"] + cfg.get("kosdaq_sector_codes", []),
+        top_sectors=top_sectors, names=names,
         min_mcap_label=f"{cfg['leader_min_mcap'] / 1e8:,.0f}억",
         sym=sym, sym_name=sym_name, sym_prices=sym_prices, tv_symbol=tv_symbol,
         tv_embed_ok=False,  # KRX는 거래소 라이선스 제한으로 임베드 위젯 표시 불가
