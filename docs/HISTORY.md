@@ -113,6 +113,13 @@
 
 ---
 
+### 텔레그램 아침 브리핑
+- src/notify.py(발송·chat_id 탐지) + src/jobs/briefing.py(본문 생성, --dry/--setup CLI)
+- 내용: 시장온도(지수·레짐·F&G·VIX), US/KR 주도 섹터(체류일), 과열, KOSPI 수급 5일,
+  업종 유입/유출, US/KR 주도주 TOP5 — 대시보드 queries 재사용
+- hourly.py 아침 슬롯에서 하루 1회 자동 발송 (토큰 설정 시에만, collector_runs로 중복 방지 → /health에 기록)
+- 셋업: BotFather 토큰 → .env → 봇에게 메시지 → `--setup`이 chat_id 자동 기록
+
 ## 미해결 / 예정
 
 - [ ] 풋콜비율 현행 소스 교체 (Cboe 레거시 중단)

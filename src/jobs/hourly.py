@@ -76,6 +76,17 @@ def main():
     if not (ran_us or ran_kr):
         print("장외 시간 - 심리지표만 갱신")
 
+    # 아침 브리핑 (하루 1회, 토큰 설정 시에만)
+    import os
+
+    if morning and os.getenv("TELEGRAM_BOT_TOKEN") and os.getenv("TELEGRAM_CHAT_ID"):
+        con2 = db.connect()
+        if not _ran_today(con2, "telegram_brief"):
+            from src.jobs import briefing
+
+            base.run_collector("telegram_brief", briefing.send_briefing)
+        con2.close()
+
 
 if __name__ == "__main__":
     main()
