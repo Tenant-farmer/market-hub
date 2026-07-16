@@ -86,6 +86,11 @@ def test_vix_signal_states():
     assert c(40, 130, True)["state"] == "buy3"         # 공포 정점 통과
     assert c(40, 130, False)["state"] == "buy2"        # 아직 냉각 전이면 분할까지만
     assert c(15, 85, False)["state"] == "neutral"
+    # F&G 회피 축: 평온장 극단탐욕만 잡고, 다른 상태엔 간섭 없음
+    assert c(15, 85, False, fng=80)["state"] == "avoid_greed"
+    assert c(15, 85, False, fng=47)["state"] == "neutral"
+    assert c(16, 105, False, fng=80)["state"] == "hold_pre"   # 전조가 우선
+    assert c(32, 100, False, fng=90)["state"] == "buy2"       # 매수 구간엔 무간섭
 
 
 def test_guru_normalize_units():

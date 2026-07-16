@@ -58,8 +58,8 @@
     <div class="reason">{{ signal.desc }}</div>
   </div>
   <div style="margin-left:auto; text-align:right" class="reason">
-    VIX {{ '%.1f'|format(signal.vix) }} · VVIX {{ '%.1f'|format(signal.vvix) }} (5일평균 {{ '%.1f'|format(signal.vvix5) }})
-    <div style="color:var(--muted)">근거: VIX×VVIX 19년 백테스트 (docs/HISTORY.md)</div>
+    VIX {{ '%.1f'|format(signal.vix) }} · VVIX {{ '%.1f'|format(signal.vvix) }} (5일평균 {{ '%.1f'|format(signal.vvix5) }}){% if signal.fng is not none %} · F&G {{ '%.0f'|format(signal.fng) }}{% endif %}
+    <div style="color:var(--muted)">근거: VIX×VVIX 19년 + F&G 6년 백테스트 (docs/HISTORY.md)</div>
   </div>
 </div>
 {% endif %}

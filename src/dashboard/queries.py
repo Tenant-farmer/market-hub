@@ -283,11 +283,12 @@ def macro_context(con) -> list[dict]:
     return out
 
 
-def classify_vix_signal(vix: float, vvix: float, cooling: bool) -> dict:
-    """VIX×VVIX 매수 신호등 — 근거: scripts/vvix_backtest.py (2007~2026, SPY 63일).
+def classify_vix_signal(vix: float, vvix: float, cooling: bool, fng: float | None = None) -> dict:
+    """매수 신호등 — 근거: scripts/vvix_backtest.py + fng_backtest.py.
 
     보류: [VIX<20 & VVIX≥95](전조) / [VIX 20~30 & VVIX<95](함정)
     매수: [VIX 20~30 & VVIX≥95](승률 84%) / VIX 30+ / VIX 35+ & VVIX 냉각(적극)
+    회피: 평온장(VIX<20 & VVIX<95)인데 F&G≥75 (극단탐욕: 승률 79→57%)
     """
     if vix >= 35 and cooling:
         return {"state": "buy3", "emoji": "🟢🟢", "cls": "pos",
@@ -309,6 +310,10 @@ def classify_vix_signal(vix: float, vvix: float, cooling: bool) -> dict:
         return {"state": "hold_pre", "emoji": "🔴", "cls": "neg",
                 "label": "매수 보류 — 전조 경보",
                 "desc": "평온 속 크래시 헤지 수요 급증 · 승률 66%"}
+    if fng is not None and fng >= 75:
+        return {"state": "avoid_greed", "emoji": "🟠", "cls": "hot",
+                "label": "과열 주의 — 신규매수 자제",
+                "desc": "평온장 극단탐욕 (F&G 75+) · 승률 79→57%, 중앙값 +4.7→+1.6%"}
     return {"state": "neutral", "emoji": "⚪", "cls": "",
             "label": "평시 — 신호 없음",
             "desc": "레짐·주도주 신호를 따르세요"}
@@ -321,8 +326,12 @@ def vix_signal(con):
         return None
     v, w = vix[-1], vvix[-1]
     w5 = sum(vvix[-5:]) / 5
-    sig = classify_vix_signal(v, w, cooling=w < w5)
-    sig.update({"vix": v, "vvix": w, "vvix5": w5})
+    fng_row = con.execute(
+        "SELECT value FROM sentiment_daily WHERE metric='fear_greed' ORDER BY date DESC LIMIT 1"
+    ).fetchone()
+    fng = fng_row["value"] if fng_row else None
+    sig = classify_vix_signal(v, w, cooling=w < w5, fng=fng)
+    sig.update({"vix": v, "vvix": w, "vvix5": w5, "fng": fng})
     return sig
 
 
