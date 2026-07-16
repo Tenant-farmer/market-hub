@@ -283,6 +283,49 @@ def macro_context(con) -> list[dict]:
     return out
 
 
+def classify_vix_signal(vix: float, vvix: float, cooling: bool) -> dict:
+    """VIX×VVIX 매수 신호등 — 근거: scripts/vvix_backtest.py (2007~2026, SPY 63일).
+
+    보류: [VIX<20 & VVIX≥95](전조) / [VIX 20~30 & VVIX<95](함정)
+    매수: [VIX 20~30 & VVIX≥95](승률 84%) / VIX 30+ / VIX 35+ & VVIX 냉각(적극)
+    """
+    if vix >= 35 and cooling:
+        return {"state": "buy3", "emoji": "🟢🟢", "cls": "pos",
+                "label": "적극 매수 — 공포 정점 통과",
+                "desc": "VIX 35+ & VVIX 냉각 · 3개월 중앙값 +9.8%"}
+    if vix >= 30:
+        return {"state": "buy2", "emoji": "🟢", "cls": "pos",
+                "label": "분할 매수 구간",
+                "desc": "VIX 30+ · 역사적 승률 72~83%"}
+    if vix >= 20 and vvix >= 95:
+        return {"state": "buy1", "emoji": "🟢", "cls": "pos",
+                "label": "1차 매수 구간 — 급성 공포",
+                "desc": "VIX 20~30 & VVIX 95+ · 승률 84% · 중앙값 +6.9%"}
+    if vix >= 20:
+        return {"state": "hold_trap", "emoji": "🔴", "cls": "neg",
+                "label": "매수 보류 — 함정 구간",
+                "desc": "공포 없는 하락 초입 (VIX 20~30 & VVIX<95) · 승률 65%"}
+    if vvix >= 95:
+        return {"state": "hold_pre", "emoji": "🔴", "cls": "neg",
+                "label": "매수 보류 — 전조 경보",
+                "desc": "평온 속 크래시 헤지 수요 급증 · 승률 66%"}
+    return {"state": "neutral", "emoji": "⚪", "cls": "",
+            "label": "평시 — 신호 없음",
+            "desc": "레짐·주도주 신호를 따르세요"}
+
+
+def vix_signal(con):
+    vix = _macro_series(con, "^VIX", 5)
+    vvix = _macro_series(con, "^VVIX", 5)
+    if not vix or len(vvix) < 5:
+        return None
+    v, w = vix[-1], vvix[-1]
+    w5 = sum(vvix[-5:]) / 5
+    sig = classify_vix_signal(v, w, cooling=w < w5)
+    sig.update({"vix": v, "vvix": w, "vvix5": w5})
+    return sig
+
+
 def regime(con, sym: str, ma_days: int = 200):
     """시장 레짐: 종가 vs 200일 이평 — 모멘텀 크래시 회피용 신호등."""
     rows = con.execute(

@@ -49,6 +49,21 @@
   </div>
 </div>
 
+{# ---- 매수 신호등 (VIX × VVIX) ---- #}
+{% if signal %}
+<div class="card" style="margin-bottom:16px; display:flex; align-items:center; gap:14px; flex-wrap:wrap">
+  <span style="font-size:18px">{{ signal.emoji }}</span>
+  <div>
+    <strong class="{{ signal.cls }}">매수 신호등: {{ signal.label }}</strong>
+    <div class="reason">{{ signal.desc }}</div>
+  </div>
+  <div style="margin-left:auto; text-align:right" class="reason">
+    VIX {{ '%.1f'|format(signal.vix) }} · VVIX {{ '%.1f'|format(signal.vvix) }} (5일평균 {{ '%.1f'|format(signal.vvix5) }})
+    <div style="color:var(--muted)">근거: VIX×VVIX 19년 백테스트 (docs/HISTORY.md)</div>
+  </div>
+</div>
+{% endif %}
+
 {# ---- 시장 컨텍스트 (매크로) ---- #}
 {% if macro %}
 <div class="cards6">

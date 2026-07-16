@@ -77,6 +77,17 @@ def test_guru_quarter():
     assert _quarter("2025-12-31") == "2025Q4"
 
 
+def test_vix_signal_states():
+    from src.dashboard.queries import classify_vix_signal as c
+    assert c(16, 105, False)["state"] == "hold_pre"    # 평온 속 헤지 수요 = 전조
+    assert c(25, 90, False)["state"] == "hold_trap"    # 공포 없는 하락 초입
+    assert c(25, 100, False)["state"] == "buy1"        # 급성 공포
+    assert c(32, 100, False)["state"] == "buy2"        # 분할 매수
+    assert c(40, 130, True)["state"] == "buy3"         # 공포 정점 통과
+    assert c(40, 130, False)["state"] == "buy2"        # 아직 냉각 전이면 분할까지만
+    assert c(15, 85, False)["state"] == "neutral"
+
+
 def test_guru_normalize_units():
     # 천달러 단위 제출 (총액 $3.4M로 보임) → 천 배 보정
     h, tot = _normalize_units([("C1", "N1", 3_000_000.0, 10), ("C2", "N2", 400_000.0, 5)])

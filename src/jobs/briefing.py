@@ -62,6 +62,9 @@ def build_text(con) -> str:
         L.append((f"F&G {fng:.0f} ({_fng_label(fng)})" if fng else "")
                  + (" · " if fng and vix else "")
                  + (f"VIX {vix:.1f}" if vix else ""))
+    sig = queries.vix_signal(con)
+    if sig:
+        L.append(f"매수 신호등: {sig['emoji']} {sig['label']} (VVIX {sig['vvix']:.0f})")
     L.append("")
 
     # 주도 섹터

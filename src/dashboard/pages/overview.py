@@ -26,6 +26,7 @@ def home():
     kospi_regime = queries.regime(con, "1001")
     kosdaq_regime = queries.regime(con, "2001")
     macro = queries.macro_context(con)
+    signal = queries.vix_signal(con)
     senti = queries.sentiment_latest(con)
     fng = senti.get("fear_greed")
     fng_angle = round(fng["value"] * 1.8 - 90, 1) if fng else None
@@ -59,7 +60,7 @@ def home():
         "overview.html",
         spy=spy, kospi=kospi,
         qqq=qqq, kosdaq=kosdaq, qqq_regime=qqq_regime, kosdaq_regime=kosdaq_regime,
-        spy_regime=spy_regime, kospi_regime=kospi_regime, macro=macro,
+        spy_regime=spy_regime, kospi_regime=kospi_regime, macro=macro, signal=signal,
         fng=fng, fng_label=fng_label(fng["value"]) if fng else None, vix=vix,
         fng_angle=fng_angle, fng_color=fng_color,
         us_date=us_date, kr_date=kr_date,
