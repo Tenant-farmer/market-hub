@@ -24,6 +24,10 @@ copy .env.example .env                     # KRX 계정, EDGAR User-Agent 기입
 run_dashboard.bat                          # → http://localhost:5000
 ```
 
+상시 운영 (작업 스케줄러, 로그인 시 자동):
+- `market-hub-hourly` — 매시 :05 수집+분석 (시장 상태 라우팅, 로그 data/scheduler.log)
+- `market-hub-dashboard` — 대시보드 상시 가동 (localhost:5000)
+
 테스트: `.venv\Scripts\python -m pytest tests -q`
 
 ## 아키텍처

@@ -84,6 +84,11 @@
 - 부수 효과: 장중 실행이 당일 중간 시세를 적재 → 대시보드가 준실시간(1시간 지연)이 됨.
   최종 확정치는 마감 후 실행이 덮어씀 (upsert 구조라 자가 치유)
 
+### 대시보드 상시 가동
+- 이슈: 세션 프리뷰로 띄운 서버가 턴 종료 시 꺼져 "웹이 안 들어가짐" 반복
+- 해결: 작업 스케줄러 "market-hub-dashboard" (로그인 시 pythonw app.py 자동 시작, 상시 localhost:5000)
+- 재시작(코드 반영): `schtasks /End /TN market-hub-dashboard && schtasks /Run /TN market-hub-dashboard`
+
 ---
 
 ## 미해결 / 예정
