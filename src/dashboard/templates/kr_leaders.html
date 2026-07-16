@@ -10,18 +10,23 @@
 </div>
 
 <div class="pills" style="margin-bottom:4px">
-  <span class="sub" style="align-self:center;min-width:52px">코스피</span>
-  <a href="/kr-leaders" class="{{ 'on' if not sector }}">전체</a>
-  {% for s in sectors_kp %}
-    <a href="/kr-leaders?sector={{ s }}" class="{{ 'on' if s == sector }}">{{ names.get(s, s) }}</a>
-  {% endfor %}
+  <span class="sub" style="align-self:center;min-width:40px">시장</span>
+  <a href="/kr-leaders{{ '?sector=' ~ sector|urlencode if sector }}" class="{{ 'on' if not market }}">전체</a>
+  <a href="/kr-leaders?market=kp{{ '&sector=' ~ sector|urlencode if sector }}" class="{{ 'on' if market == 'kp' }}">코스피</a>
+  <a href="/kr-leaders?market=kq{{ '&sector=' ~ sector|urlencode if sector }}" class="{{ 'on' if market == 'kq' }}">코스닥</a>
 </div>
 <div class="pills">
-  <span class="sub" style="align-self:center;min-width:52px;color:var(--warn)">코스닥</span>
-  {% for s in sectors_kq %}
-    <a href="/kr-leaders?sector={{ s }}" class="{{ 'on' if s == sector }}">{{ names.get(s, s) }}</a>
+  <span class="sub" style="align-self:center;min-width:40px">업종</span>
+  <a href="/kr-leaders{{ '?market=' ~ market if market }}" class="{{ 'on' if not sector }}">전체</a>
+  {% for t in strength %}
+    <a href="/kr-leaders?sector={{ t.name|urlencode }}{{ '&market=' ~ market if market }}"
+       class="{{ 'on' if t.name == sector }}"
+       title="시총 하한 통과 {{ t.n }}종목 · 평균 주도점수 {{ t.score|int }}">
+      {{ t.name }} <span style="color:{{ '#0ca30c' if t.score >= 60 else 'var(--muted)' }}">{{ t.score|int }}</span>
+    </a>
   {% endfor %}
 </div>
+<div class="sub" style="margin-bottom:10px">업종은 코스피·코스닥 통합, 평균 주도점수 순 정렬 (초록 = 60점+ 아웃퍼폼 · 시장 구분은 위 토글)</div>
 
 {% if sym %}{% include "_stock_chart.html" %}{% endif %}
 
@@ -37,7 +42,7 @@
         <td>{{ loop.index }}</td>
         <td style="text-align:left"><a href="/kr-leaders?{% if sector %}sector={{ sector }}&amp;{% endif %}sym={{ r.code }}" style="color:var(--accent);text-decoration:none"><strong>{{ r.code }}</strong></a></td>
         <td style="text-align:left;color:var(--ink-2)">{{ r.name }}</td>
-        <td><span class="chip">{{ r.sector_name }}</span></td>
+        <td><span class="chip">{{ r.sector_name }}{{ '·KQ' if r.sector_code.startswith('2') }}</span></td>
         <td style="color:var(--ink-2)">{{ r.mcap_fmt or '–' }}</td>
         <td><strong>{{ '%.0f'|format(r.score) if r.score is not none else '–' }}</strong></td>
         <td class="{{ 'pos' if r.ret21 and r.ret21 > 0 else 'neg' if r.ret21 and r.ret21 < 0 }}">{{ '%+.1f'|format(r.ret21) if r.ret21 is not none else '–' }}</td>

@@ -1,4 +1,4 @@
-"""KR 주도주 페이지."""
+"""KR 주도주 페이지 — 업종명(코스피/코스닥 통합) 필터 + 시장 토글."""
 from flask import Blueprint, render_template, request
 
 from src import config, db
@@ -11,12 +11,22 @@ bp = Blueprint("kr_leaders", __name__)
 def kr_leaders_page():
     cfg = config.load()["kr"]
     sector = request.args.get("sector", "")
+    market = request.args.get("market", "")
+    if market not in ("", "kp", "kq"):
+        market = ""
     con = db.connect()
     names = queries.kr_index_names(con)
     date_row = con.execute(
         "SELECT MAX(date) d FROM analytics_daily WHERE scope='kr_stock'"
     ).fetchone()
-    rows = queries.kr_leaders(con, sector=sector)
+    rows = queries.kr_leaders(con, sector=sector, market=market)
+    strength = queries.kr_sector_strength(con)
+    top_sectors = [
+        r["code"] for r in con.execute(
+            "SELECT code FROM analytics_daily WHERE scope='kr_sector' AND metric='leader_score' "
+            "ORDER BY value DESC LIMIT 3"
+        )
+    ]
 
     # 종목 클릭 → 차트
     sym = request.args.get("sym", "")
@@ -31,20 +41,20 @@ def kr_leaders_page():
             tv_symbol = f"KRX:{sym}"
         else:
             sym = ""
-    top_sectors = [
-        r["code"] for r in con.execute(
-            "SELECT code FROM analytics_daily WHERE scope='kr_sector' AND metric='leader_score' "
-            "ORDER BY value DESC LIMIT 3"
-        )
-    ]
     con.close()
+
+    qs = []
+    if market:
+        qs.append(f"market={market}")
+    if sector:
+        qs.append(f"sector={sector}")
+    back_url = "/kr-leaders" + ("?" + "&".join(qs) if qs else "")
     return render_template(
         "kr_leaders.html",
-        date=date_row["d"], rows=rows, sector=sector,
-        sectors_kp=cfg["sector_codes"], sectors_kq=cfg.get("kosdaq_sector_codes", []),
-        top_sectors=top_sectors, names=names,
+        date=date_row["d"], rows=rows, sector=sector, market=market,
+        strength=strength, top_sectors=top_sectors, names=names,
         min_mcap_label=f"{cfg['leader_min_mcap'] / 1e8:,.0f}억",
         sym=sym, sym_name=sym_name, sym_prices=sym_prices, tv_symbol=tv_symbol,
         tv_embed_ok=False,  # KRX는 거래소 라이선스 제한으로 임베드 위젯 표시 불가
-        back_url=f"/kr-leaders?sector={sector}" if sector else "/kr-leaders",
+        back_url=back_url,
     )

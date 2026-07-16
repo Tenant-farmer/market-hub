@@ -175,8 +175,8 @@ def sector_flows(con, names: dict):
     return out
 
 
-def kr_leaders(con, sector: str = "", n: int = 50):
-    """KR 주도주 (시총 하한 필터)."""
+def kr_leaders(con, sector: str = "", market: str = "", n: int = 50):
+    """KR 주도주 (시총 하한 필터). sector=업종명(코스피/코스닥 통합), market=kp|kq."""
     date_row = con.execute(
         "SELECT MAX(date) d FROM analytics_daily WHERE scope='kr_stock'"
     ).fetchone()
@@ -186,8 +186,12 @@ def kr_leaders(con, sector: str = "", n: int = 50):
     where = "a.scope='kr_stock' AND a.date=?"
     params: list = [min_mcap, date_row["d"]]
     if sector:
-        where += " AND m.sector_code=?"
+        where += " AND m.sector_name=?"
         params.append(sector)
+    if market == "kp":
+        where += " AND m.sector_code LIKE '1%'"
+    elif market == "kq":
+        where += " AND m.sector_code LIKE '2%'"
     params.append(n)
     rows = con.execute(
         f"""
@@ -207,6 +211,36 @@ def kr_leaders(con, sector: str = "", n: int = 50):
         params,
     ).fetchall()
     return [dict(r) | {"mcap_fmt": fmt_krw(r["mcap"]) if r["mcap"] else None} for r in rows]
+
+
+def kr_sector_strength(con) -> list[dict]:
+    """업종명(코스피/코스닥 통합) 단위 평균 주도점수 — 필터 pill 정렬·아웃퍼폼 표시용.
+
+    시총 하한 통과 종목만 집계 (테이블과 같은 유니버스).
+    """
+    date_row = con.execute(
+        "SELECT MAX(date) d FROM analytics_daily WHERE scope='kr_stock'"
+    ).fetchone()
+    if date_row["d"] is None:
+        return []
+    min_mcap = config.load()["kr"]["leader_min_mcap"]
+    rows = con.execute(
+        """
+        SELECT m.sector_name name, COUNT(*) n, AVG(a.value) avg_score
+        FROM analytics_daily a
+        JOIN sector_map m ON m.stock_code = a.code AND m.market = 'KR'
+        JOIN stock_meta sm ON sm.symbol = a.code AND sm.mcap >= ?
+        WHERE a.scope='kr_stock' AND a.metric='leader_score' AND a.date=?
+        GROUP BY m.sector_name
+        HAVING n >= 2
+        ORDER BY avg_score DESC
+        """,
+        (min_mcap, date_row["d"]),
+    ).fetchall()
+    return [
+        {"name": r["name"], "n": r["n"], "score": round(r["avg_score"], 0)}
+        for r in rows
+    ]
 
 
 def bench_snapshot(con, sym: str):
