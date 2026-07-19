@@ -317,6 +317,53 @@ def macro_context(con) -> list[dict]:
     return out
 
 
+def fed_watch(con):
+    """Fed Watch — 현재 목표금리·다음 FOMC·추이·2026 일정·변동 이력."""
+    from datetime import date
+
+    rows = con.execute(
+        "SELECT date, close FROM prices_daily WHERE symbol='DFEDTARU' ORDER BY date"
+    ).fetchall()
+    if len(rows) < 30:
+        return None
+    series = [{"time": r["date"], "value": r["close"]} for r in rows]
+    by_date = {r["date"]: r["close"] for r in rows}
+    dates = [r["date"] for r in rows]
+    cur = rows[-1]["close"]
+
+    today = date.today()
+    meetings = []
+    next_meeting = None
+    for m in config.load()["fed"]["meetings"]:
+        md = date.fromisoformat(m)
+        past = md < today
+        after = next((by_date[d] for d in dates if d > m), None)
+        before = next((by_date[d] for d in reversed(dates) if d <= m), None)
+        chg = None
+        if past and after is not None and before is not None:
+            bp = round((after - before) * 100)
+            chg = "동결" if bp == 0 else (f"{abs(bp)}bp 인하" if bp < 0 else f"{bp}bp 인상")
+        status = "완료" if past else ("다음" if next_meeting is None else "예정")
+        if status == "다음":
+            next_meeting = {"date": m, "dday": (md - today).days}
+        meetings.append({
+            "date": m, "status": status,
+            "rate": f"{after:.2f}%" if past and after is not None else "–",
+            "chg": chg or "–",
+        })
+
+    changes = []
+    prev = None
+    for r in rows:
+        if prev is not None and r["close"] != prev:
+            changes.append({"date": r["date"][:7], "rate": f"{r['close']:.2f}%"})
+        prev = r["close"]
+    return {
+        "cur": cur, "series": series, "meetings": meetings,
+        "next": next_meeting, "changes": changes[-8:][::-1],
+    }
+
+
 def investor_trend(con, mkt: str = "KOSPI", days: int = 60):
     """투자자별 누적 순매수 시계열 (LWC 라인 3개 + 합계)."""
     rows = con.execute(

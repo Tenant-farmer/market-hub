@@ -32,6 +32,8 @@ def home():
     econ = queries.econ_upcoming(con)
     trend = queries.investor_trend(con)
     treasury = queries.treasury_line(con)
+    fw = queries.fed_watch(con)
+    fed_next = fw["next"] if fw else None
     senti = queries.sentiment_latest(con)
     fng = senti.get("fear_greed")
     fng_angle = round(fng["value"] * 1.8 - 90, 1) if fng else None
@@ -67,6 +69,7 @@ def home():
         qqq=qqq, kosdaq=kosdaq, qqq_regime=qqq_regime, kosdaq_regime=kosdaq_regime,
         spy_regime=spy_regime, kospi_regime=kospi_regime, macro=macro, signal=signal,
         kq_ratio=kq_ratio, earnings=earnings, econ=econ, trend=trend, treasury=treasury,
+        fed_next=fed_next,
         fng=fng, fng_label=fng_label(fng["value"]) if fng else None, vix=vix,
         fng_angle=fng_angle, fng_color=fng_color,
         us_date=us_date, kr_date=kr_date,

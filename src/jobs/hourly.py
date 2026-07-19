@@ -18,7 +18,7 @@ load_dotenv()
 
 from src import db
 from src.collectors import (
-    base, earnings, econ_calendar, gurus, kr_flows, kr_sectors, kr_stocks, macro,
+    base, earnings, econ_calendar, fed, gurus, kr_flows, kr_sectors, kr_stocks, macro,
     sentiment, us_sectors, us_stocks,
 )
 
@@ -64,6 +64,7 @@ def main():
             base.run_collector("gurus", gurus.collect)
             base.run_collector("earnings", earnings.collect)
             base.run_collector("econ_calendar", econ_calendar.collect)
+            base.run_collector("fed", fed.collect)
             ran_us = True
         if wd < 5 and not _ran_today(con, "kr_sectors"):
             base.run_collector("kr_sectors", lambda c: kr_sectors.collect(c, days=5))

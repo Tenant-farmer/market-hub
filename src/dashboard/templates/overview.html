@@ -76,6 +76,9 @@
   {% endfor %}
   <span style="margin-left:auto">10Y-5Y <strong>{{ '%+.2f%%p'|format(treasury.spread.v) }}</strong>
     <span class="{{ 'pos' if treasury.spread.normal else 'neg' }}">{{ '정상' if treasury.spread.normal else '역전' }}</span></span>
+  {% if fed_next %}
+  <a href="/fed" style="color:var(--accent);text-decoration:none">다음 FOMC {{ fed_next.date[5:] }} (D-{{ fed_next.dday }})</a>
+  {% endif %}
 </div>
 {% endif %}
 

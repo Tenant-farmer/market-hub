@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% set active = 'fed' %}
+{% block title %}Fed Watch — market-hub{% endblock %}
+{% block head %}
+<script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+{% endblock %}
+{% block body %}
+<h1>Fed Watch</h1>
+<div class="sub">FOMC 금리 결정 추적 · 데이터: FRED (DFEDTARU, 목표금리 상한) · 일정: 연준 공식 캘린더</div>
+
+{% if not fw %}
+<div class="card">데이터 없음 — <code>python collect.py --fed</code> 실행 필요</div>
+{% else %}
+<div class="grid2">
+  <div class="card">
+    <div class="sub" style="margin-bottom:2px">현재 연방기금 목표금리 (상한)</div>
+    <div class="score" style="font-size:34px">{{ '%.2f%%'|format(fw.cur) }}</div>
+  </div>
+  <div class="card">
+    <div class="sub" style="margin-bottom:2px">다음 FOMC</div>
+    {% if fw.next %}
+    <div class="score" style="font-size:28px">{{ fw.next.date }}</div>
+    <div class="reason">{{ fw.next.dday }}일 남음</div>
+    {% else %}
+    <div class="score">–</div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card" style="margin-top:16px">
+  <div class="sub" style="margin-bottom:6px">금리 변동 추이 (2020~)</div>
+  <div id="fed_chart" style="height:300px"></div>
+</div>
+
+<div class="grid2" style="margin-top:16px">
+  <div class="card" style="overflow-x:auto">
+    <div class="sub" style="margin-bottom:6px">2026 FOMC 회의 일정</div>
+    <table>
+      <thead><tr><th style="text-align:left">날짜</th><th>결정 금리</th><th>변동</th><th>상태</th></tr></thead>
+      <tbody>
+      {% for m in fw.meetings %}
+        <tr{% if m.status == '다음' %} style="background:rgba(57,135,229,.10)"{% endif %}>
+          <td style="text-align:left">{{ m.date }}</td>
+          <td>{{ m.rate }}</td>
+          <td>{{ m.chg }}</td>
+          <td>{% if m.status == '다음' %}<span class="chip" style="color:var(--accent)">다음</span>
+              {% elif m.status == '완료' %}<span style="color:var(--muted)">완료</span>
+              {% else %}<span style="color:var(--muted)">예정</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card">
+    <div class="sub" style="margin-bottom:6px">최근 금리 변동 이력</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      {% for c in fw.changes %}
+      <div style="border:1px solid var(--border);border-radius:8px;padding:8px 14px;text-align:center">
+        <div class="sub">{{ c.date }}</div>
+        <strong>{{ c.rate }}</strong>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const el = document.getElementById("fed_chart");
+  const chart = LightweightCharts.createChart(el, {
+    layout: { background: { color: "#1a1a19" }, textColor: "#898781" },
+    grid: { vertLines: { color: "#2c2c2a" }, horzLines: { color: "#2c2c2a" } },
+    rightPriceScale: { borderColor: "#383835" },
+    timeScale: { borderColor: "#383835" },
+    height: 300,
+  });
+  const s = chart.addLineSeries({
+    color: "#3987e5", lineWidth: 2, lineType: 1,
+    priceFormat: { type: "custom", formatter: v => v.toFixed(2) + "%" },
+  });
+  s.setData({{ fw.series|tojson }});
+  chart.timeScale().fitContent();
+  new ResizeObserver(() => chart.applyOptions({ width: el.clientWidth })).observe(el);
+})();
+</script>
+{% endif %}
+{% endblock %}

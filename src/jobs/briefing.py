@@ -98,7 +98,11 @@ def build_text(con) -> str:
     econ = [e for e in queries.econ_upcoming(con, days=1, limit=20) if e["major"] and e["dd"] == 0]
     if econ:
         L.append("📈 지표: " + " · ".join(f"{e['event'][:22]}({e['kst']})" for e in econ[:4]))
-    if earn or econ:
+    fw = queries.fed_watch(con)
+    fomc = fw and fw["next"] and fw["next"]["dday"] <= 1
+    if fomc:
+        L.append(f"📌 FOMC {fw['next']['date']} (D-{fw['next']['dday']}) — 결과는 한국시간 새벽")
+    if earn or econ or fomc:
         L.append("")
 
     # 주도주 TOP5
