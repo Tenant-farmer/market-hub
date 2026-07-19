@@ -190,6 +190,30 @@
 </div>
 {% endif %}
 
+{# ---- 실적 캘린더 ---- #}
+{% if earnings %}
+<div class="card" style="margin-top:16px;overflow-x:auto">
+  <div class="sub" style="margin-bottom:6px">📅 실적 캘린더 — US S&P500, 향후 7일 (시총 큰 순)</div>
+  <table>
+    <thead><tr>
+      <th>발표</th><th>티커</th><th style="text-align:left">회사</th><th>시점</th><th>EPS 예상</th><th>시총</th>
+    </tr></thead>
+    <tbody>
+    {% for e in earnings %}
+      <tr>
+        <td><span class="{{ 'hot' if e.dd <= 1 }}">{{ e.dday }}</span></td>
+        <td style="text-align:left"><strong>{{ e.symbol }}</strong></td>
+        <td style="text-align:left;color:var(--ink-2)">{{ e.name[:28] }}</td>
+        <td>{{ e.time_ko }}</td>
+        <td>{{ e.eps }}</td>
+        <td style="color:var(--muted)">{{ e.mcap_fmt }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
 {# ---- 수급 상위 종목 + 신선도 ---- #}
 <div class="grid2" style="margin-top:16px">
   <div class="card">

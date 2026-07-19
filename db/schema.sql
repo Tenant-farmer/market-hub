@@ -88,6 +88,15 @@ CREATE TABLE IF NOT EXISTS stock_meta (
     as_of     TEXT
 );
 
+CREATE TABLE IF NOT EXISTS earnings_calendar (
+    symbol       TEXT NOT NULL,
+    date         TEXT NOT NULL,     -- 발표일 (US 기준)
+    when_time    TEXT,              -- time-pre-market | time-after-hours | time-not-supplied
+    name         TEXT,
+    eps_forecast TEXT,
+    PRIMARY KEY (symbol, date)
+);
+
 CREATE TABLE IF NOT EXISTS collector_runs (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
     collector TEXT NOT NULL,

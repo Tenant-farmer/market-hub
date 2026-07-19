@@ -28,6 +28,7 @@ def home():
     macro = queries.macro_context(con)
     signal = queries.vix_signal(con)
     kq_ratio = queries.market_ratio(con)
+    earnings = queries.earnings_upcoming(con)
     senti = queries.sentiment_latest(con)
     fng = senti.get("fear_greed")
     fng_angle = round(fng["value"] * 1.8 - 90, 1) if fng else None
@@ -62,7 +63,7 @@ def home():
         spy=spy, kospi=kospi,
         qqq=qqq, kosdaq=kosdaq, qqq_regime=qqq_regime, kosdaq_regime=kosdaq_regime,
         spy_regime=spy_regime, kospi_regime=kospi_regime, macro=macro, signal=signal,
-        kq_ratio=kq_ratio,
+        kq_ratio=kq_ratio, earnings=earnings,
         fng=fng, fng_label=fng_label(fng["value"]) if fng else None, vix=vix,
         fng_angle=fng_angle, fng_color=fng_color,
         us_date=us_date, kr_date=kr_date,

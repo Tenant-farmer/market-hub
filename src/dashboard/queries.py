@@ -1,7 +1,7 @@
 """대시보드 페이지 공용 조회."""
 from src import config
 from src.analytics import store
-from src.dashboard.fmt import INV_KO, QUAD_DESC, fmt_krw
+from src.dashboard.fmt import INV_KO, QUAD_DESC, fmt_krw, fmt_usd
 
 RANKING_ALIASES = {
     "score": "leader_score",
@@ -313,6 +313,46 @@ def macro_context(con) -> list[dict]:
             "ma": f"{st['ma']:+.1f}{unit}", "ma_up": st["ma"] >= 0,
             "top": st["top"], "pos": round(st["pos"], 1),
             "lo": fmt(st["lo"]), "hi": fmt(st["hi"]),
+        })
+    return out
+
+
+EARN_TIME_KO = {
+    "time-pre-market": "장전",
+    "time-after-hours": "장마감 후",
+    "time-not-supplied": "미정",
+}
+
+
+def earnings_upcoming(con, days: int = 7, limit: int = 14) -> list[dict]:
+    """향후 실적 일정 (US, 시총 큰 순 우선)."""
+    from datetime import date, timedelta
+
+    today = date.today()
+    try:
+        rows = con.execute(
+            """
+            SELECT e.symbol, e.date, e.when_time, e.name, e.eps_forecast, sm.mcap
+            FROM earnings_calendar e
+            LEFT JOIN stock_meta sm ON sm.symbol = e.symbol
+            WHERE e.date >= ? AND e.date <= ?
+            ORDER BY e.date, sm.mcap DESC
+            LIMIT ?
+            """,
+            (today.isoformat(), (today + timedelta(days=days)).isoformat(), limit),
+        ).fetchall()
+    except Exception:
+        return []
+    out = []
+    for r in rows:
+        dd = (date.fromisoformat(r["date"]) - today).days
+        out.append({
+            "symbol": r["symbol"], "name": r["name"], "date": r["date"],
+            "dday": "오늘" if dd == 0 else "내일" if dd == 1 else f"{dd}일 후",
+            "dd": dd,
+            "time_ko": EARN_TIME_KO.get(r["when_time"], "미정"),
+            "eps": r["eps_forecast"] or "–",
+            "mcap_fmt": fmt_usd(r["mcap"]) if r["mcap"] else "–",
         })
     return out
 

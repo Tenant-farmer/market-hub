@@ -91,6 +91,12 @@ def build_text(con) -> str:
         L.append(f"업종 유입: {inflow} / 유출: {out['name']} {out['tot_1w_fmt']}")
     L.append("")
 
+    # 실적 일정 (임박 2일)
+    earn = [e for e in queries.earnings_upcoming(con, days=2, limit=10) if e["dd"] <= 1]
+    if earn:
+        L.append("📅 실적: " + " · ".join(f"{e['symbol']}({e['dday']} {e['time_ko']})" for e in earn[:6]))
+        L.append("")
+
     # 주도주 TOP5
     us_top = con.execute(
         """
