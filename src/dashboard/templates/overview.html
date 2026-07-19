@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 {% set active = 'overview' %}
 {% block title %}개요 — market-hub{% endblock %}
+{% block head %}
+<script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+{% endblock %}
 {% block body %}
 <h1>종합 개요</h1>
 <div class="sub">US 기준일 {{ us_date }} · KR 기준일 {{ kr_date }}</div>
@@ -62,6 +65,19 @@
     {% endif %}
   </div>
 </div>
+
+{# ---- 미국 국채금리 한 줄 ---- #}
+{% if treasury %}
+<div class="card" style="margin-bottom:16px; display:flex; gap:24px; flex-wrap:wrap; align-items:baseline">
+  <span class="sub">국채금리</span>
+  {% for key, label in [('y5', '미국 5년'), ('y10', '10년'), ('y30', '30년')] %}
+  <span>{{ label }} <strong>{{ '%.2f%%'|format(treasury[key].v) }}</strong>
+    <span class="{{ 'pos' if treasury[key].chg >= 0 else 'neg' }}" style="font-size:12px">{{ '%+.2f'|format(treasury[key].chg) }}</span></span>
+  {% endfor %}
+  <span style="margin-left:auto">10Y-5Y <strong>{{ '%+.2f%%p'|format(treasury.spread.v) }}</strong>
+    <span class="{{ 'pos' if treasury.spread.normal else 'neg' }}">{{ '정상' if treasury.spread.normal else '역전' }}</span></span>
+</div>
+{% endif %}
 
 {# ---- 매수 신호등 (VIX × VVIX) ---- #}
 {% if signal %}
@@ -156,6 +172,42 @@
   </div>
 </div>
 
+{# ---- 투자자 동향 (코스피 누적) ---- #}
+{% if trend %}
+<div class="card" style="margin-top:16px">
+  <div class="sub" style="margin-bottom:6px">투자자 동향 — 코스피 {{ trend.n_days }}일 누적 순매수 (조원)</div>
+  <div id="trend_chart" style="height:260px"></div>
+  <div style="display:flex; gap:24px; margin-top:8px; flex-wrap:wrap">
+    <span><span style="color:#3987e5">●</span> 외국인
+      <strong class="{{ 'pos' if trend.totals.foreign.v > 0 else 'neg' }}">{{ trend.totals.foreign.fmt }}</strong></span>
+    <span><span style="color:#e66767">●</span> 기관
+      <strong class="{{ 'pos' if trend.totals.institution.v > 0 else 'neg' }}">{{ trend.totals.institution.fmt }}</strong></span>
+    <span><span style="color:#898781">●</span> 개인
+      <strong class="{{ 'pos' if trend.totals.individual.v > 0 else 'neg' }}">{{ trend.totals.individual.fmt }}</strong></span>
+  </div>
+</div>
+<script>
+(function () {
+  const el = document.getElementById("trend_chart");
+  const chart = LightweightCharts.createChart(el, {
+    layout: { background: { color: "#1a1a19" }, textColor: "#898781" },
+    grid: { vertLines: { color: "#2c2c2a" }, horzLines: { color: "#2c2c2a" } },
+    rightPriceScale: { borderColor: "#383835" },
+    timeScale: { borderColor: "#383835" },
+    height: 260,
+  });
+  const S = {{ trend.series|tojson }};
+  const conf = [["foreign", "#3987e5"], ["institution", "#e66767"], ["individual", "#898781"]];
+  for (const [k, color] of conf) {
+    const s = chart.addLineSeries({ color, lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
+    s.setData(S[k]);
+  }
+  chart.timeScale().fitContent();
+  new ResizeObserver(() => chart.applyOptions({ width: el.clientWidth })).observe(el);
+})();
+</script>
+{% endif %}
+
 {# ---- KR 업종 수급 ---- #}
 {% if sflows_in %}
 <div class="card" style="margin-top:16px;overflow-x:auto">
@@ -190,29 +242,53 @@
 </div>
 {% endif %}
 
-{# ---- 실적 캘린더 ---- #}
-{% if earnings %}
-<div class="card" style="margin-top:16px;overflow-x:auto">
-  <div class="sub" style="margin-bottom:6px">📅 실적 캘린더 — US S&P500, 향후 7일 (시총 큰 순)</div>
-  <table>
-    <thead><tr>
-      <th>발표</th><th>티커</th><th style="text-align:left">회사</th><th>시점</th><th>EPS 예상</th><th>시총</th>
-    </tr></thead>
-    <tbody>
-    {% for e in earnings %}
-      <tr>
-        <td><span class="{{ 'hot' if e.dd <= 1 }}">{{ e.dday }}</span></td>
-        <td style="text-align:left"><strong>{{ e.symbol }}</strong></td>
-        <td style="text-align:left;color:var(--ink-2)">{{ e.name[:28] }}</td>
-        <td>{{ e.time_ko }}</td>
-        <td>{{ e.eps }}</td>
-        <td style="color:var(--muted)">{{ e.mcap_fmt }}</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
+{# ---- 실적 + 경제지표 캘린더 ---- #}
+<div class="grid2" style="margin-top:16px">
+  {% if earnings %}
+  <div class="card" style="overflow-x:auto">
+    <div class="sub" style="margin-bottom:6px">📅 실적 캘린더 — US S&P500, 향후 7일 (시총 큰 순)</div>
+    <table>
+      <thead><tr>
+        <th>발표</th><th>티커</th><th style="text-align:left">회사</th><th>시점</th><th>EPS 예상</th><th>시총</th>
+      </tr></thead>
+      <tbody>
+      {% for e in earnings %}
+        <tr>
+          <td><span class="{{ 'hot' if e.dd <= 1 }}">{{ e.dday }}</span></td>
+          <td style="text-align:left"><strong>{{ e.symbol }}</strong></td>
+          <td style="text-align:left;color:var(--ink-2)">{{ e.name[:22] }}</td>
+          <td>{{ e.time_ko }}</td>
+          <td>{{ e.eps }}</td>
+          <td style="color:var(--muted)">{{ e.mcap_fmt }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+  {% if econ %}
+  <div class="card" style="overflow-x:auto">
+    <div class="sub" style="margin-bottom:6px">📈 경제지표 캘린더 — US·KR, 향후 7일 (★ 주요)</div>
+    <table>
+      <thead><tr>
+        <th>발표</th><th>KST</th><th>국가</th><th style="text-align:left">지표</th><th>예상</th><th>이전</th>
+      </tr></thead>
+      <tbody>
+      {% for e in econ %}
+        <tr>
+          <td><span class="{{ 'hot' if e.dd <= 1 }}">{{ e.dday }}</span></td>
+          <td style="color:var(--muted)">{{ e.kst or '–' }}</td>
+          <td><span class="chip">{{ e.country }}</span></td>
+          <td style="text-align:left;{{ 'font-weight:700' if e.major }}">{{ '★ ' if e.major }}{{ e.event[:30] }}</td>
+          <td>{{ e.consensus }}</td>
+          <td style="color:var(--muted)">{{ e.previous }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
 </div>
-{% endif %}
 
 {# ---- 수급 상위 종목 + 신선도 ---- #}
 <div class="grid2" style="margin-top:16px">

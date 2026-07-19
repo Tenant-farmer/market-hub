@@ -317,6 +317,81 @@ def macro_context(con) -> list[dict]:
     return out
 
 
+def investor_trend(con, mkt: str = "KOSPI", days: int = 60):
+    """투자자별 누적 순매수 시계열 (LWC 라인 3개 + 합계)."""
+    rows = con.execute(
+        "SELECT date, investor, net_value FROM investor_flows "
+        "WHERE scope='market' AND code=? ORDER BY date",
+        (mkt,),
+    ).fetchall()
+    by_date: dict[str, dict[str, float]] = {}
+    for r in rows:
+        by_date.setdefault(r["date"], {})[r["investor"]] = r["net_value"]
+    dates = sorted(by_date)[-days:]
+    if len(dates) < 10:
+        return None
+    series = {inv: [] for inv in ("foreign", "institution", "individual")}
+    cum = {inv: 0.0 for inv in series}
+    for d in dates:
+        for inv in series:
+            cum[inv] += by_date[d].get(inv, 0.0)
+            series[inv].append({"time": d, "value": round(cum[inv] / 1e12, 3)})  # 조원
+    totals = {
+        inv: {"v": cum[inv], "fmt": fmt_krw(cum[inv]), "ko": INV_KO[inv]}
+        for inv in series
+    }
+    return {"series": series, "totals": totals, "n_days": len(dates)}
+
+
+def treasury_line(con):
+    """미국 국채 5/10/30년 + 10Y-5Y 스프레드 한 줄."""
+    out = {}
+    for sym, key in (("^FVX", "y5"), ("^TNX", "y10"), ("^TYX", "y30")):
+        s = _macro_series(con, sym, 5)
+        if len(s) < 2:
+            return None
+        out[key] = {"v": s[-1], "chg": s[-1] - s[-2]}
+    spread = out["y10"]["v"] - out["y5"]["v"]
+    out["spread"] = {"v": spread, "normal": spread >= 0}
+    return out
+
+
+def econ_upcoming(con, days: int = 7, limit: int = 12) -> list[dict]:
+    """향후 경제지표 (주요 지표 우선, KST 시각)."""
+    from datetime import date, datetime, timedelta
+
+    today = date.today()
+    try:
+        rows = con.execute(
+            """
+            SELECT date, gmt, country, event, consensus, previous, major
+            FROM econ_calendar WHERE date >= ? AND date <= ?
+            ORDER BY date, major DESC, gmt
+            LIMIT ?
+            """,
+            (today.isoformat(), (today + timedelta(days=days)).isoformat(), limit),
+        ).fetchall()
+    except Exception:
+        return []
+    out = []
+    for r in rows:
+        kst = ""
+        if r["gmt"]:
+            try:
+                t = datetime.fromisoformat(f"{r['date']} {r['gmt']}") + timedelta(hours=9)
+                kst = t.strftime("%H:%M") + ("+1" if t.date().isoformat() > r["date"] else "")
+            except ValueError:
+                pass
+        dd = (date.fromisoformat(r["date"]) - today).days
+        out.append({
+            "dday": "오늘" if dd == 0 else "내일" if dd == 1 else f"{dd}일 후",
+            "dd": dd, "kst": kst, "country": r["country"], "event": r["event"],
+            "consensus": r["consensus"] or "–", "previous": r["previous"] or "–",
+            "major": bool(r["major"]),
+        })
+    return out
+
+
 EARN_TIME_KO = {
     "time-pre-market": "장전",
     "time-after-hours": "장마감 후",

@@ -97,6 +97,17 @@ CREATE TABLE IF NOT EXISTS earnings_calendar (
     PRIMARY KEY (symbol, date)
 );
 
+CREATE TABLE IF NOT EXISTS econ_calendar (
+    date      TEXT NOT NULL,        -- 발표일 (현지 기준)
+    gmt       TEXT,                 -- GMT HH:MM
+    country   TEXT,                 -- US | KR
+    event     TEXT,
+    actual    TEXT,
+    consensus TEXT,
+    previous  TEXT,
+    major     INTEGER DEFAULT 0     -- 주요 지표 (CPI/GDP/고용 등 키워드)
+);
+
 CREATE TABLE IF NOT EXISTS collector_runs (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
     collector TEXT NOT NULL,
