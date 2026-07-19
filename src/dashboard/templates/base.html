@@ -37,6 +37,20 @@
   nav a.active { color: var(--ink); background: var(--surface); }
   nav a:hover { color: var(--ink); }
   nav .off { color: var(--muted); padding: 4px 10px; cursor: default; }
+  .nav-group { position: relative; }
+  .nav-group > span {
+    color: var(--ink-2); padding: 4px 10px; border-radius: 6px; cursor: default;
+    display: inline-block;
+  }
+  .nav-group > span.active { color: var(--ink); background: var(--surface); }
+  .nav-group:hover > span { color: var(--ink); }
+  .nav-group .menu {
+    display: none; position: absolute; top: 100%; left: 0; z-index: 50;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px; min-width: 140px;
+  }
+  .nav-group:hover .menu { display: block; }
+  .nav-group .menu a { display: block; padding: 6px 10px; white-space: nowrap; }
   main { padding: 20px; max-width: 1280px; margin: 0 auto; }
   h1 { font-size: 18px; margin: 0 0 4px; }
   .sub { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
@@ -94,12 +108,28 @@
 <nav>
   <span class="brand">market-hub</span>
   <a href="/" class="{{ 'active' if active=='overview' }}">개요</a>
-  <a href="/us" class="{{ 'active' if active=='us' }}">US 섹터</a>
-  <a href="/kr" class="{{ 'active' if active=='kr' }}">KR 섹터</a>
-  <a href="/leaders" class="{{ 'active' if active=='leaders' }}">US 주도주</a>
-  <a href="/kr-leaders" class="{{ 'active' if active=='kr_leaders' }}">KR 주도주</a>
+  <div class="nav-group">
+    <span class="{{ 'active' if active in ('us', 'kr') }}">시장 ▾</span>
+    <div class="menu">
+      <a href="/us" class="{{ 'active' if active=='us' }}">US 섹터</a>
+      <a href="/kr" class="{{ 'active' if active=='kr' }}">KR 섹터</a>
+    </div>
+  </div>
+  <div class="nav-group">
+    <span class="{{ 'active' if active in ('leaders', 'kr_leaders') }}">주도주 ▾</span>
+    <div class="menu">
+      <a href="/leaders" class="{{ 'active' if active=='leaders' }}">US 주도주</a>
+      <a href="/kr-leaders" class="{{ 'active' if active=='kr_leaders' }}">KR 주도주</a>
+    </div>
+  </div>
+  <div class="nav-group">
+    <span class="{{ 'active' if active in ('calendar', 'fed') }}">일정 ▾</span>
+    <div class="menu">
+      <a href="/calendar?tab=econ" class="{{ 'active' if active=='calendar' }}">경제·실적 일정</a>
+      <a href="/fed" class="{{ 'active' if active=='fed' }}">Fed Watch</a>
+    </div>
+  </div>
   <a href="/gurus" class="{{ 'active' if active=='gurus' }}">구루 13F</a>
-  <a href="/fed" class="{{ 'active' if active=='fed' }}">Fed</a>
   <a href="/health" class="{{ 'active' if active=='health' }}">상태</a>
 </nav>
 <main>{% block body %}{% endblock %}</main>

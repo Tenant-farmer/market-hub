@@ -431,6 +431,7 @@ def econ_upcoming(con, days: int = 7, limit: int = 12) -> list[dict]:
                 pass
         dd = (date.fromisoformat(r["date"]) - today).days
         out.append({
+            "date": r["date"],
             "dday": "오늘" if dd == 0 else "내일" if dd == 1 else f"{dd}일 후",
             "dd": dd, "kst": kst, "country": r["country"], "event": r["event"],
             "consensus": r["consensus"] or "–", "previous": r["previous"] or "–",

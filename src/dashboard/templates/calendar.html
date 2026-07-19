@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% set active = 'calendar' %}
+{% block title %}일정 — market-hub{% endblock %}
+{% block body %}
+<h1>일정</h1>
+<div class="sub">경제지표(US·KR) · 실적(S&P500) 향후 14일 · 시간은 KST
+  {% if fed_next %} · <a href="/fed" style="color:var(--accent);text-decoration:none">다음 FOMC {{ fed_next.date[5:] }} (D-{{ fed_next.dday }})</a>{% endif %}</div>
+
+<div class="pills" style="margin-bottom:12px">
+  <a href="/calendar?tab=econ" class="{{ 'on' if tab == 'econ' }}">📈 경제일정</a>
+  <a href="/calendar?tab=earn" class="{{ 'on' if tab == 'earn' }}">📅 실적일정</a>
+  <a href="/fed">🏛 Fed Watch</a>
+  {% if tab == 'econ' %}
+  <span style="margin-left:auto"></span>
+  <a href="/calendar?tab=econ" class="{{ 'on' if not major_only }}">전체</a>
+  <a href="/calendar?tab=econ&major=1" class="{{ 'on' if major_only }}">★ 주요만</a>
+  {% endif %}
+</div>
+
+{% if tab == 'econ' %}
+<div class="card" style="overflow-x:auto">
+  {% if econ %}
+  <table>
+    <thead><tr>
+      <th>발표</th><th>날짜</th><th>KST</th><th>국가</th><th style="text-align:left">지표</th><th>예상</th><th>이전</th>
+    </tr></thead>
+    <tbody>
+    {% for e in econ %}
+      <tr>
+        <td><span class="{{ 'hot' if e.dd <= 1 }}">{{ e.dday }}</span></td>
+        <td style="color:var(--muted)">{{ e.date[5:] if e.date else '' }}</td>
+        <td style="color:var(--muted)">{{ e.kst or '–' }}</td>
+        <td><span class="chip">{{ e.country }}</span></td>
+        <td style="text-align:left;{{ 'font-weight:700' if e.major }}">{{ '★ ' if e.major }}{{ e.event }}</td>
+        <td>{{ e.consensus }}</td>
+        <td style="color:var(--muted)">{{ e.previous }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div style="color:var(--muted);padding:20px;text-align:center">예정된 일정이 없습니다 (캘린더는 임박해야 채워집니다)</div>
+  {% endif %}
+</div>
+{% else %}
+<div class="card" style="overflow-x:auto">
+  {% if earnings %}
+  <table>
+    <thead><tr>
+      <th>발표</th><th>날짜</th><th>티커</th><th style="text-align:left">회사</th><th>시점</th><th>EPS 예상</th><th>시총</th>
+    </tr></thead>
+    <tbody>
+    {% for e in earnings %}
+      <tr>
+        <td><span class="{{ 'hot' if e.dd <= 1 }}">{{ e.dday }}</span></td>
+        <td style="color:var(--muted)">{{ e.date[5:] }}</td>
+        <td style="text-align:left"><a href="/leaders?sym={{ e.symbol }}" style="color:var(--accent);text-decoration:none"><strong>{{ e.symbol }}</strong></a></td>
+        <td style="text-align:left;color:var(--ink-2)">{{ e.name[:30] }}</td>
+        <td>{{ e.time_ko }}</td>
+        <td>{{ e.eps }}</td>
+        <td style="color:var(--muted)">{{ e.mcap_fmt }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div style="color:var(--muted);padding:20px;text-align:center">예정된 실적이 없습니다</div>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}
