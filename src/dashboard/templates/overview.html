@@ -19,43 +19,51 @@
   {% endif %}
 {% endmacro %}
 {% macro bench_card(title, snap, reg, spark=None, fmt='{:,.0f}') %}
-  <div class="card">
+  <div class="card" style="display:flex;flex-direction:column">
     <div class="sub" style="margin-bottom:2px">{{ title }}</div>
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:8px;flex-wrap:wrap">
       <div class="score">{{ fmt.format(snap.close) if snap else '–' }}</div>
       {{ spark_svg(spark) }}
     </div>
-    {% if snap and snap.ret21 is not none %}
-    <div class="reason"><span class="{{ 'pos' if snap.ret21 > 0 else 'neg' }}">{{ '%+.1f%%'|format(snap.ret21) }}</span> · 최근 1개월</div>
-    {% endif %}
-    {% if reg %}
-    <div class="reason"><span class="{{ 'pos' if reg.above else 'neg' }}">●</span>
-      200일선 {{ '위' if reg.above else '아래' }} {{ '%+.1f%%'|format(reg.dev) }}
-      · {{ '신규진입 OK' if reg.above else '신규진입 주의' }}</div>
-    {% endif %}
+    <div style="margin-top:auto;padding-top:8px">
+      {% if snap and snap.ret21 is not none %}
+      <div class="reason"><span class="{{ 'pos' if snap.ret21 > 0 else 'neg' }}">{{ '%+.1f%%'|format(snap.ret21) }}</span> · 최근 1개월</div>
+      {% endif %}
+      {% if reg %}
+      <div class="reason"><span class="{{ 'pos' if reg.above else 'neg' }}">●</span>
+        200일선 {{ '위' if reg.above else '아래' }} {{ '%+.1f%%'|format(reg.dev) }}
+        · {{ '신규진입 OK' if reg.above else '신규진입 주의' }}</div>
+      {% endif %}
+      {% if snap and snap.off_hi is not none %}
+      <div class="reason">52주 고점比
+        <span class="{{ 'neg' if snap.off_hi < -10 else 'pos' if snap.off_hi > -3 }}">{{ '%+.1f%%'|format(snap.off_hi) }}</span></div>
+      {% endif %}
+    </div>
   </div>
 {% endmacro %}
 <div class="cards3" style="grid-template-columns: repeat(5, 1fr)">
   {{ bench_card('S&P 500 (SPY)', spy, spy_regime, sparks.get('SPY')) }}
   {{ bench_card('나스닥 100 (QQQ)', qqq, qqq_regime, sparks.get('QQQ')) }}
   {{ bench_card('코스피', kospi, kospi_regime, sparks.get('1001')) }}
-  <div class="card">
+  <div class="card" style="display:flex;flex-direction:column">
     <div class="sub" style="margin-bottom:2px">코스닥</div>
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:8px;flex-wrap:wrap">
       <div class="score">{{ '{:,.0f}'.format(kosdaq.close) if kosdaq else '–' }}</div>
       {{ spark_svg(sparks.get('2001')) }}
     </div>
-    {% if kosdaq and kosdaq.ret21 is not none %}
-    <div class="reason"><span class="{{ 'pos' if kosdaq.ret21 > 0 else 'neg' }}">{{ '%+.1f%%'|format(kosdaq.ret21) }}</span> · 최근 1개월</div>
-    {% endif %}
-    {% if kosdaq_regime %}
-    <div class="reason"><span class="{{ 'pos' if kosdaq_regime.above else 'neg' }}">●</span>
-      200일선 {{ '위' if kosdaq_regime.above else '아래' }} {{ '%+.1f%%'|format(kosdaq_regime.dev) }}</div>
-    {% endif %}
-    {% if kq_ratio %}
-    <div class="reason">vs 코스피 {{ '%+.1f%%'|format(kq_ratio.chg21) }} (1M) ·
-      <span class="{{ 'pos' if kq_ratio.above else 'neg' }}">{{ '코스닥 우위' if kq_ratio.above else '코스피 우위' }}</span></div>
-    {% endif %}
+    <div style="margin-top:auto;padding-top:8px">
+      {% if kosdaq and kosdaq.ret21 is not none %}
+      <div class="reason"><span class="{{ 'pos' if kosdaq.ret21 > 0 else 'neg' }}">{{ '%+.1f%%'|format(kosdaq.ret21) }}</span> · 최근 1개월</div>
+      {% endif %}
+      {% if kosdaq_regime %}
+      <div class="reason"><span class="{{ 'pos' if kosdaq_regime.above else 'neg' }}">●</span>
+        200일선 {{ '위' if kosdaq_regime.above else '아래' }} {{ '%+.1f%%'|format(kosdaq_regime.dev) }}</div>
+      {% endif %}
+      {% if kq_ratio %}
+      <div class="reason">vs 코스피 {{ '%+.1f%%'|format(kq_ratio.chg21) }} (1M) ·
+        <span class="{{ 'pos' if kq_ratio.above else 'neg' }}">{{ '코스닥 우위' if kq_ratio.above else '코스피 우위' }}</span></div>
+      {% endif %}
+    </div>
   </div>
   <div class="card">
     <div class="sub" style="margin-bottom:2px">Fear &amp; Greed {% if fng %}<span style="float:right;color:var(--muted)">{{ fng.date }}</span>{% endif %}</div>

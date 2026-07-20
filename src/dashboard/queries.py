@@ -406,16 +406,20 @@ def kr_sector_strength(con) -> list[dict]:
 
 
 def bench_snapshot(con, sym: str):
-    """벤치마크 카드: 최근 종가 + 21거래일 수익률(%)."""
+    """벤치마크 카드: 최근 종가 + 21거래일 수익률(%) + 52주 고점比."""
     rows = con.execute(
-        "SELECT date, close FROM prices_daily WHERE symbol=? ORDER BY date DESC LIMIT 22",
+        "SELECT date, close FROM prices_daily WHERE symbol=? ORDER BY date DESC LIMIT 252",
         (sym,),
     ).fetchall()
     if not rows:
         return None
     last = rows[0]
-    ret21 = (last["close"] / rows[-1]["close"] - 1) * 100 if len(rows) >= 22 else None
-    return {"date": last["date"], "close": last["close"], "ret21": ret21}
+    ret21 = (last["close"] / rows[21]["close"] - 1) * 100 if len(rows) >= 22 else None
+    hi52 = max(r["close"] for r in rows)
+    return {
+        "date": last["date"], "close": last["close"], "ret21": ret21,
+        "off_hi": (last["close"] / hi52 - 1) * 100 if hi52 else None,
+    }
 
 
 def _macro_series(con, sym: str, n: int = 270) -> list[float]:
