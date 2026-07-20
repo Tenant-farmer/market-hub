@@ -245,6 +245,14 @@
 </div>
 {% endif %}
 
+{# ---- KR 업종 상대수익 겹침 차트 ---- #}
+{% if kr_rel %}
+{% with rel = kr_rel, rel_names = kr_names, rel_bench_label = kr_names.get(kr_bench, '코스피'),
+        rel_title = 'KR 업종 상대수익', rel_more = '/kr' %}
+{% include "_rel_chart.html" %}
+{% endwith %}
+{% endif %}
+
 {# ---- 실적 + 경제지표 캘린더 ---- #}
 <div class="grid2" style="margin-top:16px">
   {% if earnings %}
