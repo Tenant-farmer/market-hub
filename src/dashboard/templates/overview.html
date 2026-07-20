@@ -245,10 +245,16 @@
 </div>
 {% endif %}
 
-{# ---- KR 업종 상대수익 겹침 차트 ---- #}
+{# ---- KR·US 업종 상대수익 겹침 차트 ---- #}
 {% if kr_rel %}
 {% with rel = kr_rel, rel_names = kr_names, rel_bench_label = kr_names.get(kr_bench, '코스피'),
-        rel_title = 'KR 업종 상대수익', rel_more = '/kr' %}
+        rel_title = 'KR 업종 상대수익', rel_more = '/kr', rel_id = 'rel_kr' %}
+{% include "_rel_chart.html" %}
+{% endwith %}
+{% endif %}
+{% if us_rel %}
+{% with rel = us_rel, rel_names = us_names, rel_bench_label = us_names.get(us_bench, 'S&P 500'),
+        rel_title = 'US 섹터 상대수익', rel_more = '/us', rel_id = 'rel_us' %}
 {% include "_rel_chart.html" %}
 {% endwith %}
 {% endif %}

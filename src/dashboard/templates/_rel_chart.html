@@ -1,17 +1,18 @@
-{# 벤치마크 대비 상대수익 겹침 차트 (LWC) — 페이지당 1회 include
+{# 벤치마크 대비 상대수익 겹침 차트 (LWC)
    필요 컨텍스트: rel({code:[[date,ratio]..]}), rel_names, rel_bench_label
-   옵션: rel_title(카드 제목), rel_more(전체 보기 링크) #}
+   옵션: rel_title(카드 제목), rel_more(전체 보기 링크), rel_id(같은 페이지 2회 이상 include 시 고유값) #}
+{% set rid = rel_id|default('rel') %}
 <div class="card" style="margin-top:16px">
   <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px">
     <span class="sub">{{ rel_title|default('벤치마크 대비 상대수익') }} — 0선 = {{ rel_bench_label }} · 선 위 = 시장 아웃퍼폼</span>
     <span class="pills" style="margin:0 0 0 auto">
-      <a href="javascript:void(0)" id="rel-1m">1M</a>
-      <a href="javascript:void(0)" id="rel-3m" class="on">3M</a>
+      <a href="javascript:void(0)" id="{{ rid }}-1m">1M</a>
+      <a href="javascript:void(0)" id="{{ rid }}-3m" class="on">3M</a>
       {% if rel_more %}<a href="{{ rel_more }}">전체 보기 →</a>{% endif %}
     </span>
   </div>
-  <div class="pills" id="rel-chips" style="margin-bottom:8px"></div>
-  <div id="rel" style="height:400px"></div>
+  <div class="pills" id="{{ rid }}-chips" style="margin-bottom:8px"></div>
+  <div id="{{ rid }}" style="height:400px"></div>
   <div class="reason" style="margin-top:6px">기간 시작일을 0%로 리베이스한 (섹터 ÷ 벤치마크) 수익률 — RRG의 상대강도를 시간축으로 펼친 것.
     기본은 상대수익 상위 6개만 표시, 이름 클릭으로 켜고 끄기.</div>
 </div>
@@ -21,7 +22,7 @@
 (function () {
   const REL_D = {{ rel|tojson }};
   const R_NAMES = {{ rel_names|tojson }};
-  const el = document.getElementById("rel");
+  const el = document.getElementById("{{ rid }}");
   if (!el || !REL_D || !Object.keys(REL_D).length) return;
   const PALETTE = [
     "#3987e5", "#0ca30c", "#fab219", "#d03b3b", "#9a6ee8", "#2ab5a5",
@@ -73,7 +74,7 @@
   }
   apply();
 
-  const chipbox = document.getElementById("rel-chips");
+  const chipbox = document.getElementById("{{ rid }}-chips");
   codes.forEach(c => {
     const a = document.createElement("a");
     a.href = "javascript:void(0)";
@@ -87,7 +88,7 @@
     chipbox.appendChild(a);
   });
 
-  const b1 = document.getElementById("rel-1m"), b3 = document.getElementById("rel-3m");
+  const b1 = document.getElementById("{{ rid }}-1m"), b3 = document.getElementById("{{ rid }}-3m");
   const setWin = w => {
     win = w;
     b1.className = w === 21 ? "on" : "";

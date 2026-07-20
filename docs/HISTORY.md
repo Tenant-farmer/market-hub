@@ -278,6 +278,8 @@
 - 개요(/)에도 KR 업종 상대수익 추가: 차트를 _rel_chart.html 공용 partial로 추출(us/kr/개요 3곳 include),
   개요는 수급 테이블 바로 아래 배치 + '전체 보기 → /kr' 링크. 개요 칩은 44개(코스닥 업종 포함, kr_ranking 기준),
   /kr은 RRG(trails)와 동일한 코스피 23개 — 의도된 차이
+- US 섹터 상대수익도 개요에 추가 (KR 차트 바로 아래, 0선 = S&P 500): partial에 rel_id 파라미터를 더해
+  같은 페이지 2회 include 가능하게 함 — 개요는 rel_kr/rel_us, /us·/kr은 기본 rel. 토글 독립 동작 확인
 
 ## 미해결 / 예정
 

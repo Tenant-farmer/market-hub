@@ -12,6 +12,7 @@ bp = Blueprint("overview", __name__)
 def home():
     cfg = config.load()
     us_cfg = cfg["us"]
+    us_bench = us_cfg["benchmark"]
     kr_bench = cfg["kr"]["benchmark"]
     con = db.connect()
 
@@ -56,8 +57,9 @@ def home():
     hot_us = queries.overheat_list(con, "us_sector", us_names)
     hot_kr = queries.overheat_list(con, "kr_sector", kr_names)
 
-    # KR 업종 상대수익 (수급 테이블 아래 겹침 차트)
+    # 업종 상대수익 겹침 차트 (KR: 수급 테이블 아래 / US: 그 다음)
     kr_rel = queries.rel_ratio_series(con, [r["code"] for r in kr_ranking], kr_bench)
+    us_rel = queries.rel_ratio_series(con, [r["code"] for r in us_ranking], us_bench)
 
     # KR 수급
     mflows = queries.market_flows(con)
@@ -83,5 +85,6 @@ def home():
         mflows=mflows, top_foreign=top_foreign, top_inst=top_inst,
         sflows_in=sflows_in, sflows_out=sflows_out,
         kr_rel=kr_rel, kr_names=kr_names, kr_bench=kr_bench,
+        us_rel=us_rel, us_names=us_names, us_bench=us_bench,
         fresh=fresh,
     )
