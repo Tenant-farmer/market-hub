@@ -143,7 +143,10 @@ def top_flow_stocks(con, investor: str, n: int = 10):
         """,
         (investor, n),
     ).fetchall()
-    return [{"name": r["name"] or r["code"], "amt": fmt_krw(r["net_value"])} for r in rows]
+    return [
+        {"name": r["name"] or r["code"], "code": r["code"], "amt": fmt_krw(r["net_value"])}
+        for r in rows
+    ]
 
 
 def sector_flows(con, names: dict):

@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% set active = 'kr_leaders' %}
+{% block title %}{{ name or symbol }} — market-hub{% endblock %}
+{% block body %}
+{% if not d %}
+<h1>{{ symbol }}</h1>
+<div class="card">상세 정보를 불러오지 못했습니다 (가격 데이터가 있는 KR 종목만 지원 · <a href="?refresh=1" style="color:var(--accent)">다시 시도</a>)</div>
+{% else %}
+
+{# ---- 헤더 ---- #}
+<div class="card" style="margin-bottom:16px">
+  <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+    <h1 style="margin:0">{{ name }}</h1>
+    <span class="chip">{{ symbol }}</span>
+    <span class="chip" style="{% if d.kq %}color:var(--warn);border-color:var(--warn){% endif %}">{{ '코스닥' if d.kq else '코스피' }}</span>
+    <span class="sub">{{ sector_name }}</span>
+    <span style="margin-left:auto" class="sub">{{ '캐시' if d.cached else '실시간' }} · {{ d.fetched_at[:16] }} ·
+      <a href="?refresh=1" style="color:var(--accent);text-decoration:none">새로고침</a></span>
+  </div>
+  <div style="display:flex;align-items:baseline;gap:14px;margin-top:8px;flex-wrap:wrap">
+    <span class="score" style="font-size:34px">{{ '{:,.0f}'.format(d.price) }}원</span>
+    {% if d.chg is not none %}<span class="{{ 'pos' if d.chg >= 0 else 'neg' }}" style="font-size:16px">{{ '%+.2f%%'|format(d.chg) }}</span>{% endif %}
+    {% if d.w52_pos is not none %}
+    <span style="flex:1;min-width:220px;max-width:420px">
+      <span class="rangebar" style="display:block"><span class="mark" style="left:{{ d.w52_pos }}%"></span></span>
+      <span class="reason" style="display:flex;justify-content:space-between">
+        <span>{{ '{:,.0f}'.format(d.w52_lo) }}</span><span>52주 위치 {{ '%.0f%%'|format(d.w52_pos) }}</span><span>{{ '{:,.0f}'.format(d.w52_hi) }}</span>
+      </span>
+    </span>
+    {% endif %}
+  </div>
+</div>
+
+{# ---- 지표 카드줄 (KRX 공식 펀더멘털) ---- #}
+<div class="cards6">
+  <div class="card" style="padding:12px">
+    <div class="sub">시가총액</div>
+    <div class="score" style="font-size:22px">{{ d.mcap|krw if d.mcap else '–' }}</div>
+  </div>
+  <div class="card" style="padding:12px">
+    <div class="sub">PER</div>
+    <div class="score" style="font-size:22px">{{ '%.2f'|format(d.per) if d.per else '–' }}</div>
+    {% if d.per is not defined or not d.per %}<div class="reason">적자 또는 미산출</div>{% endif %}
+  </div>
+  <div class="card" style="padding:12px">
+    <div class="sub">PBR</div>
+    <div class="score" style="font-size:22px">{{ '%.2f'|format(d.pbr) if d.pbr else '–' }}</div>
+  </div>
+  <div class="card" style="padding:12px">
+    <div class="sub">EPS</div>
+    <div class="score" style="font-size:22px">{{ '{:,.0f}'.format(d.eps) if d.eps else '–' }}</div>
+  </div>
+  <div class="card" style="padding:12px">
+    <div class="sub">배당수익률</div>
+    <div class="score" style="font-size:22px">{{ '%.2f%%'|format(d.div) if d.div else '–' }}</div>
+    {% if d.dps %}<div class="reason">주당 {{ '{:,.0f}'.format(d.dps) }}원</div>{% endif %}
+  </div>
+  <div class="card" style="padding:12px">
+    <div class="sub">공매도 잔고</div>
+    <div class="score" style="font-size:22px">{{ '%.2f%%'|format(d.short.pct) if d.short else '–' }}</div>
+    {% if d.short %}<div class="reason">상장주식수 대비 · {{ d.short.date }}</div>{% endif %}
+  </div>
+</div>
+
+{# ---- 자체 분석 ---- #}
+{% if our %}
+<div class="card" style="margin-bottom:16px;display:flex;gap:24px;flex-wrap:wrap;align-items:baseline">
+  <span class="sub">market-hub 분석</span>
+  {% if our.leader_score is defined %}<span>주도점수 <strong>{{ '%.0f'|format(our.leader_score) }}</strong>/100</span>{% endif %}
+  {% if our.ret_21 is defined %}<span>1M <span class="{{ 'pos' if our.ret_21 > 0 else 'neg' }}">{{ '%+.1f%%'|format(our.ret_21) }}</span></span>{% endif %}
+  {% if our.rs_mkt_21 is defined %}<span>시장대비 RS <span class="{{ 'pos' if our.rs_mkt_21 > 0 else 'neg' }}">{{ '%+.1f'|format(our.rs_mkt_21) }}%p</span></span>{% endif %}
+  {% if our.high_prox is defined %}<span>52주 고점比 {{ '%.0f%%'|format(our.high_prox * 100) }}</span>{% endif %}
+  {% if our.vol_surge is defined %}<span>거래량 {{ '%.2fx'|format(our.vol_surge) }}</span>{% endif %}
+  <a href="/kr-leaders?sym={{ symbol }}" style="margin-left:auto;color:var(--accent);text-decoration:none">주도주 랭킹에서 보기 →</a>
+</div>
+{% endif %}
+
+{# ---- 차트 ---- #}
+{% include "_stock_chart.html" %}
+
+{# ---- 수급 (KR 핵심) ---- #}
+{% if d.flows %}
+<div class="grid2" style="margin-top:16px">
+  <div class="card">
+    <div class="sub" style="margin-bottom:8px">투자자별 순매수 누적 — 최근 {{ d.flows.n }}거래일 (억원)</div>
+    <div id="flow_chart" style="height:260px"></div>
+    <div class="reason" style="margin-top:6px">
+      <span style="color:#3987e5">■ 외국인</span> &nbsp;<span style="color:#e5a339">■ 기관</span> &nbsp;<span style="color:#8a8a88">■ 개인</span>
+      &nbsp;· 거래대금 기준 누적 (KRX)</div>
+  </div>
+  <div class="card" style="overflow-x:auto">
+    <div class="sub" style="margin-bottom:8px">기간별 순매수 합계</div>
+    <table>
+      <thead><tr><th style="text-align:left">투자자</th><th>5일</th><th>20일</th><th>60일</th></tr></thead>
+      <tbody>
+      {% for k, label in [('foreign','외국인'), ('institution','기관'), ('individual','개인')] %}
+        {% set s = d.flows.sums[k] %}
+        <tr>
+          <td style="text-align:left">{{ label }}</td>
+          {% for p in ['d5','d20','d60'] %}
+          <td><span class="{{ 'pos' if s[p] > 0 else 'neg' if s[p] < 0 else '' }}">{{ ('+' if s[p] > 0 else '') + s[p]|krw }}</span></td>
+          {% endfor %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <div class="reason" style="margin-top:8px">외국인+기관 동반 순매수 지속 여부가 핵심 체크포인트</div>
+  </div>
+</div>
+<script>
+(function() {
+  const el = document.getElementById("flow_chart");
+  const chart = LightweightCharts.createChart(el, {
+    height: 260, autoSize: true,
+    layout: { background: { color: "transparent" }, textColor: "#8a8a88", fontSize: 11 },
+    grid: { vertLines: { color: "rgba(255,255,255,.04)" }, horzLines: { color: "rgba(255,255,255,.04)" } },
+    rightPriceScale: { borderVisible: false },
+    timeScale: { borderVisible: false },
+  });
+  const flows = {{ d.flows.series|tojson }};
+  const cfg = [["foreign", "#3987e5"], ["institution", "#e5a339"], ["individual", "#8a8a88"]];
+  for (const [k, color] of cfg) {
+    const s = chart.addLineSeries({ color, lineWidth: 2, priceLineVisible: false, lastValueVisible: true });
+    s.setData(flows[k]);
+  }
+  chart.timeScale().fitContent();
+})();
+</script>
+{% endif %}
+
+{# ---- 애널리스트 + 재무 스냅샷 ---- #}
+<div class="grid2" style="margin-top:16px">
+  <div class="card">
+    <div class="sub" style="margin-bottom:8px">애널리스트 컨센서스 {% if d.n_analysts %}· 표본 {{ d.n_analysts|int }}명{% endif %}</div>
+    {% if d.tgt_mean %}
+    <div class="cards3" style="grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:8px">
+      <div><div class="sub">평균 목표가</div><strong>{{ '{:,.0f}'.format(d.tgt_mean) }}원</strong></div>
+      <div><div class="sub">상승여력</div><strong class="{{ 'pos' if d.upside and d.upside > 0 else 'neg' }}">{{ '%+.1f%%'|format(d.upside) if d.upside is not none else '–' }}</strong></div>
+      <div><div class="sub">추천</div><strong class="pos">{{ d.reco }}</strong>{% if d.reco_mean %} <span class="sub">점수 {{ '%.2f'|format(d.reco_mean) }}</span>{% endif %}</div>
+    </div>
+    <div class="reason">추천 점수: 1(적극매수) ~ 5(매도) · 야후 집계 — 대형주 위주 제공</div>
+    {% else %}<div class="reason">컨센서스 데이터 없음 (중소형주는 커버리지가 없는 경우가 많음)</div>{% endif %}
+  </div>
+  <div class="card">
+    <div class="sub" style="margin-bottom:6px">재무 스냅샷 (KRX 공식)</div>
+    <table>
+      <tr><td style="text-align:left">EPS</td><td>{{ '{:,.0f}'.format(d.eps) + '원' if d.eps else '–' }}</td></tr>
+      <tr><td style="text-align:left">BPS</td><td>{{ '{:,.0f}'.format(d.bps) + '원' if d.bps else '–' }}</td></tr>
+      <tr><td style="text-align:left">주당배당금 (DPS)</td><td>{{ '{:,.0f}'.format(d.dps) + '원' if d.dps else '–' }}</td></tr>
+      <tr><td style="text-align:left">전일 종가</td><td>{{ '{:,.0f}'.format(d.prev) + '원' if d.prev else '–' }}</td></tr>
+    </table>
+  </div>
+</div>
+
+{# ---- 월별 수익률 ---- #}
+{% if monthly %}
+<div class="card" style="margin-top:16px;overflow-x:auto">
+  <div class="sub" style="margin-bottom:6px">월별 수익률 — 최근 5년 · 종가 기준 (이번 달은 진행 중)</div>
+  <table>
+    <thead><tr><th style="text-align:left"></th>{% for m in range(1, 13) %}<th>{{ m }}월</th>{% endfor %}</tr></thead>
+    <tbody>
+      <tr>
+        <td style="text-align:left;color:var(--muted)">평균</td>
+        {% for c in monthly.avg %}<td style="background:{{ c.bg }}">{{ '%+.1f'|format(c.v) if c.v is not none else '' }}</td>{% endfor %}
+      </tr>
+      {% for yr in monthly.years %}
+      <tr>
+        <td style="text-align:left;color:var(--muted)">{{ yr.y }}</td>
+        {% for c in yr.m %}
+        <td style="background:{{ c.bg }};{% if yr.y == monthly.cur[0] and loop.index == monthly.cur[1] %}outline:1px solid var(--warn);{% endif %}">{{ '%+.1f'|format(c.v) if c.v is not none else '' }}</td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{# ---- 기업 개요 ---- #}
+{% if d.summary %}
+<div class="card" style="margin-top:16px">
+  <div class="sub" style="margin-bottom:6px">기업 개요 <span style="float:right">야후 제공 (영문)</span></div>
+  <div style="color:var(--ink-2);line-height:1.6">{{ d.summary }}{% if d.summary|length >= 900 %}…{% endif %}</div>
+  {% if d.website %}<div style="margin-top:8px"><a href="{{ d.website }}" target="_blank" style="color:var(--accent);text-decoration:none">{{ d.website }} →</a></div>{% endif %}
+</div>
+{% endif %}
+
+<div class="sub" style="margin-top:12px">출처: KRX(pykrx — 펀더멘털·수급·공매도) + yfinance(애널리스트·개요) · 정보 제공 목적이며 투자 권유가 아님</div>
+{% endif %}
+{% endblock %}

@@ -1,4 +1,4 @@
-"""종목 상세 페이지 (US) — yfinance 온디맨드 + 자체 분석 결합."""
+"""종목 상세 페이지 — US(yfinance) / KR(pykrx+야후 보조) 자동 분기."""
 from flask import Blueprint, render_template, request
 
 from src import db, stock_info
@@ -14,52 +14,72 @@ def _heat(v):
     return (f"rgba(12,163,12,{a:.2f})" if v > 0 else f"rgba(208,59,59,{a:.2f})")
 
 
-@bp.get("/stock/<symbol>")
-def stock_page(symbol):
-    symbol = symbol.upper()
-    con = db.connect()
-    known = con.execute(
-        "SELECT name FROM sector_map WHERE stock_code=? AND market='US_STOCK'", (symbol,)
-    ).fetchone()
-    if not known:
-        con.close()
-        return render_template("stock.html", d=None, symbol=symbol)
+def _monthly_vm(monthly):
+    if not monthly:
+        return None
+    return {
+        "avg": [{"v": v, "bg": _heat(v)} for v in monthly["avg"]],
+        "years": [
+            {"y": yr["y"], "m": [{"v": v, "bg": _heat(v)} for v in yr["m"]]}
+            for yr in monthly["years"]
+        ],
+        "cur": monthly["cur"],
+    }
 
-    d = stock_info.get_detail(con, symbol, force=request.args.get("refresh") == "1")
 
-    # 자체 분석 (주도점수 등)
-    our = None
+def _our_metrics(con, scope: str, symbol: str):
     rows = con.execute(
         """
         SELECT metric, value FROM analytics_daily
-        WHERE scope='us_stock' AND code=?
-          AND date=(SELECT MAX(date) FROM analytics_daily WHERE scope='us_stock')
+        WHERE scope=? AND code=?
+          AND date=(SELECT MAX(date) FROM analytics_daily WHERE scope=?)
         """,
-        (symbol,),
+        (scope, symbol, scope),
     ).fetchall()
-    if rows:
-        our = {r["metric"]: r["value"] for r in rows}
+    return {r["metric"]: r["value"] for r in rows} if rows else None
 
-    tvrow = con.execute("SELECT tv_symbol FROM stock_meta WHERE symbol=?", (symbol,)).fetchone()
-    tv_symbol = tvrow["tv_symbol"] if tvrow and tvrow["tv_symbol"] else symbol
-    sym_prices = queries.ohlcv(con, symbol)
+
+@bp.get("/stock/<symbol>")
+def stock_page(symbol):
+    symbol = symbol.upper()
+    force = request.args.get("refresh") == "1"
+    con = db.connect()
+
+    us = con.execute(
+        "SELECT name FROM sector_map WHERE stock_code=? AND market='US_STOCK'", (symbol,)
+    ).fetchone()
+    if us:
+        d = stock_info.get_detail(con, symbol, force=force)
+        our = _our_metrics(con, "us_stock", symbol)
+        tvrow = con.execute("SELECT tv_symbol FROM stock_meta WHERE symbol=?", (symbol,)).fetchone()
+        tv_symbol = tvrow["tv_symbol"] if tvrow and tvrow["tv_symbol"] else symbol
+        sym_prices = queries.ohlcv(con, symbol)
+        con.close()
+        return render_template(
+            "stock.html",
+            d=d, symbol=symbol, our=our,
+            monthly=_monthly_vm(d.get("monthly")) if d else None,
+            sym=symbol, sym_name=(d["name"] if d else us["name"]),
+            sym_prices=sym_prices, tv_symbol=tv_symbol, tv_embed_ok=True,
+            back_url="/calendar?tab=earn",
+        )
+
+    kr = con.execute(
+        "SELECT name, sector_code, sector_name FROM sector_map WHERE stock_code=? AND market='KR'",
+        (symbol,),
+    ).fetchone()
+    if kr:
+        d = stock_info.get_detail_kr(con, symbol, kr["sector_code"], force=force)
+        our = _our_metrics(con, "kr_stock", symbol)
+        sym_prices = queries.ohlcv(con, symbol)
+        con.close()
+        return render_template(
+            "stock_kr.html",
+            d=d, symbol=symbol, name=kr["name"], sector_name=kr["sector_name"], our=our,
+            monthly=_monthly_vm(d.get("monthly")) if d else None,
+            sym=symbol, sym_name=kr["name"], sym_prices=sym_prices,
+            tv_symbol=f"KRX:{symbol}", tv_embed_ok=False, back_url="/kr-leaders",
+        )
+
     con.close()
-
-    monthly = None
-    if d and d.get("monthly"):
-        monthly = {
-            "avg": [{"v": v, "bg": _heat(v)} for v in d["monthly"]["avg"]],
-            "years": [
-                {"y": yr["y"], "m": [{"v": v, "bg": _heat(v)} for v in yr["m"]]}
-                for yr in d["monthly"]["years"]
-            ],
-            "cur": d["monthly"]["cur"],
-        }
-
-    return render_template(
-        "stock.html",
-        d=d, symbol=symbol, our=our, monthly=monthly,
-        sym=symbol, sym_name=(d["name"] if d else known["name"]),
-        sym_prices=sym_prices, tv_symbol=tv_symbol, tv_embed_ok=True,
-        back_url="/calendar?tab=earn",
-    )
+    return render_template("stock.html", d=None, symbol=symbol)

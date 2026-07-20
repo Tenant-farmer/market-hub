@@ -304,9 +304,9 @@
       <tbody>
       {% for i in range(5) %}
         <tr>
-          <td style="text-align:left;color:var(--ink-2)">{{ top_foreign[i].name if i < top_foreign|length }}</td>
+          <td style="text-align:left">{% if i < top_foreign|length %}<a href="/stock/{{ top_foreign[i].code }}" style="color:var(--ink-2);text-decoration:none">{{ top_foreign[i].name }}</a>{% endif %}</td>
           <td class="pos">{{ top_foreign[i].amt if i < top_foreign|length }}</td>
-          <td style="text-align:left;color:var(--ink-2)">{{ top_inst[i].name if i < top_inst|length }}</td>
+          <td style="text-align:left">{% if i < top_inst|length %}<a href="/stock/{{ top_inst[i].code }}" style="color:var(--ink-2);text-decoration:none">{{ top_inst[i].name }}</a>{% endif %}</td>
           <td class="pos">{{ top_inst[i].amt if i < top_inst|length }}</td>
         </tr>
       {% endfor %}

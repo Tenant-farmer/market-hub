@@ -54,7 +54,170 @@ def get_detail(con, sym: str, force: bool = False) -> dict | None:
     return d
 
 
-def _fetch(sym: str) -> dict | None:
+def _monthly_map(closes: pd.Series) -> dict | None:
+    """월봉 종가 시리즈 → 연×월 수익률 히트맵 데이터."""
+    rets = closes.pct_change() * 100
+    by: dict[int, dict[int, float]] = {}
+    for ts, v in rets.items():
+        if pd.isna(v):
+            continue
+        by.setdefault(ts.year, {})[ts.month] = round(float(v), 1)
+    if not by:
+        return None
+    years = sorted(by, reverse=True)
+    avg = []
+    for m in range(1, 13):
+        vals = [by[y][m] for y in years if m in by[y]]
+        avg.append(round(sum(vals) / len(vals), 1) if vals else None)
+    return {
+        "years": [{"y": y, "m": [by[y].get(m) for m in range(1, 13)]} for y in years],
+        "avg": avg,
+        "cur": [closes.index[-1].year, closes.index[-1].month],
+    }
+
+
+def get_detail_kr(con, code: str, sector_code: str, force: bool = False) -> dict | None:
+    """KR 종목 상세 — 로컬 DB + pykrx(수급·펀더멘털·공매도·월봉) + 야후(애널리스트, 보조)."""
+    con.execute(
+        "CREATE TABLE IF NOT EXISTS stock_detail "
+        "(symbol TEXT PRIMARY KEY, json TEXT, fetched_at TEXT)"
+    )
+    if not force:
+        row = con.execute(
+            "SELECT json, fetched_at FROM stock_detail WHERE symbol=?", (code,)
+        ).fetchone()
+        if row:
+            age_h = (datetime.now() - datetime.fromisoformat(row["fetched_at"])).total_seconds() / 3600
+            if age_h < CACHE_TTL_H:
+                d = json.loads(row["json"])
+                d["fetched_at"] = row["fetched_at"]
+                d["cached"] = True
+                return d
+    d = _fetch_kr(con, code, sector_code)
+    if d:
+        now = datetime.now().isoformat(timespec="seconds")
+        con.execute(
+            "INSERT OR REPLACE INTO stock_detail (symbol, json, fetched_at) VALUES (?,?,?)",
+            (code, json.dumps(d, ensure_ascii=False), now),
+        )
+        con.commit()
+        d["fetched_at"] = now
+        d["cached"] = False
+    return d
+
+
+def _fetch_kr(con, code: str, sector_code: str) -> dict | None:
+    from datetime import date, timedelta
+
+    # 로컬: 가격·52주·시총
+    rows = con.execute(
+        "SELECT date, close FROM prices_daily WHERE symbol=? ORDER BY date DESC LIMIT 252",
+        (code,),
+    ).fetchall()
+    if len(rows) < 2:
+        return None
+    closes = [r["close"] for r in rows]
+    price, prev = closes[0], closes[1]
+    lo, hi = min(closes), max(closes)
+    meta = con.execute("SELECT mcap FROM stock_meta WHERE symbol=?", (code,)).fetchone()
+    d = {
+        "symbol": code, "kq": sector_code.startswith("2"),
+        "price": price, "prev": prev,
+        "chg": round((price / prev - 1) * 100, 2),
+        "w52_lo": lo, "w52_hi": hi,
+        "w52_pos": round((price - lo) / (hi - lo) * 100, 1) if hi > lo else None,
+        "mcap": meta["mcap"] if meta else None,
+    }
+
+    today = date.today()
+    e_ymd = today.strftime("%Y%m%d")
+    try:
+        from pykrx import stock as krx
+
+        # 펀더멘털 (KRX 공식: PER/PBR/EPS/BPS/DIV/DPS)
+        try:
+            f = krx.get_market_fundamental(
+                (today - timedelta(days=10)).strftime("%Y%m%d"), e_ymd, code
+            )
+            if len(f):
+                last = f.iloc[-1]
+                d.update({
+                    "per": _num(float(last["PER"])) or None,
+                    "pbr": _num(float(last["PBR"])) or None,
+                    "eps": _num(float(last["EPS"])), "bps": _num(float(last["BPS"])),
+                    "div": _num(float(last["DIV"])), "dps": _num(float(last["DPS"])),
+                })
+        except Exception:
+            pass
+
+        # 종목별 수급 90일 (외인/기관/개인 누적, 억원)
+        try:
+            tv = krx.get_market_trading_value_by_date(
+                (today - timedelta(days=130)).strftime("%Y%m%d"), e_ymd, code
+            )
+            inv_map = {"외국인합계": "foreign", "기관합계": "institution", "개인": "individual"}
+            series = {v: [] for v in inv_map.values()}
+            cum = {v: 0.0 for v in inv_map.values()}
+            sums = {v: {"d5": 0.0, "d20": 0.0, "d60": 0.0} for v in inv_map.values()}
+            n = len(tv)
+            for i, (ts, r) in enumerate(tv.iterrows()):
+                for kr_k, k in inv_map.items():
+                    val = float(r.get(kr_k, 0) or 0)
+                    cum[k] += val
+                    series[k].append({"time": str(ts.date()), "value": round(cum[k] / 1e8, 1)})
+                    left = n - i
+                    if left <= 5:
+                        sums[k]["d5"] += val
+                    if left <= 20:
+                        sums[k]["d20"] += val
+                    if left <= 60:
+                        sums[k]["d60"] += val
+            d["flows"] = {"series": series, "sums": sums, "n": n}
+        except Exception:
+            d["flows"] = None
+
+        # 공매도 잔고 (최근)
+        try:
+            sb = krx.get_shorting_balance_by_date(
+                (today - timedelta(days=30)).strftime("%Y%m%d"), e_ymd, code
+            )
+            if len(sb):
+                d["short"] = {
+                    "pct": round(float(sb["비중"].iloc[-1]), 2),
+                    "date": str(sb.index[-1].date()),
+                }
+        except Exception:
+            pass
+
+        # 5년 월봉 → 월별 수익률
+        try:
+            m = krx.get_market_ohlcv(
+                (today - timedelta(days=365 * 5 + 30)).strftime("%Y%m%d"), e_ymd, code, freq="m"
+            )
+            d["monthly"] = _monthly_map(m["종가"])
+        except Exception:
+            d["monthly"] = None
+    except Exception:
+        d["flows"] = d.get("flows")
+
+    # 야후 보조 (대형주 애널리스트 컨센서스·기업 개요)
+    try:
+        suffix = ".KQ" if d["kq"] else ".KS"
+        info = yf.Ticker(f"{code}{suffix}").info or {}
+        g = info.get
+        tgt = _num(g("targetMeanPrice"))
+        d.update({
+            "tgt_mean": tgt,
+            "n_analysts": _num(g("numberOfAnalystOpinions")),
+            "reco": RECO_KO.get(g("recommendationKey") or "none", "–"),
+            "reco_mean": _num(g("recommendationMean")),
+            "upside": round((tgt / price - 1) * 100, 1) if tgt and price else None,
+            "summary": (g("longBusinessSummary") or "")[:900],
+            "website": g("website") or "",
+        })
+    except Exception:
+        pass
+    return d
     t = yf.Ticker(sym)
     try:
         info = t.info or {}

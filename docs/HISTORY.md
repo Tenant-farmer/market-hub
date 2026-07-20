@@ -248,6 +248,22 @@
 - 검증: SCHW가 참고 사이트와 동일 수치 (목표가 $122/19명, 기관 88.6%, Blackrock 7.66%, EPS 서프라이즈)
 - v1 제외: AI 분석(LLM 없음), 동종 멀티플 비교, 모니터링 트리거 — 백로그
 
+### KR 종목 상세 페이지 v2 (/stock/<6자리코드>, 2026-07-20)
+- US 상세와 같은 라우트(/stock/<symbol>)에서 자동 분기: S&P500 티커면 US, sector_map(KR)에 있으면 KR 템플릿
+- 소스: KRX(pykrx) 공식 데이터 중심 + 야후(.KS/.KQ)는 보조 — 대형주 애널리스트 컨센서스·기업 개요만
+  - `get_market_fundamental` → PER/PBR/EPS/BPS/DIV/DPS (KRX 공식)
+  - `get_market_trading_value_by_date(티커)` → **종목별 수급 90일**: 외인/기관/개인 누적 3선 LWC 차트
+    + 5/20/60일 순매수 합계 표 (US 상세엔 없는 KR 차별화 섹션)
+  - `get_shorting_balance_by_date` → 공매도 잔고 비중 카드
+  - `get_market_ohlcv(freq="m")` → 5년 월별 수익률 히트맵
+- 캐시는 US와 동일한 stock_detail 테이블·6시간 TTL·?refresh=1 강제 갱신, 섹션별 실패 격리
+- app.py에 load_dotenv 추가 — 대시보드 프로세스가 pykrx KRX 로그인을 쓸 수 있게 됨 (이전엔 수집기만 로드)
+- 진입 링크: kr-leaders 종목명(50개) → 상세, 개요 KR 순매수 상위 10종목 → 상세, 차트는 LWC 자체 차트(KRX 임베드 불가)
+- 검증: 005930(코스피 — PER 37.4, 목표가 49.2만/36명, 외인 60일 -43.1조 vs 개인 +31.5조)
+  · 196170 알테오젠(코스닥 — 공매도 2.30%, 52주 위치 0% 엣지 정상, 애널 추천 없음 케이스 정상)
+  · US /stock/SCHW 회귀 없음, pytest 9개 통과
+- 주의: KRX 계정 세션은 1시간 만료 — pykrx가 자동 재로그인, 첫 조회만 2~3초 지연
+
 ## 미해결 / 예정
 
 - [ ] 브레드스(% >200MA) 신호등 입장 심사 — 사용자 결정으로 보류 (2026-07-16)

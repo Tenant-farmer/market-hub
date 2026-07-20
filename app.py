@@ -4,6 +4,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent / ".env")  # KR 상세(pykrx 로그인) 등에 필요
+
 from src.dashboard import create_app
 
 app = create_app()
