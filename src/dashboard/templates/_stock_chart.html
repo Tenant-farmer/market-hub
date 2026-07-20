@@ -58,6 +58,14 @@
   {# ---- 간단 차트 (LWC — 우리 데이터, 선 저장) ---- #}
   <div id="tab-lwc" {% if tv_embed_ok %}style="display:none"{% endif %}>
   <div class="tbar">
+    {% if iv_ok %}
+    <button class="tbtn" id="tf-1h">1시간</button>
+    <button class="tbtn" id="tf-4h">4시간</button>
+    {% endif %}
+    <button class="tbtn on" id="tf-d">일</button>
+    <button class="tbtn" id="tf-w">주</button>
+    <button class="tbtn" id="tf-m">월</button>
+    <span style="color:var(--baseline)">|</span>
     <button class="tbtn on" id="b-candle">캔들</button>
     <button class="tbtn" id="b-line">라인</button>
     <span style="color:var(--baseline)">|</span>
@@ -91,8 +99,9 @@
 {% endif %}
 <script>
 (function () {
-  const OHLCV = {{ sym_prices|tojson }};
+  const DAILY = {{ sym_prices|tojson }};
   const SYM = {{ sym|tojson }};
+  const IV_OK = {{ 'true' if iv_ok else 'false' }};
   const LS_KEY = "mh-draw-" + SYM;
   const el = document.getElementById("stockchart");
   const legend = document.getElementById("ohlc-legend");
@@ -107,40 +116,22 @@
     height: 520,
   });
 
-  // ---- 시리즈 ----
+  // ---- 시리즈 (데이터는 applyData가 일괄 주입) ----
   const candle = chart.addCandlestickSeries({
     upColor: "#0ca30c", downColor: "#d03b3b", borderVisible: false,
     wickUpColor: "#0ca30c", wickDownColor: "#d03b3b",
   });
-  candle.setData(OHLCV);
-
   const area = chart.addAreaSeries({
     lineColor: "#3987e5", lineWidth: 2,
     topColor: "rgba(57,135,229,0.25)", bottomColor: "rgba(57,135,229,0.02)",
     visible: false,
   });
-  area.setData(OHLCV.map(d => ({ time: d.time, value: d.close })));
-
   const volume = chart.addHistogramSeries({
     priceScaleId: "vol", priceFormat: { type: "volume" },
     priceLineVisible: false, lastValueVisible: false,
   });
   chart.priceScale("vol").applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
-  volume.setData(OHLCV.map(d => ({
-    time: d.time, value: d.volume,
-    color: d.close >= d.open ? "rgba(12,163,12,0.35)" : "rgba(208,59,59,0.35)",
-  })));
 
-  function maData(n) {
-    const out = [];
-    let sum = 0;
-    for (let i = 0; i < OHLCV.length; i++) {
-      sum += OHLCV[i].close;
-      if (i >= n) sum -= OHLCV[i - n].close;
-      if (i >= n - 1) out.push({ time: OHLCV[i].time, value: sum / n });
-    }
-    return out;
-  }
   const maCfg = { 20: "#c98500", 60: "#199e70", 120: "#9085e9" };
   const mas = {};
   for (const [n, color] of Object.entries(maCfg)) {
@@ -148,15 +139,63 @@
       color, lineWidth: 1, priceLineVisible: false, lastValueVisible: false,
       crosshairMarkerVisible: false, visible: n === "20",
     });
-    mas[n].setData(maData(+n));
   }
 
-  // 기본 화면은 최근 1년 — 왼쪽으로 드래그/축소하면 백필된 10년 이력이 보임
-  if (OHLCV.length > 300) {
-    chart.timeScale().setVisibleLogicalRange({ from: OHLCV.length - 260, to: OHLCV.length + 3 });
-  } else {
-    chart.timeScale().fitContent();
+  // ---- 타임프레임: 일봉 원본 + 주/월 집계 + 인트라데이(fetch) ----
+  let DATA = DAILY, byTime = {};
+  function maData(n) {
+    const out = [];
+    let sum = 0;
+    for (let i = 0; i < DATA.length; i++) {
+      sum += DATA[i].close;
+      if (i >= n) sum -= DATA[i - n].close;
+      if (i >= n - 1) out.push({ time: DATA[i].time, value: sum / n });
+    }
+    return out;
   }
+  function applyData(data) {
+    DATA = data;
+    candle.setData(data);
+    area.setData(data.map(d => ({ time: d.time, value: d.close })));
+    volume.setData(data.map(d => ({
+      time: d.time, value: d.volume || 0,
+      color: d.close >= d.open ? "rgba(12,163,12,0.35)" : "rgba(208,59,59,0.35)",
+    })));
+    for (const n of [20, 60, 120]) mas[n].setData(maData(n));
+    byTime = Object.fromEntries(data.map((d, i) => [d.time, i]));
+    if (data.length > 300) {
+      chart.timeScale().setVisibleLogicalRange({ from: data.length - 260, to: data.length + 3 });
+    } else {
+      chart.timeScale().fitContent();
+    }
+    showLegend(data[data.length - 1], data[data.length - 2]);
+    redrawTrends();
+  }
+  function wkey(t) {   // 그 주 월요일 날짜 (주봉 키)
+    const d = new Date(t + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() - (d.getUTCDay() + 6) % 7);
+    return d.toISOString().slice(0, 10);
+  }
+  function aggregate(src, mode) {   // mode: 'w' | 'm'
+    const out = [];
+    let cur = null, key = null;
+    for (const b of src) {
+      const k = mode === "m" ? b.time.slice(0, 7) : wkey(b.time);
+      if (k !== key) {
+        if (cur) out.push(cur);
+        key = k;
+        cur = { time: b.time, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume || 0 };
+      } else {
+        if (b.high > cur.high) cur.high = b.high;
+        if (b.low < cur.low) cur.low = b.low;
+        cur.close = b.close;
+        cur.volume += b.volume || 0;
+      }
+    }
+    if (cur) out.push(cur);
+    return out;
+  }
+
   new ResizeObserver(() => chart.applyOptions({ width: el.clientWidth })).observe(el);
 
   // ---- OHLC 레전드 ----
@@ -169,14 +208,12 @@
       `시 ${fmt(d.open)} · 고 ${fmt(d.high)} · 저 ${fmt(d.low)} · 종 <span style="color:${col}">${fmt(d.close)}</span>` +
       (chg === null ? "" : ` <span style="color:${chg >= 0 ? "#0ca30c" : "#e66767"}">(${chg >= 0 ? "+" : ""}${chg.toFixed(2)}%)</span>`);
   }
-  const byTime = Object.fromEntries(OHLCV.map((d, i) => [d.time, i]));
   const tkey = t => typeof t === "object"
     ? `${t.year}-${String(t.month).padStart(2, "0")}-${String(t.day).padStart(2, "0")}` : t;
-  showLegend(OHLCV[OHLCV.length - 1], OHLCV[OHLCV.length - 2]);
   chart.subscribeCrosshairMove(p => {
-    if (!p.time) { showLegend(OHLCV[OHLCV.length - 1], OHLCV[OHLCV.length - 2]); return; }
+    if (!p.time) { showLegend(DATA[DATA.length - 1], DATA[DATA.length - 2]); return; }
     const i = byTime[tkey(p.time)];
-    if (i !== undefined) showLegend(OHLCV[i], OHLCV[i - 1]);
+    if (i !== undefined) showLegend(DATA[i], DATA[i - 1]);
   });
 
   // ---- 그리기 (수평선/추세선, localStorage 저장) ----
@@ -191,8 +228,7 @@
     }));
     if (persist) { saved.h.push(price); save(); }
   }
-  function addTrend(t1, p1, t2, p2, persist) {
-    if (t1 === t2) return;
+  function drawTrendSeries(t1, p1, t2, p2) {
     const s = chart.addLineSeries({
       color: "#3987e5", lineWidth: 1, priceLineVisible: false,
       lastValueVisible: false, crosshairMarkerVisible: false,
@@ -201,12 +237,25 @@
       .sort((a, b) => a.time < b.time ? -1 : 1);
     s.setData(pts);
     trendSeries.push(s);
+  }
+  function addTrend(t1, p1, t2, p2, persist) {
+    if (t1 === t2) return;
+    drawTrendSeries(t1, p1, t2, p2);
     if (persist) { saved.t.push([t1, p1, t2, p2]); save(); }
+  }
+  function redrawTrends() {
+    // 추세선은 그린 타임프레임의 시간형(일자 문자열 vs 인트라데이 epoch)에서만 표시
+    trendSeries.forEach(s => chart.removeSeries(s));
+    trendSeries.length = 0;
+    const isStr = typeof (DATA[0] && DATA[0].time) === "string";
+    saved.t.forEach(([t1, p1, t2, p2]) => {
+      if ((typeof t1 === "string") === isStr) drawTrendSeries(t1, p1, t2, p2);
+    });
   }
   function save() { localStorage.setItem(LS_KEY, JSON.stringify(saved)); }
 
   saved.h.forEach(p => addHLine(p, false));
-  saved.t.forEach(([t1, p1, t2, p2]) => addTrend(t1, p1, t2, p2, false));
+  applyData(DAILY);   // 최초 렌더 (redrawTrends 포함)
 
   chart.subscribeClick(p => {
     if (!mode || !p.point) return;
@@ -263,6 +312,36 @@
       const on = B("b-ma" + n).classList.toggle("on");
       mas[n].applyOptions({ visible: on });
     };
+  }
+
+  // ---- 타임프레임 전환 ----
+  const ivCache = {};
+  function setTF(tf) {
+    for (const k of ["1h", "4h", "d", "w", "m"]) {
+      const b = B("tf-" + k);
+      if (b) b.classList.toggle("on", k === tf);
+    }
+    if (tf === "d") applyData(DAILY);
+    else if (tf === "w") applyData(aggregate(DAILY, "w"));
+    else if (tf === "m") applyData(aggregate(DAILY, "m"));
+    else {
+      if (ivCache[tf]) { applyData(ivCache[tf]); return; }
+      hint.textContent = "인트라데이 불러오는 중…";
+      fetch("/api/intraday/" + SYM + "?iv=" + tf)
+        .then(r => r.json())
+        .then(rows => {
+          hint.textContent = "";
+          if (!rows || !rows.length) { hint.textContent = "인트라데이 데이터 없음 (야후 미제공 종목)"; return; }
+          ivCache[tf] = rows;
+          applyData(rows);
+        })
+        .catch(() => { hint.textContent = "인트라데이 조회 실패"; });
+    }
+  }
+  for (const k of ["d", "w", "m"]) B("tf-" + k).onclick = () => setTF(k);
+  if (IV_OK) for (const k of ["1h", "4h"]) {
+    const b = B("tf-" + k);
+    if (b) b.onclick = () => setTF(k);
   }
 })();
 </script>

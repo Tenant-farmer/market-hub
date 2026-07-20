@@ -277,6 +277,45 @@ def _backfill_daily(con, rows: list) -> None:
         con.commit()
 
 
+def intraday_candles(yf_ticker: str, group4: bool = False) -> list:
+    """야후 60분봉 (최대 ~2년) → LWC 캔들 리스트. group4=True면 세션 내 4개씩 묶어 4시간봉.
+
+    time은 '거래소 현지시각 기준 epoch' (LWC가 UTC로 그리므로 오프셋을 미리 더함).
+    """
+    px = yf.Ticker(yf_ticker).history(period="730d", interval="60m", auto_adjust=True)
+    out = []
+    for ts, r in px.iterrows():
+        o, c = float(r["Open"]), float(r["Close"])
+        if o <= 0 or c <= 0:
+            continue
+        off = int(ts.utcoffset().total_seconds()) if ts.utcoffset() else 0
+        out.append({
+            "time": int(ts.timestamp()) + off,
+            "open": round(o, 2), "high": round(float(r["High"]), 2),
+            "low": round(float(r["Low"]), 2), "close": round(c, 2),
+            "volume": float(r["Volume"] or 0),
+        })
+    if group4 and out:
+        from datetime import datetime as _dt
+
+        grouped, cur, cnt, day = [], None, 0, None
+        for b in out:
+            d = _dt.utcfromtimestamp(b["time"]).date()
+            if cur is None or d != day or cnt == 4:
+                if cur:
+                    grouped.append(cur)
+                cur, cnt, day = dict(b), 1, d
+            else:
+                cur["high"] = max(cur["high"], b["high"])
+                cur["low"] = min(cur["low"], b["low"])
+                cur["close"] = b["close"]
+                cur["volume"] += b["volume"]
+                cnt += 1
+        grouped.append(cur)
+        out = grouped
+    return out
+
+
 def _fetch(con, sym: str) -> dict | None:
     t = yf.Ticker(sym)
 
