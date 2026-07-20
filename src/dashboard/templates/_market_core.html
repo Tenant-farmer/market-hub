@@ -1,5 +1,5 @@
-{# 공용 마켓 뷰: 주도 카드 + RRG + 랭킹 테이블 + 가격 차트
-   필요 컨텍스트: cards, trails, ranking, prices, sym, symbols, names, quad, quad_ko, price_label #}
+{# 공용 마켓 뷰: 주도 카드 + RRG + 상대수익 겹침 차트 + 랭킹 테이블 + 가격 차트
+   필요 컨텍스트: cards, trails, ranking, prices, sym, symbols, names, quad, quad_ko, price_label, rel, bench #}
 
 {% if cards %}
 <div class="cards3">
@@ -22,6 +22,22 @@
   <div class="sub" style="margin-bottom:6px">RRG 사분면 (63일 상대강도 × 21일 모멘텀, 궤적 12주)</div>
   <div id="rrg" style="height:560px"></div>
 </div>
+
+{% if rel %}
+<div class="card" style="margin-top:16px">
+  <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+    <span class="sub">벤치마크 대비 상대수익 — 0선 = {{ names.get(bench, bench) }} · 선 위 = 시장 아웃퍼폼</span>
+    <span class="pills" style="margin:0 0 0 auto">
+      <a href="javascript:void(0)" id="rel-1m">1M</a>
+      <a href="javascript:void(0)" id="rel-3m" class="on">3M</a>
+    </span>
+  </div>
+  <div class="pills" id="rel-chips" style="margin-bottom:8px"></div>
+  <div id="rel" style="height:300px"></div>
+  <div class="reason" style="margin-top:6px">기간 시작일을 0%로 리베이스한 (섹터 ÷ 벤치마크) 수익률 — RRG의 상대강도를 시간축으로 펼친 것.
+    기본은 상대수익 상위 6개만 표시, 이름 클릭으로 켜고 끄기.</div>
+</div>
+{% endif %}
 
 <div class="card" style="margin-top:16px;overflow-x:auto">
     <table>
@@ -62,6 +78,7 @@
 const TRAILS = {{ trails|tojson }};
 const PRICES = {{ prices|tojson }};
 const NAMES = {{ names|tojson }};
+const REL = {{ rel|tojson }};
 const QUAD_COLOR = { 1: "#0ca30c", 2: "#fab219", 3: "#d03b3b", 4: "#3987e5" };
 
 // ---- RRG scatter ----
@@ -124,6 +141,87 @@ const QUAD_COLOR = { 1: "#0ca30c", 2: "#fab219", 3: "#d03b3b", 4: "#3987e5" };
       { x: xr[0], y: yr[1], text: "개선", showarrow: false, xanchor: "left", font: { color: "#898781", size: 11 } },
     ],
   }, { displayModeBar: false, responsive: true });
+})();
+
+// ---- 상대수익 겹침 차트 (벤치마크 대비, 1M/3M 리베이스) ----
+(function () {
+  const el = document.getElementById("rel");
+  if (!el || !REL || !Object.keys(REL).length) return;
+  const PALETTE = [
+    "#3987e5", "#0ca30c", "#fab219", "#d03b3b", "#9a6ee8", "#2ab5a5",
+    "#e56ba9", "#8a9a2e", "#e5843a", "#5a7de5", "#4ab54a", "#c9c94a",
+    "#b55a5a", "#7ec8e3", "#c98ae5", "#89b489", "#e5b489", "#6a6ae5",
+    "#a3a35a", "#5ab5b5", "#e57a7a", "#94e57a",
+  ];
+  const chart = LightweightCharts.createChart(el, {
+    layout: { background: { color: "#1a1a19" }, textColor: "#898781" },
+    grid: { vertLines: { color: "#2c2c2a" }, horzLines: { color: "#2c2c2a" } },
+    rightPriceScale: { borderColor: "#383835" },
+    timeScale: { borderColor: "#383835" },
+    height: 300,
+  });
+
+  const rebase = (pts, win) => {
+    const take = pts.slice(-(win + 1));
+    const base = take[0][1];
+    return take.map(p => ({ time: p[0], value: +((p[1] / base - 1) * 100).toFixed(2) }));
+  };
+  const codes = Object.keys(REL);
+  const endRel = c => { const s = rebase(REL[c], 63); return s[s.length - 1].value; };
+  codes.sort((a, b) => endRel(b) - endRel(a));   // 3M 상대수익 내림차순 — 칩 순서·기본 표시
+
+  const pctFmt = { type: "custom", formatter: v => v.toFixed(1) + "%" };
+  const state = {};
+  codes.forEach((c, i) => {
+    state[c] = {
+      color: PALETTE[i % PALETTE.length],
+      on: i < 6,
+      series: chart.addLineSeries({
+        color: PALETTE[i % PALETTE.length], lineWidth: 2, visible: i < 6,
+        title: NAMES[c] || c, priceLineVisible: false, priceFormat: pctFmt,
+        crosshairMarkerRadius: 3,
+      }),
+    };
+  });
+  const zero = chart.addLineSeries({
+    color: "#55534e", lineWidth: 1, lineStyle: 2, priceFormat: pctFmt,
+    priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+  });
+
+  let win = 63;
+  function apply() {
+    codes.forEach(c => state[c].series.setData(rebase(REL[c], win)));
+    const t = rebase(REL[codes[0]], win);
+    zero.setData([{ time: t[0].time, value: 0 }, { time: t[t.length - 1].time, value: 0 }]);
+    chart.timeScale().fitContent();
+  }
+  apply();
+
+  const chipbox = document.getElementById("rel-chips");
+  codes.forEach(c => {
+    const a = document.createElement("a");
+    a.href = "javascript:void(0)";
+    a.innerHTML = '<span style="color:' + state[c].color + '">●</span> ' + (NAMES[c] || c);
+    a.className = state[c].on ? "on" : "";
+    a.onclick = () => {
+      state[c].on = !state[c].on;
+      state[c].series.applyOptions({ visible: state[c].on });
+      a.className = state[c].on ? "on" : "";
+    };
+    chipbox.appendChild(a);
+  });
+
+  const b1 = document.getElementById("rel-1m"), b3 = document.getElementById("rel-3m");
+  const setWin = w => {
+    win = w;
+    b1.className = w === 21 ? "on" : "";
+    b3.className = w === 63 ? "on" : "";
+    apply();
+  };
+  b1.onclick = () => setWin(21);
+  b3.onclick = () => setWin(63);
+
+  new ResizeObserver(() => chart.applyOptions({ width: el.clientWidth })).observe(el);
 })();
 
 // ---- 가격 차트 (Lightweight Charts) ----

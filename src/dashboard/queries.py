@@ -106,6 +106,34 @@ def prices(con, sym: str, n: int = 260):
     return [{"time": r["date"], "value": round(r["close"], 2)} for r in reversed(rows)]
 
 
+def rel_ratio_series(con, codes: list[str], bench: str, n: int = 64):
+    """벤치마크 대비 가격비율 시계열 — RRG 아래 상대수익 겹침 차트용.
+
+    반환: {code: [[date, sector/bench], ...]} (날짜 오름차순).
+    리베이스(0% 기준점)는 클라이언트에서 1M/3M 윈도우로 수행.
+    """
+    def last_n(sym):
+        rows = con.execute(
+            "SELECT date, close FROM prices_daily WHERE symbol=? ORDER BY date DESC LIMIT ?",
+            (sym, n),
+        ).fetchall()
+        return {r["date"]: r["close"] for r in rows}
+
+    bmap = last_n(bench)
+    out = {}
+    for c in codes:
+        if c == bench:
+            continue
+        pts = [
+            [d, round(v / bmap[d], 6)]
+            for d, v in sorted(last_n(c).items())
+            if bmap.get(d)
+        ]
+        if len(pts) >= 2:
+            out[c] = pts
+    return out
+
+
 def market_flows(con):
     """시장 단위 수급: (시장, 투자자)별 최근 5일/20일 누적."""
     rows = con.execute(

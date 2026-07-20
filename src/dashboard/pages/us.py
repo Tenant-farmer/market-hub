@@ -18,10 +18,12 @@ def us():
     if sym not in cfg["symbols"]:
         sym = "SMH"
     prices = queries.prices(con, sym)
+    rel = queries.rel_ratio_series(con, list(trails.keys()), cfg["benchmark"])
     con.close()
     return render_template(
         "us.html",
         date=date, ranking=ranking, trails=trails, prices=prices, sym=sym,
+        rel=rel, bench=cfg["benchmark"],
         names=cfg.get("names", {}), symbols=cfg["symbols"],
         quad=QUAD, quad_ko=QUAD_KO,
         cards=queries.leader_cards(ranking, cfg.get("names", {})),
