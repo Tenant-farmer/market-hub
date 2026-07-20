@@ -116,6 +116,13 @@
     </div>
   </div>
   <div class="nav-group">
+    <span class="{{ 'active' if active=='stocks' }}">종목 ▾</span>
+    <div class="menu">
+      <a href="/stocks?mkt=kr">KR 종목</a>
+      <a href="/stocks?mkt=us">US 종목</a>
+    </div>
+  </div>
+  <div class="nav-group">
     <span class="{{ 'active' if active in ('leaders', 'kr_leaders') }}">주도주 ▾</span>
     <div class="menu">
       <a href="/leaders" class="{{ 'active' if active=='leaders' }}">US 주도주</a>

@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% set active = 'stocks' %}
+{% block title %}종목 리서치 — market-hub{% endblock %}
+{% block body %}
+<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+  <h1>종목 리서치</h1>
+  <span class="sub">시장·시가총액·섹터별로 나눠 보고, 종목명을 클릭하면 상세로 이동</span>
+  {% if hub %}<span style="margin-left:auto" class="sub"><strong style="color:var(--ink)">{{ '{:,}'.format(hub.total) }}</strong>개 종목 · 기준 {{ hub.date }}</span>{% endif %}
+</div>
+
+{# ---- 필터 ---- #}
+<div class="card" style="margin-bottom:16px">
+  <div class="pills">
+    {% for label, u, on in mkt_pills %}<a href="{{ u }}" class="{{ 'on' if on }}">{{ label }}</a>{% endfor %}
+  </div>
+  <div class="pills">
+    {% for label, u, on in cap_pills %}<a href="{{ u }}" class="{{ 'on' if on }}">{{ label }}</a>{% endfor %}
+  </div>
+  <div class="pills">
+    {% for label, u, on in sector_pills %}<a href="{{ u }}" class="{{ 'on' if on }}">{{ label }}</a>{% endfor %}
+  </div>
+  <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+    <span class="pills" style="margin:0">
+      {% for label, u, on in sort_pills %}<a href="{{ u }}" class="{{ 'on' if on }}">{{ label }}</a>{% endfor %}
+    </span>
+    <form method="get" action="/stocks" style="display:flex;gap:6px;margin-left:auto">
+      <input type="hidden" name="mkt" value="{{ mkt }}">
+      <input type="hidden" name="cap" value="{{ cap }}">
+      {% if sector %}<input type="hidden" name="sector" value="{{ sector }}">{% endif %}
+      <input type="hidden" name="sort" value="{{ sort }}">
+      <input name="q" value="{{ q }}" placeholder="종목명 또는 코드 검색"
+             style="background:var(--surface);border:1px solid var(--border);border-radius:999px;color:var(--ink);padding:5px 14px;font-size:13px;width:200px;outline:none">
+      <button type="submit" class="tab-like" style="background:none;border:1px solid var(--border);border-radius:999px;color:var(--ink-2);padding:5px 14px;font-size:13px;cursor:pointer">검색</button>
+      {% if q %}<a href="/stocks?mkt={{ mkt }}" style="align-self:center;color:var(--muted);text-decoration:none">✕</a>{% endif %}
+    </form>
+  </div>
+</div>
+
+{# ---- 리스트 ---- #}
+{% if not hub or not hub.rows %}
+<div class="card">조건에 맞는 종목이 없습니다{% if q %} — "{{ q }}" 검색 결과 없음{% endif %}</div>
+{% else %}
+<div class="card" style="overflow-x:auto">
+  <table>
+    <thead><tr>
+      <th style="width:36px">#</th><th style="text-align:left">종목</th>
+      <th style="text-align:right">가격</th><th style="text-align:right">등락</th>
+      <th style="text-align:right">시가총액</th><th style="text-align:right">거래량</th><th>시장</th>
+    </tr></thead>
+    <tbody>
+    {% for r in hub.rows %}
+      <tr>
+        <td style="color:var(--muted)">{{ rank_base + loop.index }}</td>
+        <td style="text-align:left">
+          <a href="/stock/{{ r.code }}" style="color:var(--ink);text-decoration:none;font-weight:600">{{ r.name }}</a>
+          <div class="reason">{{ r.code }} · {{ r.sector }}</div>
+        </td>
+        <td style="text-align:right">{{ '$%.2f'|format(r.close) if mkt == 'us' else '{:,.0f}원'.format(r.close) }}</td>
+        <td style="text-align:right" class="{{ 'pos' if r.chg and r.chg > 0 else 'neg' if r.chg and r.chg < 0 }}">{{ '%+.2f%%'|format(r.chg) if r.chg is not none else '–' }}</td>
+        <td style="text-align:right">{{ r.mcap|usd if mkt == 'us' else r.mcap|krw + '원' }}</td>
+        <td style="text-align:right;color:var(--ink-2)">{{ '{:,.1f}M'.format(r.volume / 1e6) if mkt == 'us' else '{:,.0f}만'.format(r.volume / 1e4) }}</td>
+        <td><span class="chip">{{ 'US' if mkt == 'us' else 'KR' }}</span></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{# ---- 페이지네이션 ---- #}
+{% if page_links|length > 1 or next_url %}
+<div class="pills" style="margin-top:14px;justify-content:center">
+  {% for p, u, on in page_links %}<a href="{{ u }}" class="{{ 'on' if on }}">{{ p }}</a>{% endfor %}
+  {% if next_url %}<a href="{{ next_url }}">다음</a>{% endif %}
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}

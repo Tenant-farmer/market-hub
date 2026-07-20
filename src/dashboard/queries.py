@@ -106,6 +106,83 @@ def prices(con, sym: str, n: int = 260):
     return [{"time": r["date"], "value": round(r["close"], 2)} for r in reversed(rows)]
 
 
+CAP_BUCKETS = {
+    "kr": [
+        ("all", "전체", None, None), ("b1", "10조 이상", 1e13, None),
+        ("b2", "1조-10조", 1e12, 1e13), ("b3", "1천억-1조", 1e11, 1e12),
+        ("b4", "1천억 미만", None, 1e11),
+    ],
+    "us": [
+        ("all", "전체", None, None), ("b1", "$200B 이상", 2e11, None),
+        ("b2", "$10B-$200B", 1e10, 2e11), ("b3", "$2B-$10B", 2e9, 1e10),
+        ("b4", "$300M-$2B", 3e8, 2e9),
+    ],
+}
+
+
+def stock_hub(con, mkt="kr", cap="all", sector=None, sort="mcap", q=None, page=1, per=50):
+    """종목 허브 — 시장/시총구간/섹터 필터 + 검색 + 시총·거래량 정렬 (최신 거래일 기준)."""
+    sm = "KR" if mkt == "kr" else "US_STOCK"
+    d0row = con.execute(
+        "SELECT MAX(date) mx FROM prices_daily WHERE market=?", (sm,)
+    ).fetchone()
+    if not d0row or not d0row["mx"]:
+        return None
+    d0 = d0row["mx"]
+    d1 = con.execute(
+        "SELECT MAX(date) mx FROM prices_daily WHERE market=? AND date<?", (sm, d0)
+    ).fetchone()["mx"]
+
+    where, args = ["m.market=?", "s.mcap IS NOT NULL"], [sm]
+    rng = next((b for b in CAP_BUCKETS[mkt] if b[0] == cap), None)
+    if rng:
+        if rng[2] is not None:
+            where.append("s.mcap >= ?")
+            args.append(rng[2])
+        if rng[3] is not None:
+            where.append("s.mcap < ?")
+            args.append(rng[3])
+    if sector:
+        where.append("m.sector_name = ?")
+        args.append(sector)
+    if q:
+        where.append("(m.name LIKE ? OR m.stock_code LIKE ?)")
+        args += [f"%{q}%", f"{q}%"]
+
+    body = f"""
+        FROM sector_map m
+        JOIN stock_meta s ON s.symbol = m.stock_code
+        JOIN prices_daily p ON p.symbol = m.stock_code AND p.date = ?
+        LEFT JOIN prices_daily pp ON pp.symbol = m.stock_code AND pp.date = ?
+        WHERE {" AND ".join(where)}
+    """
+    qargs = [d0, d1, *args]
+    total = con.execute(f"SELECT COUNT(*) n {body}", qargs).fetchone()["n"]
+    order = "p.volume DESC" if sort == "vol" else "s.mcap DESC"
+    rows = con.execute(
+        f"SELECT m.stock_code code, m.name, m.sector_name sector, s.mcap, "
+        f"p.close, p.volume, pp.close prev {body} ORDER BY {order} LIMIT ? OFFSET ?",
+        [*qargs, per, (page - 1) * per],
+    ).fetchall()
+    out = []
+    for r in rows:
+        out.append({
+            "code": r["code"], "name": r["name"] or r["code"], "sector": r["sector"] or "",
+            "mcap": r["mcap"], "close": r["close"], "volume": r["volume"],
+            "chg": round((r["close"] / r["prev"] - 1) * 100, 2) if r["prev"] else None,
+        })
+    sectors = [
+        r["sector_name"] for r in con.execute(
+            "SELECT DISTINCT sector_name FROM sector_map "
+            "WHERE market=? AND sector_name IS NOT NULL ORDER BY sector_name", (sm,)
+        )
+    ]
+    return {
+        "rows": out, "total": total, "sectors": sectors, "date": d0,
+        "pages": max(1, -(-total // per)),
+    }
+
+
 def us_capex(con):
     """US 섹터 CapEx 요약."""
     return _capex_summary(con, "us_capex")

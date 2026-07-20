@@ -6,11 +6,11 @@ def create_app() -> Flask:
     app = Flask(__name__)
     from src.dashboard.fmt import fmt_krw, fmt_usd
     from src.dashboard.pages import (
-        calendar, fed, gurus, health, kr, kr_leaders, leaders, overview, stock, us,
+        calendar, fed, gurus, health, kr, kr_leaders, leaders, overview, stock, stocks, us,
     )
 
     app.jinja_env.filters["usd"] = fmt_usd
     app.jinja_env.filters["krw"] = fmt_krw
-    for mod in (overview, us, kr, leaders, kr_leaders, gurus, calendar, fed, stock, health):
+    for mod in (overview, us, kr, leaders, kr_leaders, stocks, gurus, calendar, fed, stock, health):
         app.register_blueprint(mod.bp)
     return app
