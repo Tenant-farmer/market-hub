@@ -106,6 +106,42 @@ def prices(con, sym: str, n: int = 260):
     return [{"time": r["date"], "value": round(r["close"], 2)} for r in reversed(rows)]
 
 
+def us_capex(con):
+    """섹터별 CapEx — 시총 상위 종목 TTM 합산 + 최신분기 YoY. YoY 내림차순."""
+    try:
+        rows = con.execute(
+            "SELECT sector, symbol, latest_q, capex_ttm, q_latest, q_yoy_base, fetched_at "
+            "FROM us_capex"
+        ).fetchall()
+    except Exception:
+        return None
+    if not rows:
+        return None
+    by: dict[str, dict] = {}
+    for r in rows:
+        d = by.setdefault(r["sector"], {
+            "ttm": 0.0, "q": 0.0, "q_base": 0.0, "n": 0,
+            "latest_q": "", "top": None, "top_v": 0.0,
+        })
+        d["ttm"] += r["capex_ttm"] or 0
+        d["n"] += 1
+        if r["q_yoy_base"]:
+            d["q"] += r["q_latest"]
+            d["q_base"] += r["q_yoy_base"]
+        d["latest_q"] = max(d["latest_q"], r["latest_q"] or "")
+        if (r["capex_ttm"] or 0) > d["top_v"]:
+            d["top"], d["top_v"] = r["symbol"], r["capex_ttm"]
+    out = []
+    for sec, d in by.items():
+        out.append({
+            "sector": sec, "ttm": d["ttm"], "n": d["n"],
+            "yoy": round((d["q"] / d["q_base"] - 1) * 100, 1) if d["q_base"] else None,
+            "latest_q": d["latest_q"], "top": d["top"],
+        })
+    out.sort(key=lambda x: -(x["yoy"] if x["yoy"] is not None else -1e9))
+    return {"rows": out, "fetched": rows[0]["fetched_at"][:10]}
+
+
 def rel_ratio_series(con, codes: list[str], bench: str, n: int = 64):
     """벤치마크 대비 가격비율 시계열 — RRG 아래 상대수익 겹침 차트용.
 

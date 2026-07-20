@@ -116,3 +116,15 @@ CREATE TABLE IF NOT EXISTS collector_runs (
     rows      INTEGER DEFAULT 0,
     message   TEXT
 );
+
+-- US 섹터 CapEx (섹터 시총 상위 종목의 분기 현금흐름 스냅샷, 월 1회 갱신)
+CREATE TABLE IF NOT EXISTS us_capex (
+    sector     TEXT NOT NULL,       -- 한글 섹터명 (sector_map US_STOCK 기준, 금융·리츠 제외)
+    symbol     TEXT NOT NULL,
+    latest_q   TEXT,                -- 최신 공시 분기 말일
+    capex_ttm  REAL,                -- 최근 4개 분기 합 (USD)
+    q_latest   REAL,                -- 최신 분기
+    q_yoy_base REAL,                -- 전년 동분기 (YoY 분모)
+    fetched_at TEXT,
+    PRIMARY KEY (sector, symbol)
+);

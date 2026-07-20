@@ -57,9 +57,16 @@ def home():
     hot_us = queries.overheat_list(con, "us_sector", us_names)
     hot_kr = queries.overheat_list(con, "kr_sector", kr_names)
 
-    # 업종 상대수익 겹침 차트 (KR: 수급 테이블 아래 / US: 그 다음)
+    # 업종 상대수익 겹침 차트 (KR: 수급 테이블 아래 / US: 쏠림·CapEx 행 아래)
     kr_rel = queries.rel_ratio_series(con, [r["code"] for r in kr_ranking], kr_bench)
     us_rel = queries.rel_ratio_series(con, [r["code"] for r in us_ranking], us_bench)
+
+    # US 자금 쏠림 (거래대금 점유율, us_ranking 재사용) + 섹터 CapEx
+    us_flow = sorted(
+        (r for r in us_ranking if r.get("vshare") is not None),
+        key=lambda r: -r["vshare"],
+    )
+    capex = queries.us_capex(con)
 
     # KR 수급
     mflows = queries.market_flows(con)
@@ -86,5 +93,6 @@ def home():
         sflows_in=sflows_in, sflows_out=sflows_out,
         kr_rel=kr_rel, kr_names=kr_names, kr_bench=kr_bench,
         us_rel=us_rel, us_names=us_names, us_bench=us_bench,
+        us_flow=us_flow, capex=capex,
         fresh=fresh,
     )
