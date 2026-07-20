@@ -152,6 +152,35 @@
   </div>
 </div>
 
+{# ---- CapEx 추이 ---- #}
+{% if d.capex %}
+<div class="card" style="margin-top:16px">
+  <div class="sub" style="margin-bottom:10px">CapEx 추이 — 설비투자 (야후 현금흐름)
+    {% if d.capex.yoy is not none %}<span style="float:right">최신분기 YoY
+      <strong class="{{ 'pos' if d.capex.yoy > 0 else 'neg' }}">{{ '%+.1f%%'|format(d.capex.yoy) }}</strong></span>{% endif %}</div>
+  <div style="display:flex;gap:36px;flex-wrap:wrap">
+    {% for grp, gtitle in [(d.capex.y, '연간'), (d.capex.q, '분기')] %}
+    {% if grp %}
+    <div style="flex:1;min-width:280px">
+      <div class="reason" style="margin-bottom:8px">{{ gtitle }}</div>
+      {% set mx = grp|map(attribute='v')|max %}
+      <div style="display:flex;align-items:flex-end;gap:12px">
+        {% for b in grp %}
+        <div style="flex:1;text-align:center">
+          <div class="reason" style="margin-bottom:3px;white-space:nowrap">{{ b.v|krw }}</div>
+          <div style="background:{{ 'var(--accent)' if loop.last else 'rgba(57,135,229,.4)' }};height:{{ ((b.v / mx * 110)|round(0)|int if mx else 2) or 2 }}px;border-radius:3px 3px 0 0"></div>
+          <div class="reason" style="margin-top:4px">{{ b.label[2:7]|replace('-', '.') }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+  </div>
+  <div class="reason" style="margin-top:10px">공장·설비 투자 규모의 방향 — 증가 = 증설 사이클, 급감 = 완공 또는 긴축 · 기준: 각 분기/회계연도 말일</div>
+</div>
+{% endif %}
+
 {# ---- 월별 수익률 ---- #}
 {% if monthly %}
 <div class="card" style="margin-top:16px;overflow-x:auto">

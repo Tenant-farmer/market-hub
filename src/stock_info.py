@@ -200,10 +200,11 @@ def _fetch_kr(con, code: str, sector_code: str) -> dict | None:
     except Exception:
         d["flows"] = d.get("flows")
 
-    # 야후 보조 (대형주 애널리스트 컨센서스·기업 개요)
+    # 야후 보조 (대형주 애널리스트 컨센서스·기업 개요·CapEx 추이)
+    suffix = ".KQ" if d["kq"] else ".KS"
+    yft = yf.Ticker(f"{code}{suffix}")
     try:
-        suffix = ".KQ" if d["kq"] else ".KS"
-        info = yf.Ticker(f"{code}{suffix}").info or {}
+        info = yft.info or {}
         g = info.get
         tgt = _num(g("targetMeanPrice"))
         d.update({
@@ -217,6 +218,25 @@ def _fetch_kr(con, code: str, sector_code: str) -> dict | None:
         })
     except Exception:
         pass
+
+    # CapEx 추이 — 분기 5개 + 연간 4개 (현금흐름표)
+    try:
+        def _capex_series(cf):
+            idx = [i for i in cf.index if "Capital Expenditure" in str(i)]
+            if not idx:
+                return []
+            s = cf.loc[idx[0]].dropna().sort_index()
+            return [{"label": str(ts.date()), "v": abs(float(v))} for ts, v in s.items()]
+
+        q = _capex_series(yft.quarterly_cashflow)[-5:]
+        y = _capex_series(yft.cashflow)[-4:]
+        yoy = (
+            round((q[-1]["v"] / q[-5]["v"] - 1) * 100, 1)
+            if len(q) >= 5 and q[-5]["v"] else None
+        )
+        d["capex"] = {"q": q, "y": y, "yoy": yoy} if (q or y) else None
+    except Exception:
+        d["capex"] = None
     return d
     t = yf.Ticker(sym)
     try:
