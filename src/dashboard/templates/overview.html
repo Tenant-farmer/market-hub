@@ -9,10 +9,22 @@
 <div class="sub">US 기준일 {{ us_date }} · KR 기준일 {{ kr_date }}</div>
 
 {# ---- 시장 온도 ---- #}
-{% macro bench_card(title, snap, reg, fmt='{:,.0f}') %}
+{% macro spark_svg(s) %}
+  {% if s %}
+  <svg viewBox="0 0 100 32" preserveAspectRatio="none" aria-hidden="true"
+       style="width:96px;height:32px;flex:none;opacity:.9"><title>최근 30거래일</title>
+    <polyline points="{{ s.pts }}" fill="none" stroke="{{ '#0ca30c' if s.up else '#d03b3b' }}"
+              stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+  </svg>
+  {% endif %}
+{% endmacro %}
+{% macro bench_card(title, snap, reg, spark=None, fmt='{:,.0f}') %}
   <div class="card">
     <div class="sub" style="margin-bottom:2px">{{ title }}</div>
-    <div class="score">{{ fmt.format(snap.close) if snap else '–' }}</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+      <div class="score">{{ fmt.format(snap.close) if snap else '–' }}</div>
+      {{ spark_svg(spark) }}
+    </div>
     {% if snap and snap.ret21 is not none %}
     <div class="reason"><span class="{{ 'pos' if snap.ret21 > 0 else 'neg' }}">{{ '%+.1f%%'|format(snap.ret21) }}</span> · 최근 1개월</div>
     {% endif %}
@@ -24,12 +36,15 @@
   </div>
 {% endmacro %}
 <div class="cards3" style="grid-template-columns: repeat(5, 1fr)">
-  {{ bench_card('S&P 500 (SPY)', spy, spy_regime) }}
-  {{ bench_card('나스닥 100 (QQQ)', qqq, qqq_regime) }}
-  {{ bench_card('코스피', kospi, kospi_regime) }}
+  {{ bench_card('S&P 500 (SPY)', spy, spy_regime, sparks.get('SPY')) }}
+  {{ bench_card('나스닥 100 (QQQ)', qqq, qqq_regime, sparks.get('QQQ')) }}
+  {{ bench_card('코스피', kospi, kospi_regime, sparks.get('1001')) }}
   <div class="card">
     <div class="sub" style="margin-bottom:2px">코스닥</div>
-    <div class="score">{{ '{:,.0f}'.format(kosdaq.close) if kosdaq else '–' }}</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+      <div class="score">{{ '{:,.0f}'.format(kosdaq.close) if kosdaq else '–' }}</div>
+      {{ spark_svg(sparks.get('2001')) }}
+    </div>
     {% if kosdaq and kosdaq.ret21 is not none %}
     <div class="reason"><span class="{{ 'pos' if kosdaq.ret21 > 0 else 'neg' }}">{{ '%+.1f%%'|format(kosdaq.ret21) }}</span> · 최근 1개월</div>
     {% endif %}

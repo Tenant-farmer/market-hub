@@ -8,6 +8,21 @@ from src.dashboard.fmt import fng_label
 bp = Blueprint("overview", __name__)
 
 
+def _spark(con, sym: str, n: int = 30):
+    """최근 n거래일 종가 → SVG polyline 포인트 (viewBox 0 0 100 32)."""
+    px = queries.prices(con, sym, n)
+    if len(px) < 2:
+        return None
+    vals = [p["value"] for p in px]
+    lo, hi = min(vals), max(vals)
+    rng = (hi - lo) or 1
+    pts = " ".join(
+        f"{i / (len(vals) - 1) * 100:.1f},{2 + (1 - (v - lo) / rng) * 28:.1f}"
+        for i, v in enumerate(vals)
+    )
+    return {"pts": pts, "up": vals[-1] >= vals[0]}
+
+
 @bp.get("/")
 def home():
     cfg = config.load()
@@ -28,6 +43,7 @@ def home():
     qqq_regime = queries.regime(con, "QQQ")
     kospi_regime = queries.regime(con, "1001")
     kosdaq_regime = queries.regime(con, "2001")
+    sparks = {s: _spark(con, s) for s in ("SPY", "QQQ", "1001", "2001")}
     macro = queries.macro_context(con)
     signal = queries.vix_signal(con)
     kq_ratio = queries.market_ratio(con)
@@ -88,6 +104,7 @@ def home():
         spy=spy, kospi=kospi,
         qqq=qqq, kosdaq=kosdaq, qqq_regime=qqq_regime, kosdaq_regime=kosdaq_regime,
         spy_regime=spy_regime, kospi_regime=kospi_regime, macro=macro, signal=signal,
+        sparks=sparks,
         kq_ratio=kq_ratio, earnings=earnings, econ=econ, trend=trend, treasury=treasury,
         fed_next=fed_next,
         fng=fng, fng_label=fng_label(fng["value"]) if fng else None, vix=vix,
