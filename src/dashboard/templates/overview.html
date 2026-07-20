@@ -175,11 +175,13 @@
   </div>
 </div>
 
-{# ---- 투자자 동향 (코스피 누적) ---- #}
+{# ---- 투자자 동향 (코스피 누적) + KR 업종 수급 — 시장 전체 → 업종별 분해 ---- #}
+{% if trend or sflows_in %}
+<div class="grid2" style="margin-top:16px">
 {% if trend %}
-<div class="card" style="margin-top:16px">
+<div class="card">
   <div class="sub" style="margin-bottom:6px">투자자 동향 — 코스피 {{ trend.n_days }}일 누적 순매수 (조원)</div>
-  <div id="trend_chart" style="height:260px"></div>
+  <div id="trend_chart" style="height:380px"></div>
   <div style="display:flex; gap:24px; margin-top:8px; flex-wrap:wrap">
     <span><span style="color:#3987e5">●</span> 외국인
       <strong class="{{ 'pos' if trend.totals.foreign.v > 0 else 'neg' }}">{{ trend.totals.foreign.fmt }}</strong></span>
@@ -189,31 +191,9 @@
       <strong class="{{ 'pos' if trend.totals.individual.v > 0 else 'neg' }}">{{ trend.totals.individual.fmt }}</strong></span>
   </div>
 </div>
-<script>
-(function () {
-  const el = document.getElementById("trend_chart");
-  const chart = LightweightCharts.createChart(el, {
-    layout: { background: { color: "#1a1a19" }, textColor: "#898781" },
-    grid: { vertLines: { color: "#2c2c2a" }, horzLines: { color: "#2c2c2a" } },
-    rightPriceScale: { borderColor: "#383835" },
-    timeScale: { borderColor: "#383835" },
-    height: 260,
-  });
-  const S = {{ trend.series|tojson }};
-  const conf = [["foreign", "#3987e5"], ["institution", "#e66767"], ["individual", "#898781"]];
-  for (const [k, color] of conf) {
-    const s = chart.addLineSeries({ color, lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
-    s.setData(S[k]);
-  }
-  chart.timeScale().fitContent();
-  new ResizeObserver(() => chart.applyOptions({ width: el.clientWidth })).observe(el);
-})();
-</script>
 {% endif %}
-
-{# ---- KR 업종 수급 ---- #}
 {% if sflows_in %}
-<div class="card" style="margin-top:16px;overflow-x:auto">
+<div class="card" style="overflow-x:auto">
   <div class="sub" style="margin-bottom:6px">KR 업종 수급 — 외국인+기관 순매수 (KOSPI, 1주 기준 정렬)</div>
   <table>
     <thead><tr>
@@ -243,6 +223,31 @@
     </tbody>
   </table>
 </div>
+{% endif %}
+</div>
+{% endif %}
+
+{% if trend %}
+<script>
+(function () {
+  const el = document.getElementById("trend_chart");
+  const chart = LightweightCharts.createChart(el, {
+    layout: { background: { color: "#1a1a19" }, textColor: "#898781" },
+    grid: { vertLines: { color: "#2c2c2a" }, horzLines: { color: "#2c2c2a" } },
+    rightPriceScale: { borderColor: "#383835" },
+    timeScale: { borderColor: "#383835" },
+    height: 380,
+  });
+  const S = {{ trend.series|tojson }};
+  const conf = [["foreign", "#3987e5"], ["institution", "#e66767"], ["individual", "#898781"]];
+  for (const [k, color] of conf) {
+    const s = chart.addLineSeries({ color, lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
+    s.setData(S[k]);
+  }
+  chart.timeScale().fitContent();
+  new ResizeObserver(() => chart.applyOptions({ width: el.clientWidth })).observe(el);
+})();
+</script>
 {% endif %}
 
 {# ---- KR·US 업종 상대수익 겹침 차트 ---- #}
