@@ -128,3 +128,15 @@ CREATE TABLE IF NOT EXISTS us_capex (
     fetched_at TEXT,
     PRIMARY KEY (sector, symbol)
 );
+
+-- KR 업종 CapEx (KOSPI 비금융 업종 시총 상위 5종목, 야후 .KS, 월 1회 갱신)
+CREATE TABLE IF NOT EXISTS kr_capex (
+    sector     TEXT NOT NULL,
+    symbol     TEXT NOT NULL,       -- 6자리 종목코드
+    latest_q   TEXT,
+    capex_ttm  REAL,                -- 원화
+    q_latest   REAL,
+    q_yoy_base REAL,
+    fetched_at TEXT,
+    PRIMARY KEY (sector, symbol)
+);

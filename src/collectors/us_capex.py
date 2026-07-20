@@ -13,6 +13,22 @@ SKIP_SECTORS = {"금융", "리츠"}
 TOP_N = 10
 
 
+def fetch_capex(ticker: str):
+    """야후 분기 현금흐름에서 CapEx 추출 → (최신분기말, TTM, 최신분기, 전년동분기) 또는 None."""
+    cf = yf.Ticker(ticker).quarterly_cashflow
+    idx = [i for i in cf.index if "Capital Expenditure" in str(i)]
+    if not idx:
+        return None
+    s = cf.loc[idx[0]].dropna().sort_index(ascending=False)
+    if len(s) < 4:
+        return None
+    vals = [abs(float(v)) for v in s.iloc[:5]]
+    return (
+        str(s.index[0].date()), sum(vals[:4]), vals[0],
+        vals[4] if len(vals) >= 5 else None,
+    )
+
+
 def collect(con, top_n: int = TOP_N) -> int:
     con.execute(
         "CREATE TABLE IF NOT EXISTS us_capex ("
@@ -41,20 +57,9 @@ def collect(con, top_n: int = TOP_N) -> int:
     for sector, syms in by_sec.items():
         for sym in syms:
             try:
-                cf = yf.Ticker(sym).quarterly_cashflow
-                idx = [i for i in cf.index if "Capital Expenditure" in str(i)]
-                if not idx:
-                    continue
-                s = cf.loc[idx[0]].dropna().sort_index(ascending=False)
-                if len(s) < 4:
-                    continue
-                vals = [abs(float(v)) for v in s.iloc[:5]]
-                out.append((
-                    sector, sym, str(s.index[0].date()),
-                    sum(vals[:4]), vals[0],
-                    vals[4] if len(vals) >= 5 else None,
-                    fetched,
-                ))
+                got = fetch_capex(sym)
+                if got:
+                    out.append((sector, sym, *got, fetched))
             except Exception:
                 continue
             time.sleep(0.2)

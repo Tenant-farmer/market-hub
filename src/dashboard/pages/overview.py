@@ -61,12 +61,18 @@ def home():
     kr_rel = queries.rel_ratio_series(con, [r["code"] for r in kr_ranking], kr_bench)
     us_rel = queries.rel_ratio_series(con, [r["code"] for r in us_ranking], us_bench)
 
-    # US 자금 쏠림 (거래대금 점유율, us_ranking 재사용) + 섹터 CapEx
+    # 자금 쏠림 (거래대금 점유율, ranking 재사용) + 섹터 CapEx
     us_flow = sorted(
         (r for r in us_ranking if r.get("vshare") is not None),
         key=lambda r: -r["vshare"],
     )
     capex = queries.us_capex(con)
+    kr_vs = sorted(
+        (r for r in kr_ranking if r.get("vshare") is not None),
+        key=lambda r: -r["vshare"],
+    )
+    kr_flow = kr_vs[:9] + kr_vs[-5:] if len(kr_vs) > 14 else kr_vs   # 쏠림 상위 9 + 이탈 하위 5
+    kr_capex = queries.kr_capex(con)
 
     # KR 수급
     mflows = queries.market_flows(con)
@@ -94,5 +100,6 @@ def home():
         kr_rel=kr_rel, kr_names=kr_names, kr_bench=kr_bench,
         us_rel=us_rel, us_names=us_names, us_bench=us_bench,
         us_flow=us_flow, capex=capex,
+        kr_flow=kr_flow, kr_capex=kr_capex,
         fresh=fresh,
     )

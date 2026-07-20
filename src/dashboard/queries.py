@@ -107,11 +107,29 @@ def prices(con, sym: str, n: int = 260):
 
 
 def us_capex(con):
+    """US 섹터 CapEx 요약."""
+    return _capex_summary(con, "us_capex")
+
+
+def kr_capex(con):
+    """KR 업종 CapEx 요약 — 1위 종목은 종목명으로 표시."""
+    res = _capex_summary(con, "kr_capex")
+    if res:
+        for r in res["rows"]:
+            row = con.execute(
+                "SELECT name FROM sector_map WHERE stock_code=? AND market='KR'", (r["top"],)
+            ).fetchone()
+            if row and row["name"]:
+                r["top"] = row["name"]
+    return res
+
+
+def _capex_summary(con, table: str):
     """섹터별 CapEx — 시총 상위 종목 TTM 합산 + 최신분기 YoY. YoY 내림차순."""
     try:
         rows = con.execute(
             "SELECT sector, symbol, latest_q, capex_ttm, q_latest, q_yoy_base, fetched_at "
-            "FROM us_capex"
+            f"FROM {table}"
         ).fetchall()
     except Exception:
         return None

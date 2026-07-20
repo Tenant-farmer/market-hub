@@ -250,6 +250,55 @@
 </script>
 {% endif %}
 
+{# ---- KR 자금 쏠림 (거래대금) + 업종 CapEx ---- #}
+{% if kr_flow or kr_capex %}
+<div class="grid2" style="margin-top:16px">
+{% if kr_flow %}
+<div class="card" style="overflow-x:auto">
+  <div class="sub" style="margin-bottom:6px">KR 업종 자금 쏠림 — 거래대금 점유율 (최근 5일 ÷ 60일 평균)</div>
+  <table>
+    <thead><tr>
+      <th style="text-align:left">업종</th><th>거래대금</th><th>RS 1M</th><th>1M %</th>
+    </tr></thead>
+    <tbody>
+    {% for r in kr_flow %}
+      <tr>
+        <td style="text-align:left;{% if r.vshare < 1.15 and r.vshare > 0.85 %}color:var(--ink-2){% endif %}">
+          {% if r.vshare >= 1.15 %}<strong>쏠림</strong> {% elif r.vshare <= 0.85 %}<span style="color:var(--muted)">이탈</span> {% endif %}{{ kr_names.get(r.code, r.code) }}{{ '·KQ' if r.code.startswith('2') }}</td>
+        <td class="{{ 'pos' if r.vshare >= 1.15 else 'neg' if r.vshare <= 0.85 }}"><strong>{{ '%.2fx'|format(r.vshare) }}</strong></td>
+        <td class="{{ 'pos' if r.rs21 and r.rs21 > 0 else 'neg' if r.rs21 and r.rs21 < 0 }}">{{ '%+.1f'|format(r.rs21) if r.rs21 is not none else '–' }}</td>
+        <td class="{{ 'pos' if r.ret21 and r.ret21 > 0 else 'neg' if r.ret21 and r.ret21 < 0 }}">{{ '%+.1f'|format(r.ret21) if r.ret21 is not none else '–' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <div class="reason" style="margin-top:6px">개인 포함 전체 거래 활동의 집중도 (수급과 별개) · 쏠림 상위 9 + 이탈 하위 5 (KOSPI+KOSDAQ 44개 업종 중) · 1.15x↑ 유입 / 0.85x↓ 이탈</div>
+</div>
+{% endif %}
+{% if kr_capex %}
+<div class="card" style="overflow-x:auto">
+  <div class="sub" style="margin-bottom:6px">KR 업종 CapEx — 설비투자 사이클 (기업 돈은 어디로)</div>
+  <table>
+    <thead><tr>
+      <th style="text-align:left">업종</th><th>TTM</th><th>최신분기 YoY</th><th>기준분기</th>
+    </tr></thead>
+    <tbody>
+    {% for r in kr_capex.rows %}
+      <tr>
+        <td style="text-align:left">{{ r.sector }} <span class="reason">1위 {{ r.top }}</span></td>
+        <td>{{ r.ttm|krw }}</td>
+        <td class="{{ 'pos' if r.yoy and r.yoy > 0 else 'neg' if r.yoy and r.yoy < 0 }}"><strong>{{ '%+.1f%%'|format(r.yoy) if r.yoy is not none else '–' }}</strong></td>
+        <td style="color:var(--muted)">{{ r.latest_q }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <div class="reason" style="margin-top:6px">업종 시총 상위 5종목 분기 현금흐름 합산 (KOSPI, 야후) · 금융 계열 제외 · YoY = 최신분기 vs 전년 동분기 · 수집 {{ kr_capex.fetched }}</div>
+</div>
+{% endif %}
+</div>
+{% endif %}
+
 {# ---- KR·US 업종 상대수익 겹침 차트 ---- #}
 {% if kr_rel %}
 {% with rel = kr_rel, rel_names = kr_names, rel_bench_label = kr_names.get(kr_bench, '코스피'),

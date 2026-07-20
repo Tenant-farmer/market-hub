@@ -18,8 +18,8 @@ load_dotenv()
 
 from src import db
 from src.collectors import (
-    base, earnings, econ_calendar, fed, gurus, kr_flows, kr_sectors, kr_stocks, macro,
-    sentiment, us_capex, us_sectors, us_stocks,
+    base, earnings, econ_calendar, fed, gurus, kr_capex, kr_flows, kr_sectors, kr_stocks,
+    macro, sentiment, us_capex, us_sectors, us_stocks,
 )
 
 
@@ -73,12 +73,14 @@ def main():
         if wd == 0 and not _ran_today(con, "kr_map"):
             base.run_collector("kr_map", kr_sectors.refresh_constituents)
         # CapEx는 분기 공시 — 25일 이상 지났으면 재수집 (사실상 월 1회)
-        capex_fresh = con.execute(
-            "SELECT 1 FROM collector_runs WHERE collector='us_capex' AND status='ok' "
-            "AND run_at >= datetime('now', 'localtime', '-25 days') LIMIT 1"
-        ).fetchone()
-        if wd < 6 and not capex_fresh:
-            base.run_collector("us_capex", us_capex.collect)
+        for cname, mod in (("us_capex", us_capex), ("kr_capex", kr_capex)):
+            fresh_row = con.execute(
+                "SELECT 1 FROM collector_runs WHERE collector=? AND status='ok' "
+                "AND run_at >= datetime('now', 'localtime', '-25 days') LIMIT 1",
+                (cname,),
+            ).fetchone()
+            if wd < 6 and not fresh_row:
+                base.run_collector(cname, mod.collect)
     con.close()
 
     import analyze  # 루트 모듈 (bat이 CWD를 리포 루트로 보장)
