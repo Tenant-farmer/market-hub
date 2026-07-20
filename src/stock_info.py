@@ -41,7 +41,7 @@ def get_detail(con, sym: str, force: bool = False) -> dict | None:
                 d["fetched_at"] = row["fetched_at"]
                 d["cached"] = True
                 return d
-    d = _fetch(sym)
+    d = _fetch(con, sym)
     if d:
         now = datetime.now().isoformat(timespec="seconds")
         con.execute(
@@ -133,6 +133,27 @@ def _fetch_kr(con, code: str, sector_code: str) -> dict | None:
     e_ymd = today.strftime("%Y%m%d")
     try:
         from pykrx import stock as krx
+
+        # 장기 일봉 백필 (최근 10년, 최초 1회) — 상세 차트가 10년 전(또는 상장일)부터 보이게
+        try:
+            lo_d = _min_date(con, code)
+            if lo_d is None or lo_d > (today - timedelta(days=3550)).isoformat():
+                px = krx.get_market_ohlcv(
+                    (today - timedelta(days=3650)).strftime("%Y%m%d"), e_ymd, code
+                )
+                rows_bf = []
+                for ts, r in px.iterrows():
+                    o, c = float(r["시가"]), float(r["종가"])
+                    if o <= 0 or c <= 0:
+                        continue
+                    rows_bf.append((
+                        code, "KR", str(ts.date()), o, float(r["고가"]), float(r["저가"]), c,
+                        float(r["거래량"]),
+                        float(r["거래대금"]) if "거래대금" in px.columns else None,
+                    ))
+                _backfill_daily(con, rows_bf)
+        except Exception:
+            pass
 
         # 펀더멘털 (KRX 공식: PER/PBR/EPS/BPS/DIV/DPS)
         try:
@@ -238,7 +259,47 @@ def _fetch_kr(con, code: str, sector_code: str) -> dict | None:
     except Exception:
         d["capex"] = None
     return d
+
+
+def _min_date(con, sym: str):
+    row = con.execute("SELECT MIN(date) lo FROM prices_daily WHERE symbol=?", (sym,)).fetchone()
+    return row["lo"] if row else None
+
+
+def _backfill_daily(con, rows: list) -> None:
+    if rows:
+        con.executemany(
+            "INSERT OR IGNORE INTO prices_daily "
+            "(symbol, market, date, open, high, low, close, volume, value) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            rows,
+        )
+        con.commit()
+
+
+def _fetch(con, sym: str) -> dict | None:
     t = yf.Ticker(sym)
+
+    # 장기 일봉 백필 (최근 10년, 최초 1회) — 상세 차트가 10년 전(또는 상장일)부터 보이게
+    try:
+        from datetime import date, timedelta
+
+        lo_d = _min_date(con, sym)
+        if lo_d is None or lo_d > (date.today() - timedelta(days=3550)).isoformat():
+            px = t.history(period="10y", interval="1d", auto_adjust=True)
+            rows_bf = []
+            for ts, r in px.iterrows():
+                o, c = float(r["Open"]), float(r["Close"])
+                if o <= 0 or c <= 0:
+                    continue
+                rows_bf.append((
+                    sym, "US_STOCK", str(ts.date()), o, float(r["High"]), float(r["Low"]),
+                    c, float(r["Volume"]), c * float(r["Volume"]),
+                ))
+            _backfill_daily(con, rows_bf)
+    except Exception:
+        pass
+
     try:
         info = t.info or {}
     except Exception:

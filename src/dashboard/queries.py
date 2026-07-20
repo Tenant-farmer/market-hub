@@ -79,7 +79,7 @@ def trails(con, scope: str, points: int = 12, step: int = 5):
     return out
 
 
-def ohlcv(con, sym: str, n: int = 260):
+def ohlcv(con, sym: str, n: int = 2600):
     """캔들차트용 OHLCV. Lightweight Charts 형식."""
     rows = con.execute(
         "SELECT date, open, high, low, close, volume FROM prices_daily "

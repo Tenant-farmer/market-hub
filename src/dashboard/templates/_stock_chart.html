@@ -151,7 +151,12 @@
     mas[n].setData(maData(+n));
   }
 
-  chart.timeScale().fitContent();
+  // 기본 화면은 최근 1년 — 왼쪽으로 드래그/축소하면 백필된 10년 이력이 보임
+  if (OHLCV.length > 300) {
+    chart.timeScale().setVisibleLogicalRange({ from: OHLCV.length - 260, to: OHLCV.length + 3 });
+  } else {
+    chart.timeScale().fitContent();
+  }
   new ResizeObserver(() => chart.applyOptions({ width: el.clientWidth })).observe(el);
 
   // ---- OHLC 레전드 ----
