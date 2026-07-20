@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+{% set active = 'calendar' %}
+{% block title %}{{ sym_name or symbol }} — market-hub{% endblock %}
+{% block body %}
+{% if not d %}
+<h1>{{ symbol }}</h1>
+<div class="card">상세 정보를 불러오지 못했습니다 (미국 S&P500 종목만 지원, 야후 조회 실패 시 <a href="?refresh=1" style="color:var(--accent)">다시 시도</a>)</div>
+{% else %}
+
+{# ---- 헤더 ---- #}
+<div class="card" style="margin-bottom:16px">
+  <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+    <h1 style="margin:0">{{ d.name }}</h1>
+    <span class="chip">{{ d.symbol }}</span>
+    <span class="sub">{{ d.sector }}{% if d.industry %} · {{ d.industry }}{% endif %}</span>
+    <span style="margin-left:auto" class="sub">{{ '캐시' if d.cached else '실시간' }} · {{ d.fetched_at[:16] }} ·
+      <a href="?refresh=1" style="color:var(--accent);text-decoration:none">새로고침</a></span>
+  </div>
+  <div style="display:flex;align-items:baseline;gap:14px;margin-top:8px;flex-wrap:wrap">
+    <span class="score" style="font-size:34px">${{ '%.2f'|format(d.price) }}</span>
+    {% if d.chg is not none %}<span class="{{ 'pos' if d.chg >= 0 else 'neg' }}" style="font-size:16px">{{ '%+.2f%%'|format(d.chg) }}</span>{% endif %}
+    {% if d.w52_pos is not none %}
+    <span style="flex:1;min-width:220px;max-width:420px">
+      <span class="rangebar" style="display:block"><span class="mark" style="left:{{ d.w52_pos }}%"></span></span>
+      <span class="reason" style="display:flex;justify-content:space-between">
+        <span>${{ '%.2f'|format(d.w52_lo) }}</span><span>52주 위치 {{ '%.0f%%'|format(d.w52_pos) }}</span><span>${{ '%.2f'|format(d.w52_hi) }}</span>
+      </span>
+    </span>
+    {% endif %}
+  </div>
+</div>
+
+{# ---- 지표 카드줄 ---- #}
+<div class="cards6">
+  <div class="card" style="padding:12px">
+    <div class="sub">컨센서스 목표가</div>
+    <div class="score" style="font-size:22px">{{ '$%.2f'|format(d.tgt_med) if d.tgt_med else '–' }}</div>
+    {% if d.upside is not none %}<div class="reason"><span class="{{ 'pos' if d.upside > 0 else 'neg' }}">상승여력 {{ '%+.1f%%'|format(d.upside) }}</span></div>{% endif %}
+  </div>
+  <div class="card" style="padding:12px">
+    <div class="sub">PER (TTM)</div>
+    <div class="score" style="font-size:22px">{{ '%.2f'|format(d.per) if d.per else '–' }}</div>
+  </div>
+  <div class="card" style="padding:12px">
+    <div class="sub">포워드 PER</div>
+    <div class="score" style="font-size:22px">{{ '%.2f'|format(d.fper) if d.fper else '–' }}</div>
+  </div>
+  <div class="card" style="padding:12px">
+    <div class="sub">PBR</div>
+    <div class="score" style="font-size:22px">{{ '%.2f'|format(d.pbr) if d.pbr else '–' }}</div>
+  </div>
+  <div class="card" style="padding:12px">
+    <div class="sub">시가총액</div>
+    <div class="score" style="font-size:22px">{{ d.mcap|usd if d.mcap else '–' }}</div>
+  </div>
+  <div class="card" style="padding:12px">
+    <div class="sub">거래량</div>
+    <div class="score" style="font-size:22px">{{ '{:,.1f}M'.format(d.volume / 1e6) if d.volume else '–' }}</div>
+  </div>
+</div>
+
+{# ---- 자체 분석 ---- #}
+{% if our %}
+<div class="card" style="margin-bottom:16px;display:flex;gap:24px;flex-wrap:wrap;align-items:baseline">
+  <span class="sub">market-hub 분석</span>
+  {% if our.leader_score is defined %}<span>주도점수 <strong>{{ '%.0f'|format(our.leader_score) }}</strong>/100</span>{% endif %}
+  {% if our.ret_21 is defined %}<span>1M <span class="{{ 'pos' if our.ret_21 > 0 else 'neg' }}">{{ '%+.1f%%'|format(our.ret_21) }}</span></span>{% endif %}
+  {% if our.rs_mkt_21 is defined %}<span>시장대비 RS <span class="{{ 'pos' if our.rs_mkt_21 > 0 else 'neg' }}">{{ '%+.1f'|format(our.rs_mkt_21) }}%p</span></span>{% endif %}
+  {% if our.high_prox is defined %}<span>52주 고점比 {{ '%.0f%%'|format(our.high_prox * 100) }}</span>{% endif %}
+  {% if our.vol_surge is defined %}<span>거래량 {{ '%.2fx'|format(our.vol_surge) }}</span>{% endif %}
+  <a href="/leaders?sym={{ symbol }}" style="margin-left:auto;color:var(--accent);text-decoration:none">주도주 랭킹에서 보기 →</a>
+</div>
+{% endif %}
+
+{# ---- 차트 ---- #}
+{% include "_stock_chart.html" %}
+
+{# ---- 애널리스트 + EPS ---- #}
+<div class="grid2" style="margin-top:16px">
+  <div class="card">
+    <div class="sub" style="margin-bottom:8px">미국 애널리스트 컨센서스 {% if d.n_analysts %}· 표본 {{ d.n_analysts|int }}명{% endif %}</div>
+    <div class="cards3" style="grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:8px">
+      <div><div class="sub">평균 목표가</div><strong>{{ '$%.2f'|format(d.tgt_mean) if d.tgt_mean else '–' }}</strong></div>
+      <div><div class="sub">범위</div><strong>{{ '$%.0f ~ $%.0f'|format(d.tgt_lo, d.tgt_hi) if d.tgt_lo and d.tgt_hi else '–' }}</strong></div>
+      <div><div class="sub">추천</div><strong class="pos">{{ d.reco }}</strong>{% if d.reco_mean %} <span class="sub">점수 {{ '%.2f'|format(d.reco_mean) }}</span>{% endif %}</div>
+    </div>
+    <div class="reason">추천 점수: 1(적극매수) ~ 5(매도) · 야후 집계</div>
+  </div>
+  <div class="card" style="overflow-x:auto">
+    <div class="sub" style="margin-bottom:8px">EPS 컨센서스
+      {% if d.next_earn %}<span style="float:right">다음 실적 <strong>{{ d.next_earn.date }}</strong>{% if d.next_earn.est %} · 예상 ${{ '%.2f'|format(d.next_earn.est) }}{% endif %}</span>{% endif %}</div>
+    {% if d.eps_hist %}
+    <table>
+      <thead><tr><th style="text-align:left">발표일</th><th>예상</th><th>실제</th><th>서프라이즈</th></tr></thead>
+      <tbody>
+      {% for e in d.eps_hist %}
+        <tr>
+          <td style="text-align:left">{{ e.date }}</td>
+          <td>{{ '$%.2f'|format(e.est) if e.est is not none else '–' }}</td>
+          <td><strong>{{ '$%.2f'|format(e.act) if e.act is not none else '–' }}</strong></td>
+          <td>{% if e.surp is not none %}<span class="{{ 'pos' if e.surp >= 0 else 'neg' }}">{{ '%+.1f%%'|format(e.surp) }}</span>{% else %}–{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<div class="reason">이력 없음</div>{% endif %}
+  </div>
+</div>
+
+{# ---- 재무 6카드 ---- #}
+<div class="cards3" style="margin-top:16px">
+  <div class="card">
+    <div class="sub" style="margin-bottom:6px">수익성</div>
+    <table>
+      <tr><td style="text-align:left">ROE</td><td class="{{ 'pos' if d.roe and d.roe > 15 }}">{{ '%.2f%%'|format(d.roe) if d.roe is not none else '–' }}</td></tr>
+      <tr><td style="text-align:left">ROA</td><td>{{ '%.2f%%'|format(d.roa) if d.roa is not none else '–' }}</td></tr>
+      <tr><td style="text-align:left">순이익률</td><td>{{ '%.2f%%'|format(d.npm) if d.npm is not none else '–' }}</td></tr>
+      <tr><td style="text-align:left">영업이익률</td><td>{{ '%.2f%%'|format(d.opm) if d.opm is not none else '–' }}</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <div class="sub" style="margin-bottom:6px">성장 &amp; 안정성</div>
+    <table>
+      <tr><td style="text-align:left">매출 성장</td><td class="{{ 'pos' if d.rev_g and d.rev_g > 10 }}">{{ '%.2f%%'|format(d.rev_g) if d.rev_g is not none else '–' }}</td></tr>
+      <tr><td style="text-align:left">이익 성장</td><td>{{ '%.2f%%'|format(d.eps_g) if d.eps_g is not none else '–' }}</td></tr>
+      <tr><td style="text-align:left">부채비율</td><td>{{ '%.1f'|format(d.dte) if d.dte is not none else '–' }}</td></tr>
+      <tr><td style="text-align:left">보유: 내부자/기관</td><td>{{ '%.1f%% / %.1f%%'|format(d.ins_pct, d.inst_pct) if d.ins_pct is not none and d.inst_pct is not none else '–' }}</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <div class="sub" style="margin-bottom:6px">배당</div>
+    <table>
+      <tr><td style="text-align:left">배당수익률</td><td>{{ '%.2f%%'|format(d.div_yield) if d.div_yield is not none else '–' }}</td></tr>
+      <tr><td style="text-align:left">배당성향</td><td>{{ '%.1f%%'|format(d.payout) if d.payout is not none else '–' }}</td></tr>
+      <tr><td style="text-align:left">최근 배당금</td><td>{{ '$%.2f'|format(d.div_last) if d.div_last is not none else '–' }}</td></tr>
+      <tr><td style="text-align:left">배당락일</td><td>{{ d.ex_div or '–' }}</td></tr>
+    </table>
+  </div>
+</div>
+<div class="cards3" style="margin-top:16px">
+  <div class="card">
+    <div class="sub" style="margin-bottom:6px">원시 재무 스냅샷 (TTM)</div>
+    <table>
+      <tr><td style="text-align:left">EPS</td><td>{{ '$%.2f'|format(d.eps) if d.eps is not none else '–' }}</td></tr>
+      <tr><td style="text-align:left">BPS</td><td>{{ '$%.2f'|format(d.bps) if d.bps is not none else '–' }}</td></tr>
+      <tr><td style="text-align:left">영업현금흐름</td><td>{{ d.ocf|usd if d.ocf else '–' }}</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <div class="sub" style="margin-bottom:6px">재무 상태</div>
+    <table>
+      <tr><td style="text-align:left">현금</td><td>{{ d.cash|usd if d.cash else '–' }}</td></tr>
+      <tr><td style="text-align:left">총부채</td><td>{{ d.debt|usd if d.debt else '–' }}</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <div class="sub" style="margin-bottom:6px">거래 정보</div>
+    <table>
+      <tr><td style="text-align:left">전일 종가</td><td>{{ '$%.2f'|format(d.prev) if d.prev else '–' }}</td></tr>
+      <tr><td style="text-align:left">거래량</td><td>{{ '{:,.1f}M'.format(d.volume / 1e6) if d.volume else '–' }}</td></tr>
+      <tr><td style="text-align:left">시가총액</td><td>{{ d.mcap|usd if d.mcap else '–' }}</td></tr>
+    </table>
+  </div>
+</div>
+
+{# ---- 내부자 + 기관 ---- #}
+<div class="grid2" style="margin-top:16px">
+  <div class="card" style="overflow-x:auto">
+    <div class="sub" style="margin-bottom:6px">내부자 거래 — SEC Form 4 최근 {{ d.insiders|length }}건</div>
+    {% if d.insiders %}
+    <table>
+      <thead><tr><th style="text-align:left">일자</th><th style="text-align:left">내부자</th><th style="text-align:left">직책</th><th>주식수</th><th>금액</th></tr></thead>
+      <tbody>
+      {% for i in d.insiders %}
+        <tr>
+          <td style="text-align:left;color:var(--muted)">{{ i.date }}</td>
+          <td style="text-align:left">{{ i.insider }}</td>
+          <td style="text-align:left;color:var(--ink-2)">{{ i.position }}</td>
+          <td>{{ '{:,.0f}'.format(i.shares) if i.shares else '–' }}</td>
+          <td>{{ i.value|usd if i.value else '–' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<div class="reason">데이터 없음</div>{% endif %}
+  </div>
+  <div class="card" style="overflow-x:auto">
+    <div class="sub" style="margin-bottom:6px">주요 기관투자자
+      {% if d.inst_pct is not none %}<span style="float:right">기관 보유 {{ '%.1f%%'|format(d.inst_pct) }} · 내부자 {{ '%.1f%%'|format(d.ins_pct) if d.ins_pct is not none else '–' }}</span>{% endif %}</div>
+    {% if d.inst %}
+    <table>
+      <thead><tr><th style="text-align:left">기관</th><th>지분율</th><th>보고일</th></tr></thead>
+      <tbody>
+      {% for i in d.inst %}
+        <tr>
+          <td style="text-align:left">{{ i.holder }}</td>
+          <td>{{ '%.2f%%'|format(i.pct) if i.pct is not none else '–' }}</td>
+          <td style="color:var(--muted)">{{ i.date }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<div class="reason">데이터 없음</div>{% endif %}
+  </div>
+</div>
+
+{# ---- 월별 수익률 ---- #}
+{% if monthly %}
+<div class="card" style="margin-top:16px;overflow-x:auto">
+  <div class="sub" style="margin-bottom:6px">월별 수익률 — 최근 5년 · 종가 기준 (이번 달은 진행 중)</div>
+  <table>
+    <thead><tr><th style="text-align:left"></th>{% for m in range(1, 13) %}<th>{{ m }}월</th>{% endfor %}</tr></thead>
+    <tbody>
+      <tr>
+        <td style="text-align:left;color:var(--muted)">평균</td>
+        {% for c in monthly.avg %}<td style="background:{{ c.bg }}">{{ '%+.1f'|format(c.v) if c.v is not none else '' }}</td>{% endfor %}
+      </tr>
+      {% for yr in monthly.years %}
+      <tr>
+        <td style="text-align:left;color:var(--muted)">{{ yr.y }}</td>
+        {% for c in yr.m %}
+        <td style="background:{{ c.bg }};{% if yr.y == monthly.cur[0] and loop.index == monthly.cur[1] %}outline:1px solid var(--warn);{% endif %}">{{ '%+.1f'|format(c.v) if c.v is not none else '' }}</td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{# ---- 뉴스 ---- #}
+{% if d.news %}
+<div class="card" style="margin-top:16px">
+  <div class="sub" style="margin-bottom:6px">최신 뉴스 (야후 파이낸스)</div>
+  {% for n in d.news %}
+  <div style="padding:7px 0;border-bottom:1px solid var(--grid)">
+    {% if n.url %}<a href="{{ n.url }}" target="_blank" style="color:var(--ink);text-decoration:none">{{ n.title }}</a>
+    {% else %}{{ n.title }}{% endif %}
+    <div class="reason">{{ n.src }}{% if n.date %} · {{ n.date }}{% endif %}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{# ---- 기업 개요 ---- #}
+{% if d.summary %}
+<div class="card" style="margin-top:16px">
+  <div class="sub" style="margin-bottom:6px">기업 개요</div>
+  <div style="color:var(--ink-2);line-height:1.6">{{ d.summary }}{% if d.summary|length >= 900 %}…{% endif %}</div>
+  {% if d.website %}<div style="margin-top:8px"><a href="{{ d.website }}" target="_blank" style="color:var(--accent);text-decoration:none">{{ d.website }} →</a></div>{% endif %}
+</div>
+{% endif %}
+
+<div class="sub" style="margin-top:12px">출처: yfinance (야후 파이낸스) · 정보 제공 목적이며 투자 권유가 아님</div>
+{% endif %}
+{% endblock %}

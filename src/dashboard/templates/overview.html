@@ -259,7 +259,7 @@
       {% for e in earnings %}
         <tr>
           <td><span class="{{ 'hot' if e.dd <= 1 }}">{{ e.dday }}</span></td>
-          <td style="text-align:left"><strong>{{ e.symbol }}</strong></td>
+          <td style="text-align:left"><a href="/stock/{{ e.symbol }}" style="color:var(--accent);text-decoration:none"><strong>{{ e.symbol }}</strong></a></td>
           <td style="text-align:left;color:var(--ink-2)">{{ e.name[:22] }}</td>
           <td>{{ e.time_ko }}</td>
           <td>{{ e.eps }}</td>
