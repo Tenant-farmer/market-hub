@@ -4,3 +4,5 @@ requests
 flask
 python-dotenv
 pykrx>=1.2.8
+lxml                    # pandas.read_html (위키 S&P500, Cboe 풋콜)
+tradingview-screener    # 시가총액 갱신 (us_stocks.refresh_market_caps)
