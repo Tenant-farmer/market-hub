@@ -87,6 +87,17 @@ def test_engine_paper_log_and_risk(client, con):
     assert engine.process_once(con) == {"processed": 0, "rejected": 0}
 
 
+def test_broker_routing(monkeypatch):
+    from src.trading.brokers import alpaca
+
+    monkeypatch.setattr(alpaca, "configured", lambda: True)
+    assert engine._pick_broker("005930").name == "paper_log"   # KR은 키움 전까지 기록만
+    assert engine._pick_broker("AAPL").name == "alpaca"
+    assert engine._pick_broker("BTCUSD").name == "alpaca"
+    monkeypatch.setattr(alpaca, "configured", lambda: False)
+    assert engine._pick_broker("AAPL").name == "paper_log"     # 키 없으면 폴백
+
+
 def test_engine_kill_switch(client, con, monkeypatch):
     _post(client, {"secret": "test-secret", "ticker": "AAPL", "action": "buy"})
     monkeypatch.setenv("KILL_SWITCH", "1")

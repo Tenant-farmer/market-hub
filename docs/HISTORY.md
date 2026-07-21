@@ -396,6 +396,19 @@
   원본 일치 + PRAGMA integrity_check ok. "복원 안 해본 백업은 백업이 아니다"
 - VPS 이전 시 그대로 사용 (호스팅 AUTO BACKUP 유료 기능 대체 — 원래 이 용도로 논의했던 것)
 
+### Alpaca 페이퍼 어댑터 연결 (2026-07-21)
+- 사용자 Alpaca 페이퍼 가입 완료(계좌 ACTIVE, $100k). 키 최초엔 KIWOOM_ 줄에 잘못 입력 →
+  ALPACA_ 줄로 이동(값 비노출로 진단·수정). 연결 200 확인
+- src/trading/brokers/alpaca.py: 페이퍼 REST v2. market 주문, client_order_id 멱등(422 →
+  기존 주문 조회로 대체), 크립토 심볼 매핑(BTCUSD→BTC/USD)+GTC/24시간, order_status/account/positions
+- engine._pick_broker 라우팅: KR 6자리 숫자 → paper_log(키움 전까지 기록만) / 그 외 → Alpaca
+  페이퍼(키 있으면), 키 없으면 paper_log 폴백
+- **실주문 E2E**: 신호(BTCUSD) → 엔진 → Alpaca → 실제 체결 filled @ $65,613.36, 계좌 현금
+  $100,000→$99,934.39, 포지션 BTCUSD 보유 확인. 멱등성: 같은 coid 재제출 시 dup=True, 신규 0건
+- pytest 15(브로커 라우팅 테스트 추가), 미국장 마감 시각이라 크립토(24/7)로 검증
+- 남은 것: 상시 고정 터널 + 엔진 상시화(폴링 데몬 or hourly 편입) → 키움 REST 앱키 → 키움 모의 어댑터
+  → 2주 무인 → 실전 게이트(arm 플래그+risk 포지션/일손실 한도)
+
 ## 미해결 / 예정
 
 - [ ] 브레드스(% >200MA) 신호등 입장 심사 — 사용자 결정으로 보류 (2026-07-16)
