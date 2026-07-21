@@ -377,6 +377,17 @@
   활성 + URL 입력칸 표시 (요금제 지원 확정). Phase 6의 최대 불확실성 해소
 - 다음: 사용자 숙제 남은 2개(키움 REST 앱키·Alpaca 페이퍼 키 → .env) → cloudflared 터널 → Alpaca 페이퍼 어댑터
 
+### TV 실제 알림 E2E 성공 (2026-07-21)
+- cloudflared 임시 터널(trycloudflare)로 수신기를 공개 → 공개 URL 403 게이트 확인 → 사용자가
+  BTCUSD 가격 교차 알림에 웹훅 URL + JSON 메시지({{close}}/{{timenow}} 플레이스홀더) 설정
+- 12:51:33 BTC 65,445 교차 → **TV 발사 → 인터넷 → 터널 → 수신기 → signals 저장 → 엔진 →
+  paper_log 주문 기록**까지 전 구간 검증 완료. {{close}}가 실제가 65,447.28로 치환되어 도착
+- 시크릿은 채팅에 노출하지 않고 data/tv_alert_message.txt(gitignore: data/*.txt)로 전달
+- 신호 감시는 백그라운드 폴링(30초)으로 자동화 — 도착 즉시 처리
+- 테스트 후 터널 종료 (임시 URL 폐기). 상시 운영은 고정 주소(ngrok 고정 도메인 or cloudflared
+  네임드 터널+도메인) 필요 — 브로커 어댑터 연결 단계에서 결정
+- 남은 것: Alpaca 페이퍼 키·키움 REST 앱키(.env) → 고정 터널 → Alpaca 어댑터 → 엔진 상시화
+
 ## 미해결 / 예정
 
 - [ ] 브레드스(% >200MA) 신호등 입장 심사 — 사용자 결정으로 보류 (2026-07-16)
