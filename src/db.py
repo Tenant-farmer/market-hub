@@ -9,9 +9,10 @@ SCHEMA_PATH = ROOT / "db" / "schema.sql"
 
 def connect() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(exist_ok=True)
-    con = sqlite3.connect(DB_PATH)
+    con = sqlite3.connect(DB_PATH, timeout=10)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA journal_mode=WAL")
+    con.execute("PRAGMA busy_timeout=5000")   # 동시 쓰기(워커+수집기) 시 잠금 대기
     return con
 
 

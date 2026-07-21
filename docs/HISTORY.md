@@ -424,6 +424,21 @@
   스모크 통과 시에만. 월 결제로 빌려 테스트 후 이전 결정
 - 다음: 사용자 VPS 선정→스모크 테스트→(통과 시) Linux 이전(systemd/cron 포팅)+엔진 상시화
 
+### 엔진 상시화 (2026-07-21)
+- 기존: 신호가 큐에 쌓여도 수동 process_once 필요 → 자율성 결핍
+- src/trading/worker.py: signals 큐 상시 폴링 워커 (ENGINE_POLL_SEC 기본 15초),
+  아무 일 없어도 ENGINE_HEARTBEAT_SEC(기본 900초)마다 collector_runs('engine') 기록 → /health 노출.
+  process_once 예외는 잡아 기록하고 루프 유지(브로커 일시 장애에 안 죽음)
+- 로그: stdout(VPS systemd용) + data/engine.log 파일 동시 기록(Windows pythonw는 stdout 버림) — flush
+- .env는 절대경로 load_dotenv(cwd 무관) — 스케줄러/systemd에서도 Alpaca 키 로드 확인(configured()=True)
+- db.connect에 busy_timeout=5000 추가 — 워커+수집기 동시 쓰기 잠금 대기(WAL만으론 즉시 lock 에러)
+- 작업 스케줄러 market-hub-engine (ONLOGON, pythonw -m src.trading.worker, WorkingDirectory 지정):
+  대시보드 작업과 달리 **배터리에도 계속·ExecutionTimeLimit PT0S(3일 제한 제거)·크래시 시 1분 후 재시작×3**.
+  MultipleInstancesPolicy=IgnoreNew(중복 방지). run_engine.bat은 수동/디버그용
+- 검증: 스케줄러 워커에 KR 신호 삽입 → 15초 내 자동 처리(paper_log logged), engine.log 기록,
+  워커 프로세스 단일 확인, pytest 15 통과. 재시작은 schtasks /End→/Run (대시보드와 동일 패턴)
+- 이로써 PC에서 이미 완전 무인 페이퍼 파이프라인 가동 — VPS 이전은 "잘 돌던 것 그대로 옮기기"가 됨
+
 ## 미해결 / 예정
 
 - [ ] 브레드스(% >200MA) 신호등 입장 심사 — 사용자 결정으로 보류 (2026-07-16)

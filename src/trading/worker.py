@@ -1,0 +1,78 @@
+"""주문 엔진 상시 워커 — signals 큐를 짧은 주기로 폴링해 자동 처리.
+
+수신기(receiver)는 신호를 큐에 넣고 즉시 200을 주고, 실제 주문 처리는 이 워커가 담당한다.
+PC: 작업 스케줄러 ONLOGON(run_engine.bat) 상시 가동. VPS: systemd 서비스.
+
+- ENGINE_POLL_SEC      (기본 15): 폴링 간격 (자동매매 실시간성 ↔ 부하 트레이드오프)
+- ENGINE_HEARTBEAT_SEC (기본 900): 아무 일 없어도 살아있음 기록 주기 → /health에서 확인
+- process_once 예외는 잡아 기록하고 루프 유지 (브로커 일시 장애에 워커가 죽지 않음)
+
+실행: python -m src.trading.worker   (Ctrl+C로 정지)
+"""
+import os
+import time
+import traceback
+from datetime import datetime
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# 독립 실행(스케줄러/systemd) 시 .env 로드 — cwd 무관 절대경로 (Alpaca 키 등)
+load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+
+from src import db
+from src.trading import engine
+
+POLL = int(os.getenv("ENGINE_POLL_SEC", "15"))
+HEARTBEAT = int(os.getenv("ENGINE_HEARTBEAT_SEC", "900"))
+LOG_PATH = db.ROOT / "data" / "engine.log"
+
+
+def _record(status: str, rows: int, msg: str) -> None:
+    con = db.connect()
+    con.execute(
+        "INSERT INTO collector_runs (collector, run_at, status, rows, message) VALUES (?,?,?,?,?)",
+        ("engine", datetime.now().isoformat(timespec="seconds"), status, rows, msg),
+    )
+    con.commit()
+    con.close()
+
+
+def _log(msg: str) -> None:
+    line = f"[engine worker] {datetime.now():%Y-%m-%d %H:%M:%S} {msg}"
+    print(line, flush=True)                       # VPS(systemd)용 stdout
+    try:
+        with open(LOG_PATH, "a", encoding="utf-8") as f:   # Windows pythonw(창없음)용 파일
+            f.write(line + "\n")
+    except Exception:
+        pass
+
+
+def main() -> None:
+    _log(f"start - poll {POLL}s, heartbeat {HEARTBEAT}s")
+    _record("ok", 0, "worker 시작")
+    last_beat = time.time()
+    while True:
+        try:
+            res = engine.process_once()
+            if res["processed"] or res["rejected"]:
+                _record("ok", res["processed"],
+                        f"처리 {res['processed']} / 거부 {res['rejected']}")
+                _log(str(res))
+                last_beat = time.time()
+            elif time.time() - last_beat >= HEARTBEAT:
+                _record("ok", 0, "heartbeat (대기 중)")
+                last_beat = time.time()
+        except Exception:
+            tb = traceback.format_exc(limit=3)
+            _record("error", 0, tb)
+            _log("ERROR\n" + tb)
+            last_beat = time.time()
+        time.sleep(POLL)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("[engine worker] stopped")
