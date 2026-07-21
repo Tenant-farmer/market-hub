@@ -13,4 +13,8 @@ def create_app() -> Flask:
     app.jinja_env.filters["krw"] = fmt_krw
     for mod in (overview, us, kr, leaders, kr_leaders, stocks, gurus, calendar, fed, stock, health):
         app.register_blueprint(mod.bp)
+
+    from src.trading import receiver   # 웹훅 수신기 (POST /hook/tv)
+
+    app.register_blueprint(receiver.bp)
     return app

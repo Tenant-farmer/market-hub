@@ -358,6 +358,23 @@
   column으로 바꾸고 설명 줄 블록을 margin-top:auto로 바닥 고정(빈 공간이 중간으로 흡수),
   ③ 스파크라인 정렬 center→flex-end (점수 밑단에 맞춤). 5카드 높이 300px 균일 확인
 
+### 자동매매 1단계 — 웹훅 수신기 + paper_log (2026-07-21)
+- Phase 6 진입: 브로커 키 없이 검증 가능한 배관부터 (수신 → 큐 → 엔진 → 주문 기록)
+- 구조 (src/trading/):
+  - receiver.py: POST /hook/tv — 시크릿 검증(hmac.compare_digest) → signals INSERT → 즉시 200 (TV 3초 룰).
+    멱등키 = sha256(secret 제외 payload + UTC날짜) — TV 재전송은 dup 처리, TV 메시지에 {{timenow}} 포함 권장
+  - engine.py: signals(status='new') 폴링 → risk.check → 브로커 → 상태 기록. python -m src.trading.engine (1회)
+  - risk.py: 킬스위치(KILL_SWITCH=1) + action 화이트리스트 + 팻핑거(qty 10만 초과 거부). 실브로커 단계에서
+    포지션 %·일손실 한도 추가 예정
+  - brokers/: base.py(OrderRequest+어댑터 계약), paper_log.py(주문 의도만 orders에 기록, client_order_id UNIQUE 멱등)
+- signals/orders 테이블 (schema.sql + ensure_tables 자기치유), 수신기는 대시보드 앱에 블루프린트로 통합
+  (항상 켜져 있는 market-hub-dashboard가 수신 담당 — 별도 프로세스 없음)
+- WEBHOOK_SECRET 무작위 48hex 생성해 .env에 주입 (빈 플레이스홀더가 이미 있었음)
+- 검증: pytest 5건 추가(시크릿 403/페이로드 400/멱등/엔진+리스크/킬스위치, 총 14 통과) +
+  실서버 E2E: 403 → 200(dup:false) → 재전송 200(dup:true) → 엔진 processed 1 → orders 'logged' 1건
+- 테스트 이슈: sqlite3.Connection.close는 C 확장이라 monkeypatch 불가 → _NoClose 프록시로 해결
+- 다음: 사용자 숙제(TV 웹훅 체크박스·키움 앱키·Alpaca 키) → cloudflared 터널 → Alpaca 페이퍼 어댑터
+
 ## 미해결 / 예정
 
 - [ ] 브레드스(% >200MA) 신호등 입장 심사 — 사용자 결정으로 보류 (2026-07-16)

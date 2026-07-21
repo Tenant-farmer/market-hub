@@ -129,6 +129,38 @@ CREATE TABLE IF NOT EXISTS us_capex (
     PRIMARY KEY (sector, symbol)
 );
 
+-- 자동매매: 웹훅 신호 큐 (수신기가 INSERT, 엔진이 폴링)
+CREATE TABLE IF NOT EXISTS signals (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    hash         TEXT UNIQUE,        -- 멱등키: sha256(payload + UTC날짜) — TV 재전송 중복 방지
+    received_at  TEXT NOT NULL,
+    source       TEXT,               -- tv | internal
+    ticker       TEXT,
+    action       TEXT,               -- buy | sell
+    qty          REAL,
+    price        REAL,
+    strategy     TEXT,
+    raw          TEXT,               -- 원본 JSON (secret 제외)
+    status       TEXT DEFAULT 'new', -- new | processed | rejected
+    processed_at TEXT,
+    result       TEXT
+);
+
+-- 자동매매: 주문 기록 (paper_log 단계엔 '주문 의도'만 기록)
+CREATE TABLE IF NOT EXISTS orders (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    signal_id       INTEGER,
+    client_order_id TEXT UNIQUE,     -- 신호 해시 기반 — 브로커 재제출에도 멱등
+    broker          TEXT,            -- paper_log | alpaca | kiwoom
+    ticker          TEXT,
+    action          TEXT,
+    qty             REAL,
+    price           REAL,
+    status          TEXT,            -- logged | submitted | filled | rejected
+    created_at      TEXT,
+    message         TEXT
+);
+
 -- KR 업종 CapEx (KOSPI 비금융 업종 시총 상위 5종목, 야후 .KS, 월 1회 갱신)
 CREATE TABLE IF NOT EXISTS kr_capex (
     sector     TEXT NOT NULL,
