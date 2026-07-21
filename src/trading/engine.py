@@ -11,20 +11,24 @@ from datetime import datetime
 
 from src import db
 from src.trading import ensure_tables, risk, state
-from src.trading.brokers import alpaca
+from src.trading.brokers import alpaca, kiwoom
 from src.trading.brokers.base import OrderRequest
 from src.trading.brokers.paper_log import PaperLogBroker
 
 
 def _pick_broker(ticker: str, st: dict):
-    """(broker, note) — 실전 게이트 반영. 기본(paper)은 기존 동작 유지."""
+    """(broker, note) — 실전 게이트 반영. 기본(paper)은 페이퍼/모의로만."""
     if st["mode"] == "log":
         return PaperLogBroker(), "log 모드"
     if st["mode"] == "live" and not st["armed"]:
         return PaperLogBroker(), "live 미무장(armed=0) → 로그만"
-    if ticker.isdigit():                       # KR — 키움 어댑터 전까지 기록만
-        return PaperLogBroker(), "KR 페이퍼(키움 대기)"
-    if alpaca.configured():
+    armed_live = st["mode"] == "live" and st["armed"]
+    if ticker.isdigit():                       # KR — 키움
+        # 실계좌(KIWOOM_MOCK=0) 주문은 armed-live 에서만. paper 모드는 모의만 허용
+        if kiwoom.configured() and (kiwoom.is_mock() or armed_live):
+            return kiwoom.KiwoomBroker(), ("kiwoom-mock" if kiwoom.is_mock() else "kiwoom-live")
+        return PaperLogBroker(), "KR 페이퍼(키움 미설정/실계좌 잠금)"
+    if alpaca.configured():                    # US·크립토 — Alpaca (BASE가 페이퍼 고정)
         note = "alpaca-paper"
         if st["mode"] == "live":               # 실계좌 어댑터 미구현 → 페이퍼로 (안전)
             note += " (live 어댑터 미구현→페이퍼)"

@@ -88,15 +88,35 @@ def test_engine_paper_log_and_risk(client, con):
 
 
 def test_broker_routing(monkeypatch):
-    from src.trading.brokers import alpaca
+    from src.trading.brokers import alpaca, kiwoom
 
     monkeypatch.setattr(alpaca, "configured", lambda: True)
+    monkeypatch.setattr(kiwoom, "configured", lambda: False)   # 키움 미설정 시
     paper = {"mode": "paper", "armed": 0}
-    assert engine._pick_broker("005930", paper)[0].name == "paper_log"   # KR은 키움 전까지 기록만
+    assert engine._pick_broker("005930", paper)[0].name == "paper_log"   # 키움 없으면 KR은 기록만
     assert engine._pick_broker("AAPL", paper)[0].name == "alpaca"
     assert engine._pick_broker("BTCUSD", paper)[0].name == "alpaca"
     monkeypatch.setattr(alpaca, "configured", lambda: False)
     assert engine._pick_broker("AAPL", paper)[0].name == "paper_log"     # 키 없으면 폴백
+
+
+def test_kiwoom_routing(monkeypatch):
+    from src.trading.brokers import kiwoom
+
+    monkeypatch.setattr(kiwoom, "configured", lambda: True)
+    paper, live = {"mode": "paper", "armed": 0}, {"mode": "live", "armed": 1}
+
+    # 모의(KIWOOM_MOCK=1): paper 모드에서 KR → kiwoom
+    monkeypatch.setattr(kiwoom, "is_mock", lambda: True)
+    b, note = engine._pick_broker("005930", paper)
+    assert b.name == "kiwoom" and note == "kiwoom-mock"
+
+    # 실계좌(mock=0) + paper 모드 → 안전상 paper_log (실주문 차단)
+    monkeypatch.setattr(kiwoom, "is_mock", lambda: False)
+    assert engine._pick_broker("005930", paper)[0].name == "paper_log"
+    # 실계좌(mock=0) + armed-live → kiwoom-live
+    b2, note2 = engine._pick_broker("005930", live)
+    assert b2.name == "kiwoom" and note2 == "kiwoom-live"
 
 
 def test_gate_modes(monkeypatch):
