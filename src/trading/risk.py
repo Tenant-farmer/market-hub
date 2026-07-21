@@ -7,6 +7,7 @@
 실브로커 연결 시: 일손실 한도(계좌 P&L 필요)를 여기에 추가 (실전 게이트 조건).
 """
 import os
+from datetime import date
 
 ALLOWED_ACTIONS = {"buy", "sell"}
 MAX_QTY = 100000                    # 명백한 오입력 차단 (팻핑거)
@@ -46,7 +47,7 @@ def check(con, sig) -> tuple[bool, str]:
 
     # 일일 주문 건수 서킷브레이커 (오늘 이미 나간 주문 수)
     cap_n = int(_f("MAX_DAILY_ORDERS", MAX_DAILY_ORDERS))
-    today = __import__("datetime").date.today().isoformat()
+    today = date.today().isoformat()
     n = con.execute(
         "SELECT COUNT(*) c FROM orders WHERE substr(created_at,1,10)=?", (today,)
     ).fetchone()["c"]

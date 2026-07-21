@@ -1,7 +1,19 @@
-"""대시보드 페이지 공용 조회."""
+"""대시보드 페이지 공용 조회 (섹터·주도주·수급·종목허브·CapEx).
+
+매크로/신호/레짐은 queries_macro, 일정은 queries_calendar로 분리 — 아래에서 re-export하므로
+호출부는 queries.macro_context(...) / queries.fed_watch(...) 그대로 사용한다.
+"""
 from src import config
 from src.analytics import store
-from src.dashboard.fmt import INV_KO, QUAD_DESC, fmt_krw, fmt_usd
+from src.dashboard.fmt import INV_KO, QUAD_DESC, fmt_krw
+
+from src.dashboard.queries_calendar import (  # noqa: F401  (re-export)
+    earnings_upcoming, econ_upcoming, fed_watch,
+)
+from src.dashboard.queries_macro import (  # noqa: F401  (re-export)
+    bench_snapshot, classify_vix_signal, macro_context, market_ratio,
+    regime, sentiment_latest, treasury_line, vix_signal,
+)
 
 RANKING_ALIASES = {
     "score": "leader_score",
@@ -405,131 +417,6 @@ def kr_sector_strength(con) -> list[dict]:
     ]
 
 
-def bench_snapshot(con, sym: str):
-    """벤치마크 카드: 최근 종가 + 21거래일 수익률(%) + 52주 고점比."""
-    rows = con.execute(
-        "SELECT date, close FROM prices_daily WHERE symbol=? ORDER BY date DESC LIMIT 252",
-        (sym,),
-    ).fetchall()
-    if not rows:
-        return None
-    last = rows[0]
-    ret21 = (last["close"] / rows[21]["close"] - 1) * 100 if len(rows) >= 22 else None
-    hi52 = max(r["close"] for r in rows)
-    return {
-        "date": last["date"], "close": last["close"], "ret21": ret21,
-        "off_hi": (last["close"] / hi52 - 1) * 100 if hi52 else None,
-    }
-
-
-def _macro_series(con, sym: str, n: int = 270) -> list[float]:
-    rows = con.execute(
-        "SELECT close FROM prices_daily WHERE symbol=? ORDER BY date DESC LIMIT ?", (sym, n)
-    ).fetchall()
-    return [r["close"] for r in reversed(rows)]
-
-
-def _macro_stats(vals: list[float], scale: float = 1.0, pct_change: bool = True):
-    """현재값·일변화·30일평균 대비·52주 레인지 위치·1년 백분위."""
-    s = [v * scale for v in vals if v is not None]
-    if len(s) < 40:
-        return None
-    cur, prev = s[-1], s[-2]
-    chg = (cur / prev - 1) * 100 if pct_change else cur - prev
-    ma30 = sum(s[-30:]) / 30
-    ma = (cur / ma30 - 1) * 100 if pct_change else cur - ma30
-    yr = s[-252:]
-    lo, hi = min(yr), max(yr)
-    pos = 50.0 if hi == lo else (cur - lo) / (hi - lo) * 100
-    top = round(100 * sum(1 for x in yr if x >= cur) / len(yr))
-    return {"cur": cur, "chg": chg, "ma": ma, "lo": lo, "hi": hi, "pos": pos, "top": top}
-
-
-def macro_context(con) -> list[dict]:
-    """시장 컨텍스트 카드 데이터 (VIX/WTI/금/10Y/스프레드/HYG)."""
-    # 야후 ^TNX/^IRX는 이미 %단위 (4.55 = 4.55%)
-    spread = [
-        r["v"] for r in con.execute(
-            """
-            SELECT (a.close - b.close) v FROM prices_daily a
-            JOIN prices_daily b ON b.date = a.date AND b.symbol = '^IRX'
-            WHERE a.symbol = '^TNX' ORDER BY a.date DESC LIMIT 270
-            """
-        ).fetchall()
-    ][::-1]
-
-    spec = [
-        ("⚠", "VIX 공포지수", _macro_series(con, "^VIX"), 1.0, True, lambda v: f"{v:.1f}"),
-        ("🛢", "WTI 원유", _macro_series(con, "CL=F"), 1.0, True, lambda v: f"${v:.2f}"),
-        ("◆", "금", _macro_series(con, "GC=F"), 1.0, True, lambda v: f"${v:,.0f}"),
-        ("↗", "US 10Y 국채", _macro_series(con, "^TNX"), 1.0, False, lambda v: f"{v:.2f}%"),
-        ("⚖", "10Y-3M 스프레드", spread, 1.0, False, lambda v: f"{v:.2f}%"),
-        ("▤", "HYG 하이일드", _macro_series(con, "HYG"), 1.0, True, lambda v: f"${v:.2f}"),
-    ]
-    out = []
-    for icon, label, vals, scale, pctchg, fmt in spec:
-        st = _macro_stats(vals, scale, pctchg)
-        if not st:
-            continue
-        unit = "%" if pctchg else "%p"
-        out.append({
-            "icon": icon, "label": label,
-            "val": fmt(st["cur"]),
-            "chg": f"{st['chg']:+.2f}{unit}", "chg_up": st["chg"] >= 0,
-            "ma": f"{st['ma']:+.1f}{unit}", "ma_up": st["ma"] >= 0,
-            "top": st["top"], "pos": round(st["pos"], 1),
-            "lo": fmt(st["lo"]), "hi": fmt(st["hi"]),
-        })
-    return out
-
-
-def fed_watch(con):
-    """Fed Watch — 현재 목표금리·다음 FOMC·추이·2026 일정·변동 이력."""
-    from datetime import date
-
-    rows = con.execute(
-        "SELECT date, close FROM prices_daily WHERE symbol='DFEDTARU' ORDER BY date"
-    ).fetchall()
-    if len(rows) < 30:
-        return None
-    series = [{"time": r["date"], "value": r["close"]} for r in rows]
-    by_date = {r["date"]: r["close"] for r in rows}
-    dates = [r["date"] for r in rows]
-    cur = rows[-1]["close"]
-
-    today = date.today()
-    meetings = []
-    next_meeting = None
-    for m in config.load()["fed"]["meetings"]:
-        md = date.fromisoformat(m)
-        past = md < today
-        after = next((by_date[d] for d in dates if d > m), None)
-        before = next((by_date[d] for d in reversed(dates) if d <= m), None)
-        chg = None
-        if past and after is not None and before is not None:
-            bp = round((after - before) * 100)
-            chg = "동결" if bp == 0 else (f"{abs(bp)}bp 인하" if bp < 0 else f"{bp}bp 인상")
-        status = "완료" if past else ("다음" if next_meeting is None else "예정")
-        if status == "다음":
-            next_meeting = {"date": m, "dday": (md - today).days}
-        meetings.append({
-            "date": m, "status": status,
-            "rate": f"{after:.2f}%" if past and after is not None else "–",
-            "chg": chg or "–",
-        })
-
-    changes = []
-    prev = None
-    for r in rows:
-        if prev is not None and r["close"] != prev:
-            changes.append({"date": r["date"][:7], "rate": f"{r['close']:.2f}%"})
-        prev = r["close"]
-    return {
-        "cur": cur, "series": series, "meetings": meetings,
-        "next": next_meeting, "changes": changes[-8:][::-1],
-    }
-
-
 def investor_trend(con, mkt: str = "KOSPI", days: int = 60):
     """투자자별 누적 순매수 시계열 (LWC 라인 3개 + 합계)."""
     rows = con.execute(
@@ -554,96 +441,6 @@ def investor_trend(con, mkt: str = "KOSPI", days: int = 60):
         for inv in series
     }
     return {"series": series, "totals": totals, "n_days": len(dates)}
-
-
-def treasury_line(con):
-    """미국 국채 5/10/30년 + 10Y-5Y 스프레드 한 줄."""
-    out = {}
-    for sym, key in (("^FVX", "y5"), ("^TNX", "y10"), ("^TYX", "y30")):
-        s = _macro_series(con, sym, 5)
-        if len(s) < 2:
-            return None
-        out[key] = {"v": s[-1], "chg": s[-1] - s[-2]}
-    spread = out["y10"]["v"] - out["y5"]["v"]
-    out["spread"] = {"v": spread, "normal": spread >= 0}
-    return out
-
-
-def econ_upcoming(con, days: int = 7, limit: int = 12) -> list[dict]:
-    """향후 경제지표 (주요 지표 우선, KST 시각)."""
-    from datetime import date, datetime, timedelta
-
-    today = date.today()
-    try:
-        rows = con.execute(
-            """
-            SELECT date, gmt, country, event, consensus, previous, major
-            FROM econ_calendar WHERE date >= ? AND date <= ?
-            ORDER BY date, major DESC, gmt
-            LIMIT ?
-            """,
-            (today.isoformat(), (today + timedelta(days=days)).isoformat(), limit),
-        ).fetchall()
-    except Exception:
-        return []
-    out = []
-    for r in rows:
-        kst = ""
-        if r["gmt"]:
-            try:
-                t = datetime.fromisoformat(f"{r['date']} {r['gmt']}") + timedelta(hours=9)
-                kst = t.strftime("%H:%M") + ("+1" if t.date().isoformat() > r["date"] else "")
-            except ValueError:
-                pass
-        dd = (date.fromisoformat(r["date"]) - today).days
-        out.append({
-            "date": r["date"],
-            "dday": "오늘" if dd == 0 else "내일" if dd == 1 else f"{dd}일 후",
-            "dd": dd, "kst": kst, "country": r["country"], "event": r["event"],
-            "consensus": r["consensus"] or "–", "previous": r["previous"] or "–",
-            "major": bool(r["major"]),
-        })
-    return out
-
-
-EARN_TIME_KO = {
-    "time-pre-market": "장전",
-    "time-after-hours": "장마감 후",
-    "time-not-supplied": "미정",
-}
-
-
-def earnings_upcoming(con, days: int = 7, limit: int = 14) -> list[dict]:
-    """향후 실적 일정 (US, 시총 큰 순 우선)."""
-    from datetime import date, timedelta
-
-    today = date.today()
-    try:
-        rows = con.execute(
-            """
-            SELECT e.symbol, e.date, e.when_time, e.name, e.eps_forecast, sm.mcap
-            FROM earnings_calendar e
-            LEFT JOIN stock_meta sm ON sm.symbol = e.symbol
-            WHERE e.date >= ? AND e.date <= ?
-            ORDER BY e.date, sm.mcap DESC
-            LIMIT ?
-            """,
-            (today.isoformat(), (today + timedelta(days=days)).isoformat(), limit),
-        ).fetchall()
-    except Exception:
-        return []
-    out = []
-    for r in rows:
-        dd = (date.fromisoformat(r["date"]) - today).days
-        out.append({
-            "symbol": r["symbol"], "name": r["name"], "date": r["date"],
-            "dday": "오늘" if dd == 0 else "내일" if dd == 1 else f"{dd}일 후",
-            "dd": dd,
-            "time_ko": EARN_TIME_KO.get(r["when_time"], "미정"),
-            "eps": r["eps_forecast"] or "–",
-            "mcap_fmt": fmt_usd(r["mcap"]) if r["mcap"] else "–",
-        })
-    return out
 
 
 def theme_radar(con, surge_pct: float = 30.0, top: int = 5) -> list[dict]:
@@ -689,102 +486,6 @@ def theme_radar(con, surge_pct: float = 30.0, top: int = 5) -> list[dict]:
         d["vshare"] = vshare.get(code)
         out.append(d)
     return out
-
-
-def market_ratio(con, num: str = "2001", den: str = "1001", ma: int = 50):
-    """코스닥/코스피 상대비율 — 어느 시장이 아웃퍼폼 중인가 (비율의 50일선 기준)."""
-    rows = con.execute(
-        """
-        SELECT a.date, a.close / b.close v
-        FROM prices_daily a JOIN prices_daily b ON b.date = a.date AND b.symbol = ?
-        WHERE a.symbol = ? ORDER BY a.date DESC LIMIT 300
-        """,
-        (den, num),
-    ).fetchall()
-    vals = [r["v"] for r in reversed(rows)]
-    if len(vals) < ma + 63:
-        return None
-    cur = vals[-1]
-    return {
-        "ratio": cur,
-        "chg21": (cur / vals[-22] - 1) * 100,
-        "chg63": (cur / vals[-64] - 1) * 100,
-        "above": cur >= sum(vals[-ma:]) / ma,
-    }
-
-
-def classify_vix_signal(vix: float, vvix: float, cooling: bool, fng: float | None = None) -> dict:
-    """매수 신호등 — 근거: scripts/vvix_backtest.py + fng_backtest.py.
-
-    보류: [VIX<20 & VVIX≥95](전조) / [VIX 20~30 & VVIX<95](함정)
-    매수: [VIX 20~30 & VVIX≥95](승률 84%) / VIX 30+ / VIX 35+ & VVIX 냉각(적극)
-    회피: 평온장(VIX<20 & VVIX<95)인데 F&G≥75 (극단탐욕: 승률 79→57%)
-    """
-    if vix >= 35 and cooling:
-        return {"state": "buy3", "emoji": "🟢🟢", "cls": "pos",
-                "label": "적극 매수 — 공포 정점 통과",
-                "desc": "VIX 35+ & VVIX 냉각 · 3개월 중앙값 +9.8%"}
-    if vix >= 30:
-        return {"state": "buy2", "emoji": "🟢", "cls": "pos",
-                "label": "분할 매수 구간",
-                "desc": "VIX 30+ · 역사적 승률 72~83%"}
-    if vix >= 20 and vvix >= 95:
-        return {"state": "buy1", "emoji": "🟢", "cls": "pos",
-                "label": "1차 매수 구간 — 급성 공포",
-                "desc": "VIX 20~30 & VVIX 95+ · 승률 84% · 중앙값 +6.9%"}
-    if vix >= 20:
-        return {"state": "hold_trap", "emoji": "🔴", "cls": "neg",
-                "label": "매수 보류 — 함정 구간",
-                "desc": "공포 없는 하락 초입 (VIX 20~30 & VVIX<95) · 승률 65%"}
-    if vvix >= 95:
-        return {"state": "hold_pre", "emoji": "🔴", "cls": "neg",
-                "label": "매수 보류 — 전조 경보",
-                "desc": "평온 속 크래시 헤지 수요 급증 · 승률 66%"}
-    if fng is not None and fng >= 75:
-        return {"state": "avoid_greed", "emoji": "🟠", "cls": "hot",
-                "label": "과열 주의 — 신규매수 자제",
-                "desc": "평온장 극단탐욕 (F&G 75+) · 승률 79→57%, 중앙값 +4.7→+1.6%"}
-    return {"state": "neutral", "emoji": "⚪", "cls": "",
-            "label": "평시 — 신호 없음",
-            "desc": "레짐·주도주 신호를 따르세요"}
-
-
-def vix_signal(con):
-    vix = _macro_series(con, "^VIX", 5)
-    vvix = _macro_series(con, "^VVIX", 5)
-    if not vix or len(vvix) < 5:
-        return None
-    v, w = vix[-1], vvix[-1]
-    w5 = sum(vvix[-5:]) / 5
-    fng_row = con.execute(
-        "SELECT value FROM sentiment_daily WHERE metric='fear_greed' ORDER BY date DESC LIMIT 1"
-    ).fetchone()
-    fng = fng_row["value"] if fng_row else None
-    sig = classify_vix_signal(v, w, cooling=w < w5, fng=fng)
-    sig.update({"vix": v, "vvix": w, "vvix5": w5, "fng": fng})
-    return sig
-
-
-def regime(con, sym: str, ma_days: int = 200):
-    """시장 레짐: 종가 vs 200일 이평 — 모멘텀 크래시 회피용 신호등."""
-    rows = con.execute(
-        "SELECT close FROM prices_daily WHERE symbol=? ORDER BY date DESC LIMIT ?",
-        (sym, ma_days),
-    ).fetchall()
-    if len(rows) < ma_days:
-        return None
-    closes = [r["close"] for r in rows]
-    ma = sum(closes) / len(closes)
-    return {"above": closes[0] >= ma, "dev": (closes[0] / ma - 1) * 100}
-
-
-def sentiment_latest(con):
-    """지표별 최신값: {metric: {date, value}}."""
-    rows = con.execute(
-        "SELECT metric, date, value FROM sentiment_daily sd "
-        "WHERE date = (SELECT MAX(date) FROM sentiment_daily WHERE metric = sd.metric)"
-    ).fetchall()
-    return {r["metric"]: {"date": r["date"], "value": r["value"]} for r in rows}
 
 
 def overheat_list(con, scope: str, names: dict):

@@ -470,6 +470,23 @@
   실제 대시보드는 DASH_PASS 비어 무인증 200 유지(회귀 없음)
 - 주의: Basic Auth는 평문 HTTP에선 도청 가능 → VPS 노출은 DASH_PASS + HTTPS(cloudflared 터널) 경유
 
+### 아키텍처 리뷰 + 리팩토링 (2026-07-21)
+- 사용자 요청: 아키텍처 위젯 → 개선점 파악 → 모듈화/리팩토링(필요시) → 디버깅 → 푸시
+- 아키텍처 위젯(대화): 외부소스→수집기→SQLite허브→분석→대시보드/자동매매, 상시 3프로세스
+- 개선점 파악 (라인 수 스캔): queries.py 734줄(도메인 뒤섞임)이 최대 후보. overview.html 457줄은
+  차기. analyze.py "깨짐"은 콘솔 cp949 렌더일 뿐 파일 정상(오탐). collect.py는 살아있는 수동 CLI
+- **리팩토링 (판단: 과도한 분할 지양, 자기완결 도메인 2개만 추출)**:
+  - queries_macro.py(168줄): bench_snapshot·_macro_series/_stats·macro_context·treasury_line·
+    market_ratio·classify_vix_signal·vix_signal·regime·sentiment_latest
+  - queries_calendar.py(116줄): fed_watch·econ_upcoming·earnings_upcoming
+  - queries.py 734→467줄, 두 모듈을 명시적 re-export → **호출부(11 blueprint) 무변경**. 로직 불변(함수 이동만)
+  - risk.py `__import__("datetime")` 코드 스멜 → 정상 import로 정리 (자체 도입분 청소)
+  - collect.py에 --capex 플래그 추가(수집기는 있는데 수동 CLI에 빠져 있었음)
+- **디버깅/검증**: pytest 20 통과 + **전 14개 라우트 스모크 200** (queries는 테스트 커버리지 얇아 필수) +
+  개요 콘텐츠 실렌더 확인(VIX·신호·국채·Fed·일정·CapEx·스파크라인4·콘솔0). 회귀 없음
+- 남긴 것(의도): overview.html(457)·_stock_chart.html(333) 템플릿 분할은 리스크 대비 이득 작아 보류.
+  queries.py 추가 분할도 현 수준이면 충분 — VPS 이전 후 안정화 시 재검토
+
 ## 미해결 / 예정
 
 - [ ] 브레드스(% >200MA) 신호등 입장 심사 — 사용자 결정으로 보류 (2026-07-16)
