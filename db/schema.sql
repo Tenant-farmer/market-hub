@@ -146,6 +146,14 @@ CREATE TABLE IF NOT EXISTS signals (
     result       TEXT
 );
 
+-- 자동매매: 실전 게이트 상태 (단일 행 id=1, 워커가 매 폴링 읽음 — 재시작 없이 토글)
+CREATE TABLE IF NOT EXISTS trading_state (
+    id         INTEGER PRIMARY KEY CHECK (id = 1),
+    mode       TEXT NOT NULL DEFAULT 'paper',   -- log(로그만) | paper(페이퍼/모의) | live(실전)
+    armed      INTEGER NOT NULL DEFAULT 0,       -- live 실주문 허용 = 1 (mode=live 와 함께여야 실전)
+    updated_at TEXT
+);
+
 -- 자동매매: 주문 기록 (paper_log 단계엔 '주문 의도'만 기록)
 CREATE TABLE IF NOT EXISTS orders (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,

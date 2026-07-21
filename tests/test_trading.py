@@ -5,7 +5,7 @@ import sqlite3
 import pytest
 
 from src import db as db_mod
-from src.trading import engine, ensure_tables
+from src.trading import engine, ensure_tables, risk, state
 
 
 @pytest.fixture
@@ -91,11 +91,66 @@ def test_broker_routing(monkeypatch):
     from src.trading.brokers import alpaca
 
     monkeypatch.setattr(alpaca, "configured", lambda: True)
-    assert engine._pick_broker("005930").name == "paper_log"   # KR은 키움 전까지 기록만
-    assert engine._pick_broker("AAPL").name == "alpaca"
-    assert engine._pick_broker("BTCUSD").name == "alpaca"
+    paper = {"mode": "paper", "armed": 0}
+    assert engine._pick_broker("005930", paper)[0].name == "paper_log"   # KR은 키움 전까지 기록만
+    assert engine._pick_broker("AAPL", paper)[0].name == "alpaca"
+    assert engine._pick_broker("BTCUSD", paper)[0].name == "alpaca"
     monkeypatch.setattr(alpaca, "configured", lambda: False)
-    assert engine._pick_broker("AAPL").name == "paper_log"     # 키 없으면 폴백
+    assert engine._pick_broker("AAPL", paper)[0].name == "paper_log"     # 키 없으면 폴백
+
+
+def test_gate_modes(monkeypatch):
+    from src.trading.brokers import alpaca
+
+    monkeypatch.setattr(alpaca, "configured", lambda: True)
+    # log 모드 → 무조건 paper_log
+    assert engine._pick_broker("AAPL", {"mode": "log", "armed": 0})[0].name == "paper_log"
+    # live + 미무장 → paper_log (안전 게이트)
+    b, note = engine._pick_broker("AAPL", {"mode": "live", "armed": 0})
+    assert b.name == "paper_log" and "미무장" in note
+    # live + 무장 → alpaca (단 실계좌 미구현이라 페이퍼 표기)
+    b, note = engine._pick_broker("AAPL", {"mode": "live", "armed": 1})
+    assert b.name == "alpaca" and "페이퍼" in note
+
+
+def test_gate_state_toggle(con):
+    assert state.get_state(con) == {"mode": "paper", "armed": 0}   # 기본 안전
+    state.set_mode(con, "live")
+    state.set_armed(con, True)
+    assert state.get_state(con) == {"mode": "live", "armed": 1}
+
+
+def _sig(con, ticker, action="buy", qty=1, price=None):
+    con.execute(
+        "INSERT INTO signals (hash, received_at, ticker, action, qty, price, status) "
+        "VALUES (?,?,?,?,?,?, 'new')",
+        (f"{ticker}{action}{qty}{price}", "t", ticker, action, qty, price),
+    )
+    con.commit()
+    return con.execute("SELECT * FROM signals ORDER BY id DESC LIMIT 1").fetchone()
+
+
+def test_risk_max_notional(con, monkeypatch):
+    monkeypatch.setenv("MAX_ORDER_USD", "1000")
+    ok, reason = risk.check(con, _sig(con, "AAPL", qty=100, price=50))   # 5000 > 1000
+    assert not ok and "주문금액" in reason
+    ok, _ = risk.check(con, _sig(con, "AAPL", qty=10, price=50))          # 500 < 1000
+    assert ok
+
+
+def test_risk_daily_order_cap(con, monkeypatch):
+    from datetime import date
+
+    monkeypatch.setenv("MAX_DAILY_ORDERS", "2")
+    today = date.today().isoformat()
+    for i in range(2):
+        con.execute(
+            "INSERT INTO orders (client_order_id, broker, ticker, status, created_at) "
+            "VALUES (?,?,?,?,?)", (f"o{i}", "paper_log", "AAPL", "logged", today + "T10:00:00"),
+        )
+    con.commit()
+    ok, reason = risk.check(con, _sig(con, "AAPL"))
+    assert not ok and "일일 주문 상한" in reason
 
 
 def test_engine_kill_switch(client, con, monkeypatch):

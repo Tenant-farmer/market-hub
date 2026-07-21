@@ -18,4 +18,10 @@ def ensure_tables(con) -> None:
         "broker TEXT, ticker TEXT, action TEXT, qty REAL, price REAL, status TEXT, "
         "created_at TEXT, message TEXT)"
     )
+    con.execute(
+        "CREATE TABLE IF NOT EXISTS trading_state ("
+        "id INTEGER PRIMARY KEY CHECK (id = 1), mode TEXT NOT NULL DEFAULT 'paper', "
+        "armed INTEGER NOT NULL DEFAULT 0, updated_at TEXT)"
+    )
+    con.execute("INSERT OR IGNORE INTO trading_state (id, mode, armed) VALUES (1, 'paper', 0)")
     con.commit()

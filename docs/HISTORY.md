@@ -439,6 +439,24 @@
   워커 프로세스 단일 확인, pytest 15 통과. 재시작은 schtasks /End→/Run (대시보드와 동일 패턴)
 - 이로써 PC에서 이미 완전 무인 페이퍼 파이프라인 가동 — VPS 이전은 "잘 돌던 것 그대로 옮기기"가 됨
 
+### 실전 게이트 (2026-07-21)
+- 목적: 실수로 실제 주문이 나가는 걸 막는 안전장치. **이중 게이트 + 리스크 한도**
+- 이중 게이트 (trading_state 테이블 단일행, DB기반이라 워커 재시작 없이 토글):
+  - mode: log(무조건 paper_log) | paper(페이퍼/모의, 기본) | live(실전)
+  - armed: live 실주문 허용. **mode=live 와 armed=1 이 둘 다여야 실주문** — arm만 해도 paper면 안 나감(검증)
+  - live+미무장 → paper_log 강제(로그만). 실계좌 어댑터 미구현이라 현재는 armed live도 페이퍼로(안전)
+- 리스크 한도 확장 (risk.py, 모든 모드 공통·항상 적용):
+  - 주문금액 상한 MAX_ORDER_USD(1만)/MAX_ORDER_KRW(1천만) — qty×price, 종목 통화 구분
+  - 일일 주문건수 상한 MAX_DAILY_ORDERS(20) — 전략 오작동 서킷브레이커 (오늘 orders 카운트)
+  - 기존 킬스위치·팻핑거 유지. 전부 env로 조정
+- src/trading/control.py CLI: status(상태+한도+오늘주문) / mode / arm / disarm. arm 시 mode에 따라 경고
+- /health에 게이트 상태 카드(모드·무장·실주문여부·킬스위치·한도) + 최근 주문 8건 노출.
+  live+armed면 카드 테두리 경고색
+- engine._pick_broker(ticker, state)→(broker, note): note를 signals.result에 기록해 왜 그 브로커로 갔는지 추적
+- 검증: pytest 19(게이트 모드·상태토글·주문금액·일일상한 4개 추가), control CLI 실동작(arm해도 paper면 안전),
+  배포 워커가 게이트 반영('[KR 페이퍼(키움 대기)]' note), /health 렌더(템플릿 %,.0f→str.format 수정)
+- 남은 것: 대시보드 접근 보안 → (키움 앱키 시) 키움 모의 어댑터 → 2주 무인 → VPS 이전 → 실전(일손실 한도는 계좌 P&L 연결 시)
+
 ## 미해결 / 예정
 
 - [ ] 브레드스(% >200MA) 신호등 입장 심사 — 사용자 결정으로 보류 (2026-07-16)
