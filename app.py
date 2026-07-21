@@ -1,4 +1,9 @@
-"""대시보드 실행: python app.py → http://localhost:5000"""
+"""대시보드 실행: python app.py → http://localhost:5000
+
+바인드 주소/포트는 환경변수로 조정: DASH_HOST(기본 127.0.0.1), DASH_PORT(기본 5000).
+VPS에서 외부 노출 시 DASH_HOST=0.0.0.0 + DASH_PASS(인증) 설정할 것.
+"""
+import os
 import sys
 from pathlib import Path
 
@@ -13,4 +18,6 @@ from src.dashboard import create_app
 app = create_app()
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5000, debug=False)
+    host = os.getenv("DASH_HOST", "127.0.0.1")
+    port = int(os.getenv("DASH_PORT", "5000"))
+    app.run(host=host, port=port, debug=False)

@@ -153,6 +153,43 @@ def test_risk_daily_order_cap(con, monkeypatch):
     assert not ok and "일일 주문 상한" in reason
 
 
+def test_dashboard_auth(monkeypatch):
+    import base64
+
+    from flask import Flask
+
+    from src.dashboard.auth import require_auth
+
+    app = Flask(__name__)
+
+    # DASH_PASS 미설정 → 인증 비활성 (로컬)
+    monkeypatch.delenv("DASH_PASS", raising=False)
+    with app.test_request_context("/"):
+        assert require_auth() is None
+
+    monkeypatch.setenv("DASH_USER", "admin")
+    monkeypatch.setenv("DASH_PASS", "s3cret")
+
+    # 자격 없음 → 401
+    with app.test_request_context("/"):
+        r = require_auth()
+        assert r is not None and r.status_code == 401
+
+    # 웹훅은 인증 예외 (TV는 Basic Auth 불가, 자체 시크릿)
+    with app.test_request_context("/hook/tv", method="POST"):
+        assert require_auth() is None
+
+    # 정답 자격 → 통과
+    tok = base64.b64encode(b"admin:s3cret").decode()
+    with app.test_request_context("/", headers={"Authorization": f"Basic {tok}"}):
+        assert require_auth() is None
+
+    # 틀린 비밀번호 → 401
+    bad = base64.b64encode(b"admin:wrong").decode()
+    with app.test_request_context("/", headers={"Authorization": f"Basic {bad}"}):
+        assert require_auth().status_code == 401
+
+
 def test_engine_kill_switch(client, con, monkeypatch):
     _post(client, {"secret": "test-secret", "ticker": "AAPL", "action": "buy"})
     monkeypatch.setenv("KILL_SWITCH", "1")

@@ -457,6 +457,19 @@
   배포 워커가 게이트 반영('[KR 페이퍼(키움 대기)]' note), /health 렌더(템플릿 %,.0f→str.format 수정)
 - 남은 것: 대시보드 접근 보안 → (키움 앱키 시) 키움 모의 어댑터 → 2주 무인 → VPS 이전 → 실전(일손실 한도는 계좌 P&L 연결 시)
 
+### 대시보드 접근 보안 (2026-07-21)
+- 배경: 대시보드가 localhost 전제라 인증 없음 → VPS 노출 전 필수
+- src/dashboard/auth.py: HTTP Basic Auth (before_request). **DASH_PASS 설정 시에만 강제** —
+  미설정이면 인증 비활성(로컬 PC 개발 그대로). hmac.compare_digest로 타이밍 공격 방어
+- **웹훅(/hook/*)은 인증 예외**: TradingView 서버는 Basic Auth를 못 하고 자체 시크릿이 있음.
+  여기서 막으면 신호가 안 들어옴 → 401 아닌 통과 후 시크릿 검증(403)
+- app.py: DASH_HOST(기본 127.0.0.1)/DASH_PORT(기본 5000) 환경변수 — VPS는 0.0.0.0 바인드
+- .env에 DASH_HOST/DASH_USER(admin)/DASH_PASS 자리 추가 (로컬은 비움)
+- 검증: pytest 20(auth 1개 추가 — 무인증/자격없음401/웹훅예외/정답통과/틀린자격401),
+  임시 인스턴스(:5099, DASH_PASS 켬) 종단 확인 — /=401, 정답=200, /health=401, /hook/tv=403(예외).
+  실제 대시보드는 DASH_PASS 비어 무인증 200 유지(회귀 없음)
+- 주의: Basic Auth는 평문 HTTP에선 도청 가능 → VPS 노출은 DASH_PASS + HTTPS(cloudflared 터널) 경유
+
 ## 미해결 / 예정
 
 - [ ] 브레드스(% >200MA) 신호등 입장 심사 — 사용자 결정으로 보류 (2026-07-16)

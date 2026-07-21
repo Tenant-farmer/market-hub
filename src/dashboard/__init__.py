@@ -17,4 +17,8 @@ def create_app() -> Flask:
     from src.trading import receiver   # 웹훅 수신기 (POST /hook/tv)
 
     app.register_blueprint(receiver.bp)
+
+    from src.dashboard.auth import require_auth   # Basic Auth (DASH_PASS 설정 시)
+
+    app.before_request(require_auth)
     return app
