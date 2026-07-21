@@ -57,6 +57,11 @@ def main():
         ran_us = True
 
     if morning:
+        # 로컬 백업 하루 1회 (DB 스냅샷 + 설정 zip, 최근 14개 유지)
+        if not _ran_today(con, "backup"):
+            from src.jobs import backup
+
+            base.run_collector("backup", backup.run)
         # 전일 마감 확정치 하루 1회 (실패 시 다음 시간에 재시도됨)
         if wd < 6 and not _ran_today(con, "us_stocks"):
             base.run_collector("us_sectors", lambda c: us_sectors.collect(c, days=7))

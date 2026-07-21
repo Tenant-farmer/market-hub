@@ -8,3 +8,4 @@ data/*.db-shm
 data/*.db-wal
 data/*.log
 data/*.txt
+backups/

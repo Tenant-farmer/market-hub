@@ -388,6 +388,14 @@
   네임드 터널+도메인) 필요 — 브로커 어댑터 연결 단계에서 결정
 - 남은 것: Alpaca 페이퍼 키·키움 REST 앱키(.env) → 고정 터널 → Alpaca 어댑터 → 엔진 상시화
 
+### 로컬 백업 (2026-07-21, 보류 해제)
+- src/jobs/backup.py: SQLite 백업 API로 사용 중에도 안전한 DB 스냅샷 + settings.toml + .env를
+  backups/market-hub-YYYYMMDD-HHMM.zip으로 (gitignore), 최근 14개 유지
+- hourly 아침 슬롯 하루 1회 (collector_runs 'backup' → /health에서 신선도 확인 가능)
+- 검증: 40.3MB zip (DB 114MB 압축), **복원 검증까지** — zip에서 꺼낸 DB 열어서 4개 테이블 행 수
+  원본 일치 + PRAGMA integrity_check ok. "복원 안 해본 백업은 백업이 아니다"
+- VPS 이전 시 그대로 사용 (호스팅 AUTO BACKUP 유료 기능 대체 — 원래 이 용도로 논의했던 것)
+
 ## 미해결 / 예정
 
 - [ ] 브레드스(% >200MA) 신호등 입장 심사 — 사용자 결정으로 보류 (2026-07-16)
