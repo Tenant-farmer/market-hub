@@ -373,7 +373,9 @@
 - 검증: pytest 5건 추가(시크릿 403/페이로드 400/멱등/엔진+리스크/킬스위치, 총 14 통과) +
   실서버 E2E: 403 → 200(dup:false) → 재전송 200(dup:true) → 엔진 processed 1 → orders 'logged' 1건
 - 테스트 이슈: sqlite3.Connection.close는 C 확장이라 monkeypatch 불가 → _NoClose 프록시로 해결
-- 다음: 사용자 숙제(TV 웹훅 체크박스·키움 앱키·Alpaca 키) → cloudflared 터널 → Alpaca 페이퍼 어댑터
+- **TV 웹훅 게이트 통과 (2026-07-21)**: 사용자가 알림 다이얼로그에서 확인 — 웹훅 URL 체크박스
+  활성 + URL 입력칸 표시 (요금제 지원 확정). Phase 6의 최대 불확실성 해소
+- 다음: 사용자 숙제 남은 2개(키움 REST 앱키·Alpaca 페이퍼 키 → .env) → cloudflared 터널 → Alpaca 페이퍼 어댑터
 
 ## 미해결 / 예정
 
