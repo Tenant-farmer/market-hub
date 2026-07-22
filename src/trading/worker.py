@@ -48,10 +48,14 @@ def _log(msg: str) -> None:
         pass
 
 
+EXIT_CHECK = int(os.getenv("EXIT_CHECK_SEC", "300"))
+
+
 def main() -> None:
-    _log(f"start - poll {POLL}s, heartbeat {HEARTBEAT}s")
+    _log(f"start - poll {POLL}s, heartbeat {HEARTBEAT}s, exit_check {EXIT_CHECK}s")
     _record("ok", 0, "worker 시작")
     last_beat = time.time()
+    last_exit = 0.0
     while True:
         try:
             res = engine.process_once()
@@ -63,6 +67,16 @@ def main() -> None:
             elif time.time() - last_beat >= HEARTBEAT:
                 _record("ok", 0, "heartbeat (대기 중)")
                 last_beat = time.time()
+            # 청산 레이어 — EXIT_ENABLED=1 일 때만, EXIT_CHECK 주기
+            if os.getenv("EXIT_ENABLED") == "1" and time.time() - last_exit >= EXIT_CHECK:
+                from src.trading import exits
+
+                trig = exits.check_exits()
+                if trig:
+                    _record("ok", len(trig), "청산 신호: " + ", ".join(
+                        f"{t['code']} {t['reason']}" for t in trig))
+                    _log(f"청산 신호 {len(trig)}건: {[t['reason'] for t in trig]}")
+                last_exit = time.time()
         except Exception:
             tb = traceback.format_exc(limit=3)
             _record("error", 0, tb)

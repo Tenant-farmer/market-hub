@@ -173,6 +173,35 @@ def test_risk_daily_order_cap(con, monkeypatch):
     assert not ok and "일일 주문 상한" in reason
 
 
+def test_exit_rules(con):
+    from src.trading import exits
+
+    con.execute(
+        "CREATE TABLE prices_daily (symbol TEXT, market TEXT, date TEXT, open REAL, high REAL, "
+        "low REAL, close REAL, volume REAL, value REAL, PRIMARY KEY(symbol, date))"
+    )
+    for i in range(25):                              # UP: 우상향 → 마지막 종가 > 20MA
+        con.execute("INSERT INTO prices_daily (symbol, date, close) VALUES (?,?,?)",
+                    ("UP", f"2026-06-{i + 1:02d}", 100 + i))
+    for i in range(25):                              # DOWN: 우하향 → 마지막 종가 < 20MA
+        con.execute("INSERT INTO prices_daily (symbol, date, close) VALUES (?,?,?)",
+                    ("DOWN", f"2026-06-{i + 1:02d}", 100 - i))
+    con.commit()
+    assert "손절" in exits._eval(con, {"code": "UP", "qty": 1, "plpc": -10})     # 손절 우선
+    assert "추세이탈" in exits._eval(con, {"code": "DOWN", "qty": 1, "plpc": -1})  # 하락추세
+    assert exits._eval(con, {"code": "UP", "qty": 1, "plpc": 2}) is None          # 건강 → 청산 안 함
+
+
+def test_exit_emit_idempotent(con):
+    from src.trading import exits
+
+    pos = {"code": "005930", "qty": 5, "plpc": -10}
+    exits._emit_sell(con, pos, "손절 -10.0%")
+    exits._emit_sell(con, pos, "손절 -10.5%")   # 같은 사유타입·날짜 → 멱등(1건)
+    rows = con.execute("SELECT * FROM signals WHERE source='exit'").fetchall()
+    assert len(rows) == 1 and rows[0]["action"] == "sell" and rows[0]["qty"] == 5
+
+
 def test_dashboard_auth(monkeypatch):
     import base64
 

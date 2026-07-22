@@ -35,6 +35,13 @@ def _status(con):
     print(f"  주문상한 US  : {risk._f('MAX_ORDER_USD', risk.MAX_ORDER_USD):,.0f} USD")
     print(f"  주문상한 KR  : {risk._f('MAX_ORDER_KRW', risk.MAX_ORDER_KRW):,.0f} KRW")
     print(f"  일일 주문상한: {int(risk._f('MAX_DAILY_ORDERS', risk.MAX_DAILY_ORDERS))}건 (오늘 {n}건)")
+    print("--- 청산 레이어 ---")
+    ex_on = os.getenv("EXIT_ENABLED") == "1"
+    print(f"  자동청산     : {'ON' if ex_on else 'OFF (EXIT_ENABLED=1 로 켬)'}")
+    print(f"  손절         : {risk._f('EXIT_STOP_PCT', -8.0):+.0f}% · "
+          f"추세이탈 {int(risk._f('EXIT_MA', 20))}MA · "
+          f"주도이탈 RS<{risk._f('EXIT_RS', 0.0):+.0f}")
+    print("  미리보기: python -m src.trading.exits --dry")
 
 
 def main(argv):

@@ -514,6 +514,17 @@
 - 버그: fmt_usd가 소액($66)을 "$0K"로 표시 → 포지션 값은 str.format($ 직접). 템플릿 %+,.0f→"{:+,.0f}" (printf 콤마 미지원)
 - 검증: /positions 200(S-Oil·삼성전자·BTC 실손익 표시), /health 수집기전용 확인, pytest 21
 
+### 청산 레이어 (2026-07-22)
+- 진입 로직은 완성됐으나 청산이 없어 "닫힌 전략"이 아니었음 → src/trading/exits.py
+- 청산 규칙 (기계적·env 조정): 손절(EXIT_STOP_PCT -8%) → 추세이탈(종가<EXIT_MA 20MA) → 주도이탈(rs_mkt_21<EXIT_RS 0)
+- 보유 포지션은 브로커에서 취합(키움 account_balance + Alpaca positions), SELL은 signals 큐로 emit →
+  엔진이 게이트·리스크·브로커 경유(buy와 동일 안전장치). 멱등 hash=exit-{종목}-{사유타입}-{날짜}
+- 워커 통합: EXIT_ENABLED=1 일 때만 EXIT_CHECK_SEC(300s) 주기 실행. **기본 OFF**(테스트 중 예기치 않은 매도 방지).
+  dry-run: python -m src.trading.exits --dry (신호 안 냄, 미리보기)
+- **검증(dry)**: 삼성전자 청산(추세이탈, 1M -31.9% 하락추세) / S-Oil·BTC 보유(강세) — 약한/강한 포지션 정확히 구분
+- control status에 청산 설정 노출, .env.example EXIT_* 추가, pytest 23(청산 규칙·멱등 2건 추가)
+- 남은 것: 진입+청산 통합 백테스트(현재는 컴포넌트만 검증), 진입 타이밍(눌림목/확인), 부분 익절(현재 전량)
+
 ## 미해결 / 예정
 
 - [ ] 브레드스(% >200MA) 신호등 입장 심사 — 사용자 결정으로 보류 (2026-07-16)
