@@ -14,6 +14,20 @@ from src.trading.brokers.base import BrokerAdapter, OrderRequest
 _TOKEN = {"val": None, "exp": None}
 
 
+def _num(s) -> float:
+    """키움 응답의 제로패딩 숫자문자열 → float (부호·소수점 처리)."""
+    s = (s or "").strip()
+    if not s:
+        return 0.0
+    neg = s.startswith("-")
+    s = s.lstrip("-").lstrip("0") or "0"
+    try:
+        v = float(s)
+    except ValueError:
+        return 0.0
+    return -v if neg else v
+
+
 def is_mock() -> bool:
     return os.getenv("KIWOOM_MOCK", "1") == "1"
 
@@ -93,6 +107,36 @@ class KiwoomBroker(BrokerAdapter):
         )
         con.commit()
         return {"ok": ok, "dup": False, "status": status}
+
+    def account_balance(self) -> dict | None:
+        """kt00018 계좌평가잔고내역 → {예탁·총손익 + 보유종목별 평가손익}. 조회 실패 시 None."""
+        try:
+            r = requests.post(
+                f"{_base()}/api/dostk/acnt",
+                headers={"Content-Type": "application/json;charset=UTF-8",
+                         "authorization": f"Bearer {_token()}", "api-id": "kt00018"},
+                json={"qry_tp": "1", "dmst_stex_tp": "KRX"}, timeout=15,
+            )
+            d = r.json() if r.content else {}
+            if d.get("return_code") != 0:
+                return None
+            holdings = [
+                {
+                    "code": h["stk_cd"].lstrip("A"), "name": h.get("stk_nm", ""),
+                    "qty": _num(h.get("rmnd_qty")), "avg": _num(h.get("pur_pric")),
+                    "cur": _num(h.get("cur_prc")), "value": _num(h.get("evlt_amt")),
+                    "pl": _num(h.get("evltv_prft")), "plpc": _num(h.get("prft_rt")),
+                }
+                for h in d.get("acnt_evlt_remn_indv_tot", [])
+            ]
+            return {
+                "cash": _num(d.get("prsm_dpst_aset_amt")),
+                "pur": _num(d.get("tot_pur_amt")), "value": _num(d.get("tot_evlt_amt")),
+                "pl": _num(d.get("tot_evlt_pl")), "plpc": _num(d.get("tot_prft_rt")),
+                "holdings": holdings,
+            }
+        except Exception:
+            return None
 
     def is_market_open(self, ticker: str) -> bool:
         now = datetime.now()   # 서버 로컬(KST) 기준

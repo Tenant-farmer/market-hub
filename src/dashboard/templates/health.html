@@ -2,49 +2,11 @@
 {% set active = 'health' %}
 {% block title %}상태 — market-hub{% endblock %}
 {% block body %}
-<h1>상태</h1>
-
-{# ---- 자동매매 실전 게이트 ---- #}
-{% if gate %}
-<div class="card" style="margin-bottom:16px;border:1px solid {{ 'var(--warn)' if gate.live_hot else 'var(--grid)' }}">
-  <div class="sub" style="margin-bottom:8px">자동매매 실전 게이트</div>
-  <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:baseline">
-    <span>모드 <strong>{{ gate.mode }}</strong></span>
-    <span>무장 <strong class="{{ 'neg' if gate.armed }}">{{ '예 ⚠' if gate.armed else '아니오' }}</strong></span>
-    <span>실주문 여부
-      <strong class="{{ 'neg' if gate.live_hot else 'pos' }}">{{ '★ 실전 활성 ★' if gate.live_hot else '로그/페이퍼만 (안전)' }}</strong></span>
-    {% if gate.kill %}<span class="hot">⚠ 킬스위치 활성 (전면중단)</span>{% endif %}
-    <span style="margin-left:auto" class="reason">토글: <code>python -m src.trading.control status</code></span>
-  </div>
-  <div class="reason" style="margin-top:8px">
-    주문상한 {{ "{:,.0f}".format(gate.max_usd) }} USD / {{ "{:,.0f}".format(gate.max_krw) }} KRW ·
-    일일 {{ gate.max_daily }}건 (오늘 {{ gate.orders_today }}건) · 실전은 mode=live + arm 둘 다 필요
-  </div>
+<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+  <h1>수집기 상태</h1>
+  <span class="sub">자동매매 포지션·게이트는 <a href="/positions" style="color:var(--accent);text-decoration:none">포지션 →</a></span>
 </div>
-
-{% if recent_orders %}
-<div class="card" style="margin-bottom:16px;overflow-x:auto">
-  <div class="sub" style="margin-bottom:6px">최근 주문 (paper_log/브로커)</div>
-  <table>
-    <thead><tr><th>시각</th><th>브로커</th><th>종목</th><th>구분</th><th>수량</th><th>상태</th></tr></thead>
-    <tbody>
-    {% for o in recent_orders %}
-      <tr>
-        <td style="color:var(--muted)">{{ o.created_at[5:16] }}</td>
-        <td style="text-align:left">{{ o.broker }}</td>
-        <td style="text-align:left">{{ o.ticker }}</td>
-        <td class="{{ 'pos' if o.action == 'buy' else 'neg' }}">{{ o.action }}</td>
-        <td>{{ o.qty }}</td>
-        <td>{{ o.status }}</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-</div>
-{% endif %}
-{% endif %}
-
-<div class="sub">수집기 최근 30회 실행</div>
+<div class="sub" style="margin-top:6px">수집기 최근 30회 실행</div>
 <div class="card" style="overflow-x:auto">
   <table>
     <thead><tr><th>수집기</th><th>실행 시각</th><th>상태</th><th>rows</th><th style="text-align:left">메시지</th></tr></thead>

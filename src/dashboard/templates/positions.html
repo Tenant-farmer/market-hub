@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% set active = 'positions' %}
+{% block title %}포지션 — market-hub{% endblock %}
+{% block body %}
+<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+  <h1>자동매매 포지션</h1>
+  <span class="sub">KR(키움 모의) + US(Alpaca 페이퍼) 실시간 평가손익 · <a href="/health" style="color:var(--accent);text-decoration:none">수집기 상태 →</a></span>
+</div>
+
+{# ---- 실전 게이트 ---- #}
+<div class="card" style="margin:12px 0 16px;border:1px solid {{ 'var(--warn)' if gate.live_hot else 'var(--grid)' }}">
+  <div class="sub" style="margin-bottom:8px">실전 게이트</div>
+  <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:baseline">
+    <span>모드 <strong>{{ gate.mode }}</strong></span>
+    <span>무장 <strong class="{{ 'neg' if gate.armed }}">{{ '예 ⚠' if gate.armed else '아니오' }}</strong></span>
+    <span>실주문 <strong class="{{ 'neg' if gate.live_hot else 'pos' }}">{{ '★ 실전 활성 ★' if gate.live_hot else '로그/페이퍼만 (안전)' }}</strong></span>
+    {% if gate.kill %}<span class="hot">⚠ 킬스위치 (전면중단)</span>{% endif %}
+    <span style="margin-left:auto" class="reason">토글: <code>python -m src.trading.control status</code></span>
+  </div>
+  <div class="reason" style="margin-top:8px">주문상한 {{ "{:,.0f}".format(gate.max_usd) }} USD / {{ "{:,.0f}".format(gate.max_krw) }} KRW · 일일 {{ gate.max_daily }}건 (오늘 {{ gate.orders_today }}건) · 실전은 mode=live + arm 둘 다</div>
+</div>
+
+{# ---- KR 포지션 (키움) ---- #}
+<div class="card" style="margin-bottom:16px;overflow-x:auto">
+  <div class="sub" style="margin-bottom:6px">KR 보유 — 키움{{ ' 모의' if kr_mock else ' 실전' }}
+    {% if kr %}<span style="float:right">예탁 {{ kr.cash|krw }}원 · 총평가 {{ kr.value|krw }}원 ·
+      총손익 <strong class="{{ 'pos' if kr.pl > 0 else 'neg' if kr.pl < 0 }}">{{ "{:+,.0f}".format(kr.pl) }}원 ({{ '%+.2f%%'|format(kr.plpc) }})</strong></span>{% endif %}
+  </div>
+  {% if kr and kr.holdings %}
+  <table>
+    <thead><tr><th style="text-align:left">종목</th><th>수량</th><th>매입가</th><th>현재가</th><th>평가금액</th><th>평가손익</th><th>수익률</th></tr></thead>
+    <tbody>
+    {% for h in kr.holdings %}
+      <tr>
+        <td style="text-align:left"><a href="/stock/{{ h.code }}" style="color:var(--ink);text-decoration:none">{{ h.name }}</a> <span class="reason">{{ h.code }}</span></td>
+        <td>{{ '{:,.0f}'.format(h.qty) }}</td>
+        <td>{{ '{:,.0f}'.format(h.avg) }}</td>
+        <td>{{ '{:,.0f}'.format(h.cur) }}</td>
+        <td>{{ '{:,.0f}'.format(h.value) }}</td>
+        <td class="{{ 'pos' if h.pl > 0 else 'neg' if h.pl < 0 }}">{{ "{:+,.0f}".format(h.pl) }}</td>
+        <td class="{{ 'pos' if h.plpc > 0 else 'neg' if h.plpc < 0 }}">{{ '%+.2f%%'|format(h.plpc) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <div class="reason" style="margin-top:6px">평가손익은 왕복 거래비용(수수료+세금) 반영 — 소액 단기는 ~0.9% 올라야 본전</div>
+  {% elif kr %}
+  <div class="reason">보유 종목 없음</div>
+  {% else %}
+  <div class="reason">키움 미설정 또는 조회 실패 (.env KIWOOM_APP_KEY)</div>
+  {% endif %}
+</div>
+
+{# ---- US 포지션 (Alpaca) ---- #}
+<div class="card" style="margin-bottom:16px;overflow-x:auto">
+  <div class="sub" style="margin-bottom:6px">US 보유 — Alpaca 페이퍼
+    {% if us %}<span style="float:right">{{ us.acct_no }} · 현금 {{ us.cash|usd }} · 자산 {{ us.equity|usd }} · 매수여력 {{ us.bp|usd }}</span>{% endif %}
+  </div>
+  {% if us and us.holdings %}
+  <table>
+    <thead><tr><th style="text-align:left">종목</th><th>수량</th><th>매입가</th><th>현재가</th><th>평가금액</th><th>평가손익</th><th>수익률</th></tr></thead>
+    <tbody>
+    {% for h in us.holdings %}
+      <tr>
+        <td style="text-align:left"><strong>{{ h.code }}</strong></td>
+        <td>{{ '%g'|format(h.qty) }}</td>
+        <td>${{ "{:,.2f}".format(h.avg) }}</td>
+        <td>${{ "{:,.2f}".format(h.cur) }}</td>
+        <td>${{ "{:,.2f}".format(h.value) }}</td>
+        <td class="{{ 'pos' if h.pl > 0 else 'neg' if h.pl < 0 }}">${{ "{:+,.2f}".format(h.pl) }}</td>
+        <td class="{{ 'pos' if h.plpc > 0 else 'neg' if h.plpc < 0 }}">{{ '%+.2f%%'|format(h.plpc) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% elif us %}
+  <div class="reason">보유 종목 없음</div>
+  {% else %}
+  <div class="reason">Alpaca 미설정 또는 조회 실패 (.env ALPACA_API_KEY)</div>
+  {% endif %}
+</div>
+
+{# ---- 최근 주문 ---- #}
+<div class="card" style="overflow-x:auto">
+  <div class="sub" style="margin-bottom:6px">최근 주문</div>
+  {% if recent_orders %}
+  <table>
+    <thead><tr><th>시각</th><th style="text-align:left">브로커</th><th style="text-align:left">종목</th><th>구분</th><th>수량</th><th>상태</th><th style="text-align:left">메시지</th></tr></thead>
+    <tbody>
+    {% for o in recent_orders %}
+      <tr>
+        <td style="color:var(--muted)">{{ o.created_at[5:16] }}</td>
+        <td style="text-align:left">{{ o.broker }}</td>
+        <td style="text-align:left">{{ o.ticker }}</td>
+        <td class="{{ 'pos' if o.action == 'buy' else 'neg' }}">{{ o.action }}</td>
+        <td>{{ '%g'|format(o.qty) if o.qty is not none else '-' }}</td>
+        <td>{{ o.status }}</td>
+        <td style="text-align:left;color:var(--muted);max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ o.message or '' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<div class="reason">주문 없음</div>{% endif %}
+</div>
+{% endblock %}
