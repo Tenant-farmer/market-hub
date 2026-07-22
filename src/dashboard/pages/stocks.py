@@ -14,9 +14,9 @@ PER = 50
 
 @bp.get("/stocks")
 def stocks():
-    mkt = request.args.get("mkt", "kr")
+    mkt = request.args.get("mkt", "us")
     if mkt not in ("kr", "us"):
-        mkt = "kr"
+        mkt = "us"
     cap = request.args.get("cap", "all")
     if cap not in {b[0] for b in CAP_BUCKETS[mkt]}:
         cap = "all"
