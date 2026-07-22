@@ -6,14 +6,14 @@ def create_app() -> Flask:
     app = Flask(__name__)
     from src.dashboard.fmt import fmt_krw, fmt_usd
     from src.dashboard.pages import (
-        calendar, fed, gurus, health, kr, kr_leaders, leaders, overview, positions, stock,
-        stocks, us,
+        calendar, fed, gurus, health, kr, kr_leaders, leaders, overview, positions, signals,
+        stock, stocks, us,
     )
 
     app.jinja_env.filters["usd"] = fmt_usd
     app.jinja_env.filters["krw"] = fmt_krw
-    for mod in (overview, us, kr, leaders, kr_leaders, stocks, gurus, calendar, fed, stock,
-                positions, health):
+    for mod in (overview, us, kr, leaders, kr_leaders, stocks, signals, gurus, calendar, fed,
+                stock, positions, health):
         app.register_blueprint(mod.bp)
 
     from src.trading import receiver   # 웹훅 수신기 (POST /hook/tv)

@@ -595,6 +595,20 @@
   a63 조인, stocks.py 정렬, stocks.html 컬럼). MU +111%p 1위·AMD 4위 등 중기 반도체 주도 표면화
   (단기 leader_score에선 MU #340). 단기점수와 나란히 보여 '반도체=단기약세·중기강세' 괴리 가시화
 
+### 지표 분석 탭 (/signals) + 히스토리 백필 (2026-07-22)
+- 요청: 공포지표(VIX·VVIX·F&G)를 대표지수(SPY/QQQ·코스피/코스닥)와 겹쳐 '신호가 실제 바닥과
+  어떻게 맞물렸나' 눈으로 분석하는 탭
+- **문제**: DB 히스토리가 얕음(VVIX 1.7년, F&G 6일) → scripts/backfill_indicators.py로 백필.
+  yfinance(auto_adjust=True로 수집기와 동일)로 SPY·QQQ·^VIX·^VVIX·KOSPI(1001)·KOSDAQ(2001) 2015~,
+  CNN 엔드포인트로 F&G 2020-09~. 기존 날짜 안 건드리고 없는 날짜만 삽입(멱등). +약 14000행
+- **페이지**: pages/signals.py + templates/signals.html. 4패널 LWC(4.2.3) 시간축 동기화
+  (subscribeVisibleTimeRangeChange로 길이 달라도 정렬). 지수패널에 매수신호 green 음영(histogram
+  own-scale 트릭). VIX 20/30·VVIX 95·F&G 25/75 임계선. 시장 토글(us/kr) + 지수 토글(SPY↔QQQ).
+  KR은 글로벌 공포에 베타 → 같은 US 공포지표를 KR 지수 위에 겹침(주석 명시)
+- base.html 네비 '지표' 추가, __init__.py 블루프린트 등록. 검증: test_client 200(VIX 2904점),
+  라이브 200, 콘솔 에러 0, 구조(토글·4패널·범례) 정상 렌더
+- 남은 선택: 신호 음영에 F&G 극단탐욕(회피) 구간도 다른 색으로 표시할지 / KR VKOSPI 확보 시 KR 전용 신호
+
 ## 미해결 / 예정
 
 - [ ] 브레드스(% >200MA) 신호등 입장 심사 — 사용자 결정으로 보류 (2026-07-16)

@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% set active = 'signals' %}
+{% block title %}지표 분석 — market-hub{% endblock %}
+{% block body %}
+<script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+  .tbtn { background:none; border:1px solid var(--border); border-radius:999px;
+    color:var(--ink-2); font-size:12px; padding:3px 10px; cursor:pointer; font-family:inherit; }
+  .tbtn.on { color:var(--ink); border-color:var(--accent); background:rgba(57,135,229,.12); }
+  .tbtn:hover { color:var(--ink); }
+  .plabel { color:var(--ink-2); font-size:12px; font-weight:600; margin:12px 0 4px; }
+  .plabel small { color:var(--muted); font-weight:400; }
+</style>
+
+<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+  <h1>지표 분석</h1>
+  <span class="sub" style="margin:0">공포지표(VIX·VVIX·F&G)와 대표지수를 겹쳐 — 신호가 실제 바닥과 어떻게 맞물렸는지</span>
+</div>
+
+<div class="pills" style="margin-top:8px">
+  {% for label, key, on in pills %}<a href="/signals?mkt={{ key }}" class="{{ 'on' if on }}">{{ label }}</a>{% endfor %}
+</div>
+
+<div class="card">
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">
+    <span id="idxbar" style="display:flex;gap:6px"></span>
+    <span class="sub" style="margin:0;margin-left:auto">
+      <span style="display:inline-block;width:10px;height:10px;background:rgba(12,163,12,.35);border-radius:2px;vertical-align:middle"></span>
+      매수신호 ON <small>(VIX≥30 또는 VIX≥20 &amp; VVIX≥95)</small>
+    </span>
+  </div>
+  <div id="p_index" style="height:280px"></div>
+
+  <div class="plabel">VIX <small>— 변동성(공포). 20·30 임계선</small></div>
+  <div id="p_vix" style="height:130px"></div>
+
+  <div class="plabel">VVIX <small>— 변동성의 변동성(크래시 헤지 수요). 95 임계선</small></div>
+  <div id="p_vvix" style="height:130px"></div>
+
+  <div class="plabel">Fear &amp; Greed <small>— CNN 심리지수(0 공포 ~ 100 탐욕). 2020-09~</small></div>
+  <div id="p_fng" style="height:130px"></div>
+
+  <div class="reason" style="margin-top:10px">
+    회색 세로선을 드래그하면 네 패널이 같이 움직입니다 · 지수·VIX·VVIX 2015~, F&amp;G 2020-09~ · 공포지표는 글로벌(미국) 기준
+  </div>
+</div>
+
+<script>
+(function () {
+  const IDXS = {{ idxs|tojson }};
+  const VIX = {{ vix|tojson }}, VVIX = {{ vvix|tojson }}, FNG = {{ fng|tojson }}, SIGNAL = {{ signal|tojson }};
+  const C = { bg: "#1a1a19", text: "#898781", grid: "#2c2c2a", border: "#383835" };
+  const DASH = LightweightCharts.LineStyle.Dashed;
+
+  function mk(id, h) {
+    return LightweightCharts.createChart(document.getElementById(id), {
+      layout: { background: { color: C.bg }, textColor: C.text },
+      grid: { vertLines: { color: C.grid }, horzLines: { color: C.grid } },
+      rightPriceScale: { borderColor: C.border },
+      timeScale: { borderColor: C.border, timeVisible: false },
+      crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+      height: h,
+    });
+  }
+  function hline(series, price, color, title) {
+    series.createPriceLine({ price, color, lineWidth: 1, lineStyle: DASH,
+      axisLabelVisible: true, title });
+  }
+
+  // ---- 지수 패널 + 매수신호 음영 ----
+  const cIdx = mk("p_index", 280);
+  const sig = cIdx.addHistogramSeries({ priceScaleId: "sig", base: 0,
+    priceLineVisible: false, lastValueVisible: false });
+  sig.setData(SIGNAL.map(d => ({ time: d.time, value: d.value,
+    color: d.value ? "rgba(12,163,12,0.28)" : "rgba(0,0,0,0)" })));
+  cIdx.priceScale("sig").applyOptions({ scaleMargins: { top: 0, bottom: 0 } });
+  const idxLine = cIdx.addLineSeries({ color: "#3987e5", lineWidth: 2, priceLineVisible: false });
+
+  const idxbar = document.getElementById("idxbar");
+  function setIdx(i) {
+    idxLine.setData(IDXS[i].data);
+    [...idxbar.children].forEach((b, j) => b.classList.toggle("on", j === i));
+    cIdx.timeScale().fitContent();
+  }
+  IDXS.forEach((s, i) => {
+    const b = document.createElement("button");
+    b.className = "tbtn" + (i === 0 ? " on" : "");
+    b.textContent = s.name;
+    b.onclick = () => setIdx(i);
+    idxbar.appendChild(b);
+  });
+
+  // ---- VIX / VVIX / F&G 패널 ----
+  const cVix = mk("p_vix", 130);
+  const vixL = cVix.addLineSeries({ color: "#e6a817", lineWidth: 1, priceLineVisible: false });
+  vixL.setData(VIX); hline(vixL, 20, "#c98500", "20"); hline(vixL, 30, "#d03b3b", "30");
+
+  const cVvix = mk("p_vvix", 130);
+  const vvixL = cVvix.addLineSeries({ color: "#9085e9", lineWidth: 1, priceLineVisible: false });
+  vvixL.setData(VVIX); hline(vvixL, 95, "#d03b3b", "95");
+
+  const cFng = mk("p_fng", 130);
+  const fngL = cFng.addLineSeries({ color: "#199e70", lineWidth: 1, priceLineVisible: false });
+  fngL.setData(FNG); hline(fngL, 25, "#199e70", "25"); hline(fngL, 75, "#d03b3b", "75");
+
+  // ---- 시간축 동기화 (길이가 달라도 되게 time 기준) ----
+  const charts = [cIdx, cVix, cVvix, cFng];
+  let syncing = false;
+  charts.forEach(src => src.timeScale().subscribeVisibleTimeRangeChange(range => {
+    if (syncing || !range) return;
+    syncing = true;
+    charts.forEach(c => { if (c !== src) c.timeScale().setVisibleRange(range); });
+    syncing = false;
+  }));
+  const ids = ["p_index", "p_vix", "p_vvix", "p_fng"];
+  charts.forEach((c, i) => {
+    const el = document.getElementById(ids[i]);
+    new ResizeObserver(() => c.applyOptions({ width: el.clientWidth })).observe(el);
+  });
+
+  setIdx(0);   // 최초 렌더 + fitContent → 동기화 전파
+})();
+</script>
+{% endblock %}
