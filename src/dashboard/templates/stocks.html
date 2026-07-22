@@ -45,7 +45,7 @@
     <thead><tr>
       <th style="width:36px">#</th><th style="text-align:left">종목</th>
       <th style="text-align:right">가격</th><th style="text-align:right">등락</th>
-      <th style="text-align:right">시가총액</th><th style="text-align:right">거래량</th><th>시장</th>
+      <th style="text-align:right">시가총액</th><th style="text-align:right">거래량</th><th style="text-align:right">주도점수</th><th>시장</th>
     </tr></thead>
     <tbody>
     {% for r in hub.rows %}
@@ -59,6 +59,7 @@
         <td style="text-align:right" class="{{ 'pos' if r.chg and r.chg > 0 else 'neg' if r.chg and r.chg < 0 }}">{{ '%+.2f%%'|format(r.chg) if r.chg is not none else '–' }}</td>
         <td style="text-align:right">{{ r.mcap|usd if mkt == 'us' else r.mcap|krw + '원' }}</td>
         <td style="text-align:right;color:var(--ink-2)">{{ '{:,.1f}M'.format(r.volume / 1e6) if mkt == 'us' else '{:,.0f}만'.format(r.volume / 1e4) }}</td>
+        <td style="text-align:right">{% if r.score is not none %}<strong>{{ '%.0f'|format(r.score) }}</strong>{% else %}<span style="color:var(--muted)">–</span>{% endif %}</td>
         <td><span class="chip">{{ 'US' if mkt == 'us' else 'KR' }}</span></td>
       </tr>
     {% endfor %}

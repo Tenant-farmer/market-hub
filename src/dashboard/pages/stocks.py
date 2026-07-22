@@ -21,7 +21,9 @@ def stocks():
     if cap not in {b[0] for b in CAP_BUCKETS[mkt]}:
         cap = "all"
     sector = (request.args.get("sector") or "").strip() or None
-    sort = "vol" if request.args.get("sort") == "vol" else "mcap"
+    sort = request.args.get("sort", "mcap")
+    if sort not in ("mcap", "vol", "score"):
+        sort = "mcap"
     q = (request.args.get("q") or "").strip() or None
     try:
         page = max(1, int(request.args.get("page", 1)))
@@ -48,6 +50,7 @@ def stocks():
     sort_pills = [
         ("시가총액순", url(sort="mcap"), sort == "mcap"),
         ("거래량순", url(sort="vol"), sort == "vol"),
+        ("주도주순", url(sort="score"), sort == "score"),
     ]
     pages = hub["pages"] if hub else 1
     lo = max(1, page - 3)

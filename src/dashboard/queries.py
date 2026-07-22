@@ -161,26 +161,30 @@ def stock_hub(con, mkt="kr", cap="all", sector=None, sort="mcap", q=None, page=1
         where.append("(m.name LIKE ? OR m.stock_code LIKE ?)")
         args += [f"%{q}%", f"{q}%"]
 
+    ascope = "kr_stock" if mkt == "kr" else "us_stock"
     body = f"""
         FROM sector_map m
         JOIN stock_meta s ON s.symbol = m.stock_code
         JOIN prices_daily p ON p.symbol = m.stock_code AND p.date = ?
         LEFT JOIN prices_daily pp ON pp.symbol = m.stock_code AND pp.date = ?
+        LEFT JOIN analytics_daily a ON a.code = m.stock_code AND a.scope = ?
+            AND a.metric = 'leader_score'
+            AND a.date = (SELECT MAX(date) FROM analytics_daily WHERE scope = ? AND metric = 'leader_score')
         WHERE {" AND ".join(where)}
     """
-    qargs = [d0, d1, *args]
+    qargs = [d0, d1, ascope, ascope, *args]
     total = con.execute(f"SELECT COUNT(*) n {body}", qargs).fetchone()["n"]
-    order = "p.volume DESC" if sort == "vol" else "s.mcap DESC"
+    order = {"vol": "p.volume DESC", "score": "a.value DESC"}.get(sort, "s.mcap DESC")
     rows = con.execute(
         f"SELECT m.stock_code code, m.name, m.sector_name sector, s.mcap, "
-        f"p.close, p.volume, pp.close prev {body} ORDER BY {order} LIMIT ? OFFSET ?",
+        f"p.close, p.volume, pp.close prev, a.value score {body} ORDER BY {order} LIMIT ? OFFSET ?",
         [*qargs, per, (page - 1) * per],
     ).fetchall()
     out = []
     for r in rows:
         out.append({
             "code": r["code"], "name": r["name"] or r["code"], "sector": r["sector"] or "",
-            "mcap": r["mcap"], "close": r["close"], "volume": r["volume"],
+            "mcap": r["mcap"], "close": r["close"], "volume": r["volume"], "score": r["score"],
             "chg": round((r["close"] / r["prev"] - 1) * 100, 2) if r["prev"] else None,
         })
     sectors = [
