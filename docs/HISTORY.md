@@ -635,6 +635,21 @@
 - **테스트**: 23개 전부 통과. test_exit_rules는 MA-off 신규동작 반영(EXIT_MA_ENABLED 토글 검증), 잠재
   격리취약점 수정 — test_engine이 앰비언트 브로커 env에 의존하던 것을 monkeypatch로 결정론화
 
+### VPS 전 검증 강화 — 라이브 페이퍼 왕복 + 자동테스트 (2026-07-22 밤)
+사용자 "VPS는 맨 마지막, 그 전까지 검증 최대로":
+- **자동 테스트 추가**: test_signal_entry(green→SPY emit·평시무동작·멱등·dry), test_reconcile(비종료→
+  filled 갱신·종료 재폴링 안 함). 전체 23개 통과
+- **signal_entry 라이브 페이퍼 왕복 검증**: green 강제 → **SPY 매수 체결 @ $746.81** → reconcile
+  pending_new→filled → 청산 **매도 체결 @ $746.88** → reconcile filled. 왕복 후 포지션 정리(net ~+$0.07).
+  signal_entry(자동진입)+reconcile+매도 체결 경로 전부 라이브 검증 완료
+- **청산 레이어 dry 감사**: 실보유 삼성전자(키움 모의)에 **주도이탈(RS-1) 정확 판정** — 추세이탈 off,
+  손절+주도이탈만 작동 확인(EXIT_ENABLED off라 실매도는 안 남)
+- **이슈(스크래치 한정)**: scratchpad 검증 스크립트가 bare load_dotenv()라 repo .env 못 찾아(스크립트
+  위치 기준 상향탐색) ALPACA 키 빈값→401 6분 헛돌이. 원인규명 후 명시경로로 수정. 커밋된 스크립트는
+  전부 load_dotenv(repo/.env) 명시경로라 무관. 실패한 401 시도는 주문 미제출(상태 클린 확인)
+- 검증 상태 총괄: US페이퍼(AAPL·SPY왕복·BTC), KR모의(삼성전자), 청산·진입·reconcile·게이트 전부 검증.
+  남은 것은 계획상 2주 무인 가동 → VPS(맨 마지막)
+
 ## 미해결 / 예정
 
 - [ ] 브레드스(% >200MA) 신호등 입장 심사 — 사용자 결정으로 보류 (2026-07-16)

@@ -209,6 +209,48 @@ def test_exit_emit_idempotent(con):
     assert len(rows) == 1 and rows[0]["action"] == "sell" and rows[0]["qty"] == 5
 
 
+def test_signal_entry(con, monkeypatch):
+    from src.trading import signal_entry
+
+    monkeypatch.setenv("SIGNAL_ENTRY_SYMBOL", "SPY")
+    monkeypatch.setenv("SIGNAL_ENTRY_QTY", "2")
+    # 평시(green 아님) → 진입 없음
+    monkeypatch.setattr(signal_entry, "vix_signal", lambda c: {"state": "neutral", "label": "평시"})
+    assert signal_entry.check_entry(con) is None
+    assert con.execute("SELECT COUNT(*) c FROM signals").fetchone()["c"] == 0
+    # green → SPY 매수 신호 emit
+    monkeypatch.setattr(signal_entry, "vix_signal", lambda c: {"state": "buy2", "label": "분할매수"})
+    out = signal_entry.check_entry(con)
+    assert out["symbol"] == "SPY" and out["qty"] == 2
+    r = con.execute("SELECT ticker, action, source FROM signals").fetchall()
+    assert (len(r) == 1 and r[0]["ticker"] == "SPY" and r[0]["action"] == "buy"
+            and r[0]["source"] == "signal-entry")
+    # 같은 날 재호출 → 멱등(1건)
+    signal_entry.check_entry(con)
+    assert con.execute("SELECT COUNT(*) c FROM signals").fetchone()["c"] == 1
+    # dry → emit 안 함
+    monkeypatch.setenv("SIGNAL_ENTRY_SYMBOL", "QQQ")
+    assert signal_entry.check_entry(con, dry=True)["symbol"] == "QQQ"
+    assert con.execute("SELECT COUNT(*) c FROM signals WHERE ticker='QQQ'").fetchone()["c"] == 0
+
+
+def test_reconcile(con, monkeypatch):
+    from src.trading import reconcile
+    from src.trading.brokers import alpaca
+
+    monkeypatch.setattr(alpaca, "configured", lambda: True)
+    con.execute("INSERT INTO orders (client_order_id, broker, ticker, status, created_at) "
+                "VALUES (?,?,?,?, datetime('now'))", ("coid1", "alpaca", "AAPL", "pending_new"))
+    con.commit()
+    monkeypatch.setattr(alpaca.AlpacaBroker, "order_status",
+                        lambda self, c: {"status": "filled", "filled_qty": "1", "filled_avg_price": "300"})
+    up = reconcile.reconcile(con)
+    assert len(up) == 1 and up[0]["to"] == "filled"
+    assert con.execute("SELECT status FROM orders WHERE client_order_id='coid1'"
+                       ).fetchone()["status"] == "filled"
+    assert reconcile.reconcile(con) == []   # 이미 종료상태 → 재폴링 안 함
+
+
 def test_dashboard_auth(monkeypatch):
     import base64
 
