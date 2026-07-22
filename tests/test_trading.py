@@ -72,7 +72,11 @@ def test_hook_inserts_and_dedupes(client, con):
     assert len(con.execute("SELECT * FROM signals").fetchall()) == 2
 
 
-def test_engine_paper_log_and_risk(client, con):
+def test_engine_paper_log_and_risk(client, con, monkeypatch):
+    from src.trading.brokers import alpaca, kiwoom
+
+    monkeypatch.setattr(kiwoom, "configured", lambda: False)   # 라우팅 결정론적(앰비언트 env 무관)
+    monkeypatch.setattr(alpaca, "configured", lambda: False)
     _post(client, {"secret": "test-secret", "ticker": "005930", "action": "buy", "qty": 10})
     _post(client, {"secret": "test-secret", "ticker": "TSLA", "action": "sell", "qty": 999999})
     res = engine.process_once(con)
@@ -173,7 +177,7 @@ def test_risk_daily_order_cap(con, monkeypatch):
     assert not ok and "일일 주문 상한" in reason
 
 
-def test_exit_rules(con):
+def test_exit_rules(con, monkeypatch):
     from src.trading import exits
 
     con.execute(
@@ -188,7 +192,10 @@ def test_exit_rules(con):
                     ("DOWN", f"2026-06-{i + 1:02d}", 100 - i))
     con.commit()
     assert "손절" in exits._eval(con, {"code": "UP", "qty": 1, "plpc": -10})     # 손절 우선
-    assert "추세이탈" in exits._eval(con, {"code": "DOWN", "qty": 1, "plpc": -1})  # 하락추세
+    # 추세이탈(20MA)은 기본 off (백테스트상 휩쏘로 해로움)
+    assert exits._eval(con, {"code": "DOWN", "qty": 1, "plpc": -1}) is None
+    monkeypatch.setenv("EXIT_MA_ENABLED", "1")                                    # 켜면 하락추세 감지
+    assert "추세이탈" in exits._eval(con, {"code": "DOWN", "qty": 1, "plpc": -1})
     assert exits._eval(con, {"code": "UP", "qty": 1, "plpc": 2}) is None          # 건강 → 청산 안 함
 
 

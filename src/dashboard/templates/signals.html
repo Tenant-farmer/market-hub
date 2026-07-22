@@ -26,7 +26,9 @@
     <span id="idxbar" style="display:flex;gap:6px"></span>
     <span class="sub" style="margin:0;margin-left:auto">
       <span style="display:inline-block;width:10px;height:10px;background:rgba(12,163,12,.35);border-radius:2px;vertical-align:middle"></span>
-      매수신호 ON <small>(VIX≥30 또는 VIX≥20 &amp; VVIX≥95)</small>
+      매수신호 <small>(VIX≥30 또는 VIX≥20 &amp; VVIX≥95)</small>
+      &nbsp;&nbsp;<span style="display:inline-block;width:10px;height:10px;background:rgba(250,178,25,.35);border-radius:2px;vertical-align:middle"></span>
+      과열회피 <small>(F&amp;G≥75)</small>
     </span>
   </div>
   <div id="p_index" style="height:280px"></div>
@@ -48,7 +50,8 @@
 <script>
 (function () {
   const IDXS = {{ idxs|tojson }};
-  const VIX = {{ vix|tojson }}, VVIX = {{ vvix|tojson }}, FNG = {{ fng|tojson }}, SIGNAL = {{ signal|tojson }};
+  const VIX = {{ vix|tojson }}, VVIX = {{ vvix|tojson }}, FNG = {{ fng|tojson }};
+  const SIGNAL = {{ signal|tojson }}, AVOID = {{ avoid|tojson }};
   const C = { bg: "#1a1a19", text: "#898781", grid: "#2c2c2a", border: "#383835" };
   const DASH = LightweightCharts.LineStyle.Dashed;
 
@@ -73,6 +76,10 @@
     priceLineVisible: false, lastValueVisible: false });
   sig.setData(SIGNAL.map(d => ({ time: d.time, value: d.value,
     color: d.value ? "rgba(12,163,12,0.28)" : "rgba(0,0,0,0)" })));
+  const avo = cIdx.addHistogramSeries({ priceScaleId: "sig", base: 0,
+    priceLineVisible: false, lastValueVisible: false });
+  avo.setData(AVOID.map(d => ({ time: d.time, value: d.value,
+    color: d.value ? "rgba(250,178,25,0.26)" : "rgba(0,0,0,0)" })));
   cIdx.priceScale("sig").applyOptions({ scaleMargins: { top: 0, bottom: 0 } });
   const idxLine = cIdx.addLineSeries({ color: "#3987e5", lineWidth: 2, priceLineVisible: false });
 

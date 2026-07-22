@@ -2,7 +2,8 @@
 
 규칙 (전부 기계적, env로 임계 조정):
 - 손절      : 브로커 평가손익률 ≤ EXIT_STOP_PCT (기본 -8%)
-- 추세 이탈 : 종가 < EXIT_MA일 이평 (기본 20MA) — 추세 붕괴
+- 추세 이탈 : 종가 < EXIT_MA일 이평 (기본 20MA) — **기본 비활성**(EXIT_MA_ENABLED=1로 켬).
+              백테스트(2007~)상 일별 MA-크로스 청산은 휩쏘로 순수 해로움(+28%→제거시 +152%) → 기본 off
 - 주도력 이탈: 종목 시장대비 RS(rs_mkt_21) < EXIT_RS (기본 0) — 대장 자격 상실 (analytics 있을 때만)
 
 SELL은 signals 큐로 emit → 엔진이 게이트·리스크·브로커 경유 (buy와 동일 안전장치).
@@ -76,10 +77,11 @@ def _eval(con, pos):
     """(사유 or None). 우선순위: 손절 → 추세이탈 → 주도이탈."""
     if pos["plpc"] is not None and pos["plpc"] <= _f("EXIT_STOP_PCT", -8.0):
         return f"손절 {pos['plpc']:+.1f}%"
-    ma = int(_f("EXIT_MA", 20))
-    c = _closes(con, pos["code"], ma + 5)
-    if len(c) >= ma and c[-1] < sum(c[-ma:]) / ma:
-        return f"추세이탈 종가<{ma}MA"
+    if os.getenv("EXIT_MA_ENABLED") == "1":            # 백테스트상 해로워 기본 off
+        ma = int(_f("EXIT_MA", 20))
+        c = _closes(con, pos["code"], ma + 5)
+        if len(c) >= ma and c[-1] < sum(c[-ma:]) / ma:
+            return f"추세이탈 종가<{ma}MA"
     rs = _rs_mkt(con, pos["code"])
     if rs is not None and rs < _f("EXIT_RS", 0.0):
         return f"주도이탈 RS{rs:+.0f}"

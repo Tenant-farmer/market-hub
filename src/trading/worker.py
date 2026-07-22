@@ -49,13 +49,16 @@ def _log(msg: str) -> None:
 
 
 EXIT_CHECK = int(os.getenv("EXIT_CHECK_SEC", "300"))
+ENTRY_CHECK = int(os.getenv("SIGNAL_ENTRY_CHECK_SEC", "3600"))
+RECONCILE = int(os.getenv("RECONCILE_SEC", "300"))
 
 
 def main() -> None:
-    _log(f"start - poll {POLL}s, heartbeat {HEARTBEAT}s, exit_check {EXIT_CHECK}s")
+    _log(f"start - poll {POLL}s, heartbeat {HEARTBEAT}s, exit {EXIT_CHECK}s, "
+         f"entry {ENTRY_CHECK}s, reconcile {RECONCILE}s")
     _record("ok", 0, "worker 시작")
     last_beat = time.time()
-    last_exit = 0.0
+    last_exit = last_entry = last_recon = 0.0
     while True:
         try:
             res = engine.process_once()
@@ -77,6 +80,25 @@ def main() -> None:
                         f"{t['code']} {t['reason']}" for t in trig))
                     _log(f"청산 신호 {len(trig)}건: {[t['reason'] for t in trig]}")
                 last_exit = time.time()
+            # 신호진입 — SIGNAL_ENTRY_ENABLED=1 일 때만 (green→지수 매수), 하루 1회 멱등
+            if os.getenv("SIGNAL_ENTRY_ENABLED") == "1" and time.time() - last_entry >= ENTRY_CHECK:
+                from src.trading import signal_entry
+
+                e = signal_entry.check_entry()
+                if e:
+                    _record("ok", 1, f"신호진입: {e['symbol']} ({e['signal']})")
+                    _log(f"신호진입 emit: {e}")
+                last_entry = time.time()
+            # 체결 상태 동기화 — 주문 안 냄(안전), 항상 RECONCILE 주기
+            if time.time() - last_recon >= RECONCILE:
+                from src.trading import reconcile
+
+                up = reconcile.reconcile()
+                if up:
+                    _record("ok", len(up), "체결반영: " + ", ".join(
+                        f"{u['coid'][:16]} {u['from']}->{u['to']}" for u in up))
+                    _log(f"reconcile {len(up)}건")
+                last_recon = time.time()
         except Exception:
             tb = traceback.format_exc(limit=3)
             _record("error", 0, tb)

@@ -37,11 +37,19 @@ def _status(con):
     print(f"  일일 주문상한: {int(risk._f('MAX_DAILY_ORDERS', risk.MAX_DAILY_ORDERS))}건 (오늘 {n}건)")
     print("--- 청산 레이어 ---")
     ex_on = os.getenv("EXIT_ENABLED") == "1"
+    ma_on = os.getenv("EXIT_MA_ENABLED") == "1"
     print(f"  자동청산     : {'ON' if ex_on else 'OFF (EXIT_ENABLED=1 로 켬)'}")
-    print(f"  손절         : {risk._f('EXIT_STOP_PCT', -8.0):+.0f}% · "
-          f"추세이탈 {int(risk._f('EXIT_MA', 20))}MA · "
-          f"주도이탈 RS<{risk._f('EXIT_RS', 0.0):+.0f}")
+    print(f"  규칙         : 손절 {risk._f('EXIT_STOP_PCT', -8.0):+.0f}% · "
+          f"주도이탈 RS<{risk._f('EXIT_RS', 0.0):+.0f}"
+          + (f" · 추세이탈 {int(risk._f('EXIT_MA', 20))}MA" if ma_on
+             else " · 추세이탈 off(백테스트상 해로움)"))
     print("  미리보기: python -m src.trading.exits --dry")
+    print("--- 신호진입 (green→지수) ---")
+    en_on = os.getenv("SIGNAL_ENTRY_ENABLED") == "1"
+    print(f"  자동진입     : {'ON' if en_on else 'OFF (SIGNAL_ENTRY_ENABLED=1 로 켬)'}")
+    print(f"  대상         : {os.getenv('SIGNAL_ENTRY_SYMBOL', 'SPY')} "
+          f"x {os.getenv('SIGNAL_ENTRY_QTY', '1')}")
+    print("  미리보기: python -m src.trading.signal_entry")
 
 
 def main(argv):

@@ -618,6 +618,23 @@
 - 알려진 한계: orders 테이블은 제출 시점 status(pending_new)만 기록, 체결 반영 안 함(체결 폴러 미구현).
   단 /positions 보유는 Alpaca 라이브 조회라 정확. 필요 시 order 상태 reconciliation 폴러 추가 가능
 
+### 5종 일괄 개선 — 백테스트 결론의 시스템 반영 (2026-07-22 밤)
+사용자 "전부 진행" — 앞선 후속작업 5개를 한 번에:
+- **(1) fill_test.py 신규**: 이전 임시 체결테스트가 접수 6초 후 확인→미체결 오판(개장 시 페이퍼 체결 ~2분).
+  신호삽입→엔진→브로커 종료상태까지 --poll-min분 폴링. KR은 잔고 반영으로 확인. 재사용 커밋 아티팩트
+- **(2/a) 지표탭 F&G 회피 음영**: /signals 지수패널에 F&G≥75(극단탐욕) 주황 음영 추가(green 매수신호와 별도).
+  histogram own-scale 트릭 재사용. 극단탐욕 80일 음영, 콘솔 에러 0
+- **(3/11) 주문 reconciliation**: reconcile.py — orders 비종료 주문을 Alpaca order_status로 최종상태 갱신
+  (엔진은 제출시점만 기록). 실행 즉시 **AAPL·BTC 주문 pending_new→filled 정정**. worker 300s 주기(항상,
+  안전). http_%·종료상태는 재폴링 제외. KR은 /positions 잔고로(상태API 미연동)
+- **(4/b) 단순화 전략 반영**: ①청산 20MA 추세이탈을 **기본 off**(EXIT_MA_ENABLED=1로만, 백테스트상 해로움)
+  → 손절+주도이탈만. ②signal_entry.py 신규 — 매수신호등 green→지수(SPY) 매수신호 자동 emit, 하루1회 멱등,
+  **SIGNAL_ENTRY_ENABLED=1 게이트(기본 off)**. worker 통합(entry 3600s). control status·`.env.example` 갱신
+- **(5/c) VKOSPI**: yfinance 전 후보 404, pykrx 지수목록에 변동성지수 없음(파생지수라 무료소스 불가) →
+  **글로벌 VIX를 KR에 유지**(KR 백테스트서 KOSPI +478%>보유 +402% 검증됨). 향후 KRX MDC 스크레이프/유료만
+- **테스트**: 23개 전부 통과. test_exit_rules는 MA-off 신규동작 반영(EXIT_MA_ENABLED 토글 검증), 잠재
+  격리취약점 수정 — test_engine이 앰비언트 브로커 env에 의존하던 것을 monkeypatch로 결정론화
+
 ## 미해결 / 예정
 
 - [ ] 브레드스(% >200MA) 신호등 입장 심사 — 사용자 결정으로 보류 (2026-07-16)

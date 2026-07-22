@@ -45,7 +45,8 @@ def signals():
                "value": 1 if (d["value"] >= 30 or
                               (d["value"] >= 20 and vvix_by.get(d["time"], 0) >= 95)) else 0}
               for d in vix]
+    avoid = [{"time": d["time"], "value": 1 if d["value"] >= 75 else 0} for d in fng]
 
     pills = [("미국 (SPY·QQQ)", "us", mkt == "us"), ("한국 (코스피·코스닥)", "kr", mkt == "kr")]
     return render_template("signals.html", mkt=mkt, idxs=idxs, vix=vix, vvix=vvix,
-                           fng=fng, signal=signal, pills=pills)
+                           fng=fng, signal=signal, avoid=avoid, pills=pills)
