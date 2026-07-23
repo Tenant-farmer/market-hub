@@ -85,6 +85,58 @@ def write_today(con) -> str:
         L.append("- 신호 없음")
     L.append("")
 
+    # ---- 매매 근거 (신호 소스별 — 왜 샀/팔았나) ----
+    def _kname(code):
+        try:
+            r = con.execute("SELECT name FROM dart_corp WHERE stock_code=?", (code,)).fetchone()
+            return r["name"] if r else code
+        except Exception:
+            return code
+
+    L.append("## 매매 근거")
+    if not sigs:
+        L.append("- 매매 없음")
+    by_src = {}
+    for s in sigs:
+        by_src.setdefault(s["source"] or "-", []).append(s)
+    for src, items in by_src.items():
+        if src == "rotation":
+            for tag, grp in (("US", [s for s in items if not str(s["ticker"]).isdigit()]),
+                             ("KR", [s for s in items if str(s["ticker"]).isdigit()])):
+                if not grp:
+                    continue
+                nb = sum(1 for s in grp if s["action"] == "buy")
+                ns = len(grp) - nb
+                note = ("백테스트 2010~ 생존 전략 (+6,042%, 서바이버십 유의)" if tag == "US"
+                        else "KR은 백테스트 실패(-61~-74%) 전략 — 미국과의 A/B 검증용 모의")
+                L.append(f"- **주도주 로테이션 {tag}** ({nb}매수·{ns}매도): 126일 수익률 상위"
+                         f" 10 편입 / top30 이탈 시 교체, 주 1회 평가 — {note}")
+                for s in grp:
+                    nm = _kname(s["ticker"]) if tag == "KR" else s["ticker"]
+                    L.append(f"  - {nm} {s['action']}: {s['strategy'] or ''}")
+        elif src == "signal-entry":
+            for s in items:
+                label = (s["strategy"] or "").split(":", 1)[-1]
+                if str(s["ticker"]).isdigit():
+                    ctx = (f"VKOSPI {kr['vkospi']:.1f}(≥30) & 고점比 {kr['kospi_dd']:+.1f}%(≤-5%)"
+                           if kr else "VKOSPI 조건 충족")
+                    base = "2010~24 백테스트: +63일 승률 75% · 중앙 +5.3% · 저점지연 22일"
+                else:
+                    ctx = (f"VIX {us['vix']:.1f} · VVIX {us['vvix']:.0f}" if us else "글로벌 공포")
+                    base = "2007~ 백테스트: 즉시 진입 승률 78%"
+                L.append(f"- **신호진입** {_kname(s['ticker'])} {s['action']}: {label} — {ctx}. "
+                         f"{base}. green 지속 시 매일 1주 분할 진입")
+        elif src == "exit":
+            for s in items:
+                L.append(f"- **청산** {_kname(s['ticker'])} {s['action']}: {s['strategy'] or ''}"
+                         " — 원금 방어 규칙 (손절 -8% / 주도이탈 rs<0)")
+        elif src == "speed-test":
+            L.append(f"- **스피드테스트** ({len(items)}건): 주문 경로 왕복속도 측정용 — 전략 아님")
+        else:
+            for s in items:
+                L.append(f"- **{src}** {s['ticker']} {s['action']}: {s['strategy'] or '(수동/외부 신호)'}")
+    L.append("")
+
     # ---- 경보 / 특이사항 ----
     alerts = con.execute(
         "SELECT run_at, collector, message FROM collector_runs "
