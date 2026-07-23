@@ -1,10 +1,14 @@
-"""뉴스 수집 — Google News RSS(KR) + yfinance news(US). API 키 불요.
+"""뉴스 수집 — 네이버 검색 API(KR, 키 있으면) / Google News RSS(폴백) + yfinance news(US).
 
-- KR: Google News RSS 키워드 검색 (시장 + 보유/관심 종목명). 무료·무키, 과도 호출만 피하면 안정적
+- KR: NAVER_CLIENT_ID/SECRET 있으면 네이버 뉴스 검색 (품질·속보성 우위) — 감시 대상은
+  시장 키워드 + 고정 보유 + rotation_slots KR 종목 **동적** (이름은 dart_corp 매핑).
+  키 없으면 기존 Google RSS 고정 키워드로 폴백
 - US: yf.Ticker(sym).news (버전에 따라 응답 형태가 달라 방어적으로 파싱)
 - 저장: news 테이블, url PRIMARY KEY 로 중복 제거 (INSERT OR IGNORE)
-- 보유/관심이 바뀌면 아래 KR_QUERIES/US_SYMBOLS 수정 (추후 보유 연동 자동화 여지)
 """
+import html
+import os
+import re
 from datetime import datetime
 from email.utils import parsedate_to_datetime
 from urllib.parse import quote
@@ -14,6 +18,7 @@ import requests
 import yfinance as yf
 
 KR_QUERIES = [("코스피", None), ("삼성전자", "005930"), ("S-Oil", "010950")]
+KR_STATIC = {"005930": "삼성전자", "010950": "S-Oil"}   # dart_corp 없을 때 이름 폴백
 US_SYMBOLS = ["SPY", "QQQ", "AAPL"]
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 
@@ -55,6 +60,47 @@ def _google_rss(keyword: str) -> list[dict]:
     return out
 
 
+def _naver(keyword: str) -> list[dict]:
+    r = requests.get(
+        "https://openapi.naver.com/v1/search/news.json",
+        params={"query": keyword, "display": 15, "sort": "date"},
+        headers={"X-Naver-Client-Id": os.getenv("NAVER_CLIENT_ID", ""),
+                 "X-Naver-Client-Secret": os.getenv("NAVER_CLIENT_SECRET", "")},
+        timeout=15)
+    r.raise_for_status()
+    out = []
+    for it in r.json().get("items", []):
+        title = html.unescape(re.sub(r"</?b>", "", it.get("title") or "")).strip()
+        url = (it.get("originallink") or it.get("link") or "").strip()
+        if not title or not url:
+            continue
+        try:
+            dt = _iso_local(parsedate_to_datetime(it.get("pubDate") or ""))
+        except Exception:
+            dt = datetime.now().isoformat(timespec="seconds")
+        out.append({"title": title, "url": url, "dt": dt, "source": "NAVER"})
+    return out
+
+
+def _kr_watch(con) -> list[tuple]:
+    """KR 검색어 — 시장 + 고정 보유 + 로테이션 슬롯 (이름은 dart_corp, 폴백 KR_STATIC)."""
+    queries, codes = [("코스피", None)], list(KR_STATIC)
+    try:
+        codes += [str(r["symbol"]) for r in con.execute("SELECT symbol FROM rotation_slots")
+                  if str(r["symbol"]).isdigit()]
+    except Exception:
+        pass
+    for c in dict.fromkeys(codes):                     # 순서 보존 중복 제거
+        try:
+            row = con.execute("SELECT name FROM dart_corp WHERE stock_code=?", (c,)).fetchone()
+        except Exception:
+            row = None
+        name = row["name"] if row else KR_STATIC.get(c)
+        if name:
+            queries.append((name, c))
+    return queries
+
+
 def _yf_news(sym: str) -> list[dict]:
     out = []
     for it in (yf.Ticker(sym).news or [])[:8]:
@@ -85,9 +131,11 @@ def _yf_news(sym: str) -> list[dict]:
 def collect(con) -> int:
     _ensure(con)
     n = 0
-    for kw, code in KR_QUERIES:
+    use_naver = bool(os.getenv("NAVER_CLIENT_ID") and os.getenv("NAVER_CLIENT_SECRET"))
+    kr_queries = _kr_watch(con) if use_naver else KR_QUERIES
+    for kw, code in kr_queries:
         try:
-            for it in _google_rss(kw):
+            for it in (_naver(kw) if use_naver else _google_rss(kw)):
                 n += con.execute(
                     "INSERT OR IGNORE INTO news (url, dt, market, code, source, title, keyword) "
                     "VALUES (?,?,?,?,?,?,?)",
