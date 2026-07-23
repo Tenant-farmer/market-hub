@@ -55,6 +55,7 @@
       <th>{{ idxs[0].name if idxs else '지수' }}</th><th>등락</th>
       <th>{{ idxs[1].name if idxs|length > 1 }}</th><th>등락</th>
       <th>VIX</th><th>VVIX</th><th>F&amp;G</th><th style="text-align:left">판정</th>
+      <th style="white-space:nowrap">저점까지</th>
       <th style="white-space:nowrap">+1일</th><th style="white-space:nowrap">+7일</th><th style="white-space:nowrap">+21일</th><th style="white-space:nowrap">+63일</th>
     </tr></thead>
     <tbody>
@@ -75,6 +76,11 @@
           {% elif not h.avoid %}<span style="color:var(--muted)">—</span>{% endif %}
           {% if h.avoid %}<span style="color:#199e70">{{ ' + ' if h.s }}■ F&G회피</span>{% endif %}
           {% if h.sig %}<span style="color:#d03b3b"> 🚦</span>{% endif %}
+        </td>
+        <td style="white-space:nowrap">
+          {% if h.trough %}{% if h.trough[0] == 0 %}<span class="pos">당일이 저점</span>
+          {% else %}<span style="color:var(--muted)">{{ h.trough[0] }}일 뒤</span> <span class="neg">{{ '%+.1f%%'|format(h.trough[1]) }}</span>{% endif %}
+          {% else %}<span style="color:var(--muted)">–</span>{% endif %}
         </td>
         <td>{{ ret(h.f1) }}</td>
         <td>{{ ret(h.f7) }}</td>
@@ -101,7 +107,7 @@
     <a href="/signals?mkt={{ mkt }}&page={{ p }}" class="{{ 'on' if y == cur_year }}">{{ y }}</a>
     {% endfor %}
   </div>
-  <div class="reason" style="margin-top:6px">🚦 = 매수신호일(VIX≥30 또는 VIX·VVIX 동시) · +1/+7/+21/+63일 = 신호 당일 종가에 {{ idxs[0].name }}을 샀을 때의 이후 수익(63일 미확정이면 현재까지 진행) · 페이지를 넘기면 2015년까지 전체 열람</div>
+  <div class="reason" style="margin-top:6px">🚦 = 매수신호일(VIX≥30 또는 VIX·VVIX 동시) · 저점까지 = 신호 후 126거래일 내 최저점(며칠 뒤·추가하락) · +1/+7/+21/+63일 = 신호 당일 종가에 {{ idxs[0].name }}을 샀을 때의 이후 수익(63일 미확정이면 현재까지 진행) · 연도 필로 2007년까지 이동</div>
 </div>
 {% endif %}
 

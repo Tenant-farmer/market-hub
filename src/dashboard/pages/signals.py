@@ -91,13 +91,19 @@ def signals():
                "fng": fg, "avoid": 1 if (fg or 0) >= 75 else 0, "sig": green,
                "close": c1v, "chg": (c1v / p1 - 1) * 100 if (c1v and p1) else None,
                "close2": c2v, "chg2": (c2v / p2 - 1) * 100 if (c2v and p2) else None,
-               "f1": None, "f7": None, "f21": None, "f63": None, "fwd_run": None}
+               "f1": None, "f7": None, "f21": None, "f63": None, "fwd_run": None,
+               "trough": None}
         if green:
             i = asof1(t)
             row["f1"], row["f7"], row["f21"], row["f63"] = (
                 fwd1(i, 1), fwd1(i, 7), fwd1(i, 21), fwd1(i, 63))
             if row["f63"] is None and i is not None and c1_:
                 row["fwd_run"] = ((c1_[-1] / c1_[i] - 1) * 100, len(c1_) - 1 - i)
+            if i is not None:                          # 이후 126일 내 저점 (이력표와 동일)
+                win = c1_[i: i + 127]
+                if len(win) > 1 and win[0]:
+                    lo_i = min(range(len(win)), key=lambda k: win[k])
+                    row["trough"] = (lo_i, (win[lo_i] / win[0] - 1) * 100)
         p1, p2 = c1v or p1, c2v or p2
         hist.append(row)
     hist = hist[1:][::-1]                              # 최신순
