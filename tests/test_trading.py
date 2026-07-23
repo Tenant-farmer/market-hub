@@ -537,3 +537,34 @@ def test_portfolio_snapshot_upsert(con, monkeypatch):
     rows = con.execute("SELECT * FROM portfolio_snapshots").fetchall()
     assert len(rows) == 1 and rows[0]["equity"] == 501_000_000
     assert rows[0]["cash"] == 501_000_000 - 21e6
+
+
+def test_daily_loss_gate(con, monkeypatch):
+    """일손실 한도: 초과 시 매수만 차단(매도 허용), 경보 1회, 비활성 시 통과."""
+    from src import notify
+    from src.trading import portfolio
+
+    portfolio.ensure(con)
+    con.execute("CREATE TABLE IF NOT EXISTS collector_runs "
+                "(collector TEXT, run_at TEXT, status TEXT, rows INT, message TEXT)")
+    con.execute("INSERT INTO portfolio_snapshots VALUES ('2000-01-01','kiwoom',500e6,480e6,0)")
+    monkeypatch.setenv("MAX_DAILY_LOSS_PCT", "2")
+    sent = []
+    monkeypatch.setattr(notify, "send", lambda t: sent.append(t))
+    risk._eq_cache.clear()
+
+    buy = {"ticker": "069500", "action": "buy", "qty": 1, "price": None}
+    monkeypatch.setattr(risk, "_live_equity", lambda b: 485e6)   # -3%
+    ok, why = risk.check(con, buy)
+    assert not ok and "일손실" in why
+    ok, _ = risk.check(con, {"ticker": "069500", "action": "sell", "qty": 1, "price": None})
+    assert ok                                                    # 매도는 항상 통과
+    risk.check(con, buy)
+    assert len(sent) == 1                                        # 경보는 쿨다운 내 1회
+    monkeypatch.setattr(risk, "_live_equity", lambda b: 495e6)   # -1% (한도 내)
+    ok, _ = risk.check(con, buy)
+    assert ok
+    monkeypatch.setattr(risk, "_live_equity", lambda b: 400e6)   # -20%지만 비활성
+    monkeypatch.setenv("MAX_DAILY_LOSS_PCT", "0")
+    ok, _ = risk.check(con, buy)
+    assert ok
