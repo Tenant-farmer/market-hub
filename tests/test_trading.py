@@ -268,6 +268,39 @@ def test_reconcile(con, monkeypatch):
     assert reconcile.reconcile(con) == []   # 이미 종료상태 → 재폴링 안 함
 
 
+def test_kiwoom_ratelimit_retry(con, monkeypatch):
+    """키움 초당한도(1700) 거부 → 백오프 재시도로 최종 제출 (연속 손절 보호)."""
+    from src.trading.brokers import kiwoom
+    from src.trading.brokers.base import OrderRequest
+
+    monkeypatch.setattr(kiwoom, "_token", lambda: "tok")
+    monkeypatch.setattr(kiwoom.time, "sleep", lambda s: None)   # 테스트에선 대기 생략
+
+    class R:
+        def __init__(self, d):
+            self._d, self.content = d, b"x"
+
+        def json(self):
+            return self._d
+
+    calls = []
+
+    def fake_post(url, **kw):
+        calls.append(url)
+        if len(calls) == 1:                                     # 1회차: 레이트리밋 거부
+            return R({"return_code": 5,
+                      "return_msg": "허용된 요청 개수를 초과하였습니다[1700:...]"})
+        return R({"return_code": 0, "ord_no": "0000042", "return_msg": "모의투자 매수주문완료"})
+
+    monkeypatch.setattr(kiwoom.requests, "post", fake_post)
+    res = kiwoom.KiwoomBroker().submit_order(
+        con, OrderRequest(ticker="035420", action="buy", qty=1, price=None, strategy=""),
+        client_order_id="sig-test-rl", signal_id=None)
+    assert res["ok"] and len(calls) == 2                        # 재시도 1번으로 성공
+    row = con.execute("SELECT status FROM orders WHERE client_order_id='sig-test-rl'").fetchone()
+    assert row["status"] == "submitted"
+
+
 def test_dashboard_auth(monkeypatch):
     import base64
 

@@ -5,6 +5,7 @@
 멱등: 키움은 client_order_id 개념이 없어 orders 테이블에 이미 있으면 재제출 안 함(앱측 멱등).
 """
 import os
+import time
 from datetime import datetime, time as dtime
 
 import requests
@@ -83,17 +84,21 @@ class KiwoomBroker(BrokerAdapter):
         }
         ok, status, msg = False, "error", ""
         try:
-            r = requests.post(
-                f"{_base()}/api/dostk/ordr",
-                headers={"Content-Type": "application/json;charset=UTF-8",
-                         "authorization": f"Bearer {_token()}", "api-id": api_id},
-                json=body, timeout=15,
-            )
-            d = r.json() if r.content else {}
-            rc = d.get("return_code")
-            ok = rc == 0
-            status = "submitted" if ok else f"rejected(rc={rc})"
-            msg = ((d.get("ord_no") or "") + " " + (d.get("return_msg") or "")).strip()[:150]
+            for _ in range(3):        # 키움 초당 요청 한도(1700) → 1초 백오프 재시도 (연속 손절 보호)
+                r = requests.post(
+                    f"{_base()}/api/dostk/ordr",
+                    headers={"Content-Type": "application/json;charset=UTF-8",
+                             "authorization": f"Bearer {_token()}", "api-id": api_id},
+                    json=body, timeout=15,
+                )
+                d = r.json() if r.content else {}
+                rc = d.get("return_code")
+                ok = rc == 0
+                status = "submitted" if ok else f"rejected(rc={rc})"
+                msg = ((d.get("ord_no") or "") + " " + (d.get("return_msg") or "")).strip()[:150]
+                if ok or "1700" not in msg:
+                    break
+                time.sleep(1.0)
         except Exception as e:
             msg = str(e)[:150]
 
