@@ -91,8 +91,9 @@ def main() -> None:
 
                 e = signal_entry.check_entry()
                 if e:
-                    _record("ok", 1, f"신호진입: {e['symbol']} ({e['signal']})")
-                    _log(f"신호진입 emit: {e}")
+                    syms = "·".join(x["symbol"] for x in e.get("entries", []))
+                    _record("ok", len(e.get("entries", [])), f"신호진입: {syms} ({e['signal']})")
+                    _log(f"신호진입 emit: {syms}")
                     _log(f"진입 즉시 처리: {engine.process_once()}")
                 last_entry = time.time()
             # 체결 상태 동기화 — 주문 안 냄(안전), 항상 RECONCILE 주기
