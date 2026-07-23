@@ -9,7 +9,7 @@ from src import db
 
 bp = Blueprint("signals", __name__)
 
-START = "2015-01-01"
+START = "2007-01-01"    # 2008 금융위기 포함 (최악 케이스 관찰)
 IDX = {  # (symbol, market, 표시명)
     "us": [("SPY", "US", "SPY"), ("QQQ", "US", "QQQ")],
     "kr": [("1001", "KR_INDEX", "코스피"), ("2001", "KR_INDEX", "코스닥")],
@@ -118,7 +118,12 @@ def signals():
         ep = {"date": t, "vix": v, "vvix": w, "s": s,
               "a1": fwd1(i1, 1), "a7": fwd1(i1, 7), "a21": fwd1(i1, 21), "a63": fwd1(i1, 63),
               "b1": fwd2(i2, 1), "b7": fwd2(i2, 7), "b21": fwd2(i2, 21), "b63": fwd2(i2, 63),
-              "run": None}
+              "run": None, "trough": None}
+        if i1 is not None:                             # 이후 126일 내 저점 (타이밍 연구와 동일 창)
+            win = c1_[i1: i1 + 127]
+            if len(win) > 1 and win[0]:
+                lo = min(range(len(win)), key=lambda k: win[k])
+                ep["trough"] = (lo, (win[lo] / win[0] - 1) * 100)
         if ep["a63"] is None and i1 is not None and c1_:
             ep["run"] = ((c1_[-1] / c1_[i1] - 1) * 100, len(c1_) - 1 - i1)
         episodes.append(ep)

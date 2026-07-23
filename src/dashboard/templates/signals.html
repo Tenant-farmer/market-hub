@@ -41,7 +41,7 @@
   <div id="p_fng" style="height:130px"></div>
 
   <div class="reason" style="margin-top:10px">
-    회색 세로선을 드래그하면 네 패널이 같이 움직입니다 · 지수·VIX·VVIX 2015~, F&amp;G 2020-09~ · 공포지표는 글로벌(미국) 기준
+    회색 세로선을 드래그하면 네 패널이 같이 움직입니다 · 지수·VIX·VVIX 2007~(금융위기 포함), F&amp;G 2020-09~ · 공포지표는 글로벌(미국) 기준
   </div>
 </div>
 
@@ -102,7 +102,8 @@
 {# ---- 매수신호 이력 (전 기간 에피소드) — 그날 샀으면? ---- #}
 {% if episodes %}
 <div class="card" style="margin-top:16px;overflow-x:auto">
-  <div class="sub" style="margin-bottom:4px">🚦 매수신호 이력 — 2015~ 에피소드 {{ episodes|length }}건 (15일 갭 기준, 최신순)</div>
+  <div class="sub" style="margin-bottom:4px">🚦 매수신호 이력 — 2007~ 에피소드 {{ episodes|length }}건 (15일 갭 기준, 최신순 · 2008 금융위기 포함)
+    <span style="color:var(--muted)">· 저점까지 = 신호 후 126거래일 내 최저점(며칠 뒤·추가하락)</span></div>
   {% if delay_stats %}
   <div class="reason" style="margin-bottom:8px">
     <strong>언제 사야 하나</strong> ({{ idxs[0].name }} 63일 보유, 실계산):
@@ -113,6 +114,7 @@
   <table>
     <thead><tr>
       <th style="text-align:left">신호일</th><th>VIX</th><th>VVIX</th><th style="text-align:left">유형</th>
+      <th style="white-space:nowrap">저점까지</th>
       <th style="white-space:nowrap">{{ idxs[0].name }} +1일</th><th>+7일</th><th>+21일</th><th>+63일</th>
       <th style="white-space:nowrap;border-left:1px solid var(--baseline)">{{ idxs[1].name if idxs|length > 1 }} +1일</th><th>+7일</th><th>+21일</th><th>+63일</th>
     </tr></thead>
@@ -123,6 +125,11 @@
         <td style="{{ 'color:#e6a817;font-weight:600' if e.vix >= 20 }}">{{ '%.1f'|format(e.vix) }}</td>
         <td style="{{ 'color:#9085e9;font-weight:600' if e.vvix and e.vvix >= 95 }}">{{ '%.1f'|format(e.vvix) if e.vvix is not none else '–' }}</td>
         <td style="text-align:left">{% if e.s == 3 %}<span style="color:#d03b3b;font-weight:700">■ VIX+VVIX</span>{% else %}<span style="color:#e6a817">■ VIX≥30</span>{% endif %}</td>
+        <td style="white-space:nowrap">
+          {% if e.trough %}{% if e.trough[0] == 0 %}<span class="pos">당일이 저점</span>
+          {% else %}<span style="color:var(--muted)">{{ e.trough[0] }}일 뒤</span> <span class="neg">{{ '%+.1f%%'|format(e.trough[1]) }}</span>{% endif %}
+          {% else %}<span style="color:var(--muted)">–</span>{% endif %}
+        </td>
         <td>{{ ret(e.a1) }}</td>
         <td>{{ ret(e.a7) }}</td>
         <td>{{ ret(e.a21) }}</td>

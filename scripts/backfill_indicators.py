@@ -15,7 +15,7 @@ import yfinance as yf
 sys.path.insert(0, r"C:\Users\user\Desktop\github\market-hub")
 from src import db
 
-START = "2015-01-01"
+START = "2007-01-01"    # 2008 금융위기 포함 — 신호의 최악 케이스까지 보기 위해
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 MAP = [  # (yfinance 심볼, 저장 symbol, market)
     ("SPY", "SPY", "US"), ("QQQ", "QQQ", "US"),
