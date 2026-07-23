@@ -69,7 +69,8 @@ def main() -> None:
         threading.Thread(target=telegram_cmd.poll_loop, daemon=True).start()
         _log("telegram 명령 폴러 기동 (/잔고 /신호 /킬스위치)")
     last_beat = time.time()
-    last_exit = last_entry = last_recon = last_watch = last_rot = 0.0
+    last_exit = last_entry = last_recon = last_watch = last_rot = last_evt = 0.0
+    EVT_CHECK = int(os.getenv("EVENT_ALERT_SEC", "300"))   # 지표·실적 발표 감지 주기
     while True:
         try:
             res = engine.process_once()
@@ -128,6 +129,17 @@ def main() -> None:
                              f"-{[e['symbol'] for e in res['exits']]}")
                         _log(f"로테이션 즉시 처리: {engine.process_once()}")
                 last_rot = time.time()
+            # 지표·실적 발표 알림 — major 지표 actual 확인 / 감시종목 실적 시간대 (5분 주기)
+            if EVT_CHECK > 0 and time.time() - last_evt >= EVT_CHECK and \
+                    os.getenv("TELEGRAM_BOT_TOKEN"):
+                from src.jobs import event_alerts
+
+                con_e = db.connect()
+                sent = event_alerts.check(con_e)
+                con_e.close()
+                if sent:
+                    _log(f"발표 알림 {sent}건 발송")
+                last_evt = time.time()
             # 상호 감시 — 시간별 수집 정체 시 텔레그램 경보 (30분 주기)
             if time.time() - last_watch >= WATCH:
                 from src.jobs import watchdog

@@ -589,3 +589,43 @@ def test_telegram_kill_switch(con, monkeypatch):
     ok, _ = risk.check(con, {"ticker": "AAPL", "action": "buy", "qty": 1, "price": None})
     assert ok
     assert "명령" in telegram_cmd.handle("/도움말")    # 미지원/도움말 → 목록
+
+
+def test_event_alerts(con, monkeypatch):
+    """지표 발표(actual 확인·30분 대기·멱등) + 실적 시간대 알림."""
+    from datetime import datetime
+
+    from src import notify
+    from src.jobs import event_alerts
+
+    con.execute("CREATE TABLE IF NOT EXISTS collector_runs "
+                "(collector TEXT, run_at TEXT, status TEXT, rows INT, message TEXT)")
+    con.execute("CREATE TABLE econ_calendar (date TEXT, gmt TEXT, country TEXT, event TEXT, "
+                "actual TEXT, consensus TEXT, previous TEXT, major INTEGER)")
+    con.execute("CREATE TABLE earnings_calendar (symbol TEXT, date TEXT, when_time TEXT, "
+                "name TEXT, eps_forecast TEXT)")
+    # CPI: GMT 13:30 → KST 22:30. actual 비어 있음
+    con.execute("INSERT INTO econ_calendar VALUES "
+                "('2026-07-23','13:30','US','CPI (YoY)','','3.1%','3.4%',1)")
+    con.execute("INSERT INTO earnings_calendar VALUES "
+                "('AMD','2026-07-23','time-after-hours','Advanced Micro','0.92')")
+    con.commit()
+    sent = []
+    monkeypatch.setattr(notify, "send", lambda t: sent.append(t))
+    monkeypatch.setattr(event_alerts, "_refresh_econ", lambda c, d: (
+        c.execute("UPDATE econ_calendar SET actual='3.2%' WHERE event='CPI (YoY)'"), c.commit()))
+
+    # 발표 5분 후 → 재조회로 actual 확보 → 알림 1건
+    now = datetime.fromisoformat("2026-07-23T22:35:00")
+    assert event_alerts.check(con, now) == 1
+    assert "3.2%" in sent[0] and "3.1%" in sent[0]
+    assert event_alerts.check(con, now) == 0            # 멱등
+    # 실적: AMC → 익일 05:00 KST 이후 알림
+    now2 = datetime.fromisoformat("2026-07-24T05:10:00")
+    assert event_alerts.check(con, now2) == 0            # AMD가 감시목록에 없으면 0
+    con.execute("CREATE TABLE IF NOT EXISTS rotation_slots (symbol TEXT)")
+    con.execute("INSERT INTO rotation_slots VALUES ('AMD')")
+    con.commit()
+    assert event_alerts.check(con, now2) == 1
+    assert "AMD" in sent[-1] and "0.92" in sent[-1]
+    assert event_alerts.check(con, now2) == 0            # 멱등
