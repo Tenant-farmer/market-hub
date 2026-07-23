@@ -183,7 +183,9 @@ def build_text(con) -> str:
             fx.append(f"{nm} {val}" + (f" {c:+.2f}%" if c is not None else ""))
     if fx:
         L.append("• " + " · ".join(fx))
-    mac = [m for m in (queries.macro_context(con) or []) if "VIX" not in m["label"]]
+    # VIX·VVIX·VKOSPI는 신호등 줄에, BTC는 환율 줄에 이미 있음 — 매크로 줄에서 중복 제외
+    mac = [m for m in (queries.macro_context(con) or [])
+           if not any(k in m["label"] for k in ("VIX", "VKOSPI", "BTC"))]
     if mac:
         half = (len(mac) + 1) // 2
         L.append("• " + " · ".join(f"{m['label']} {m['val']}" for m in mac[:half]))

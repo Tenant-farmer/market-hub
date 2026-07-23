@@ -69,13 +69,18 @@ def macro_context(con) -> list[dict]:
         ).fetchall()
     ][::-1]
 
+    # 1줄: 변동성·위험자산 / 2줄: 금리·크레딧 (cards6 = 6열 고정이라 12개 → 정확히 2줄)
     spec = [
+        ("🇰🇷", "VKOSPI 한국공포", _macro_series(con, "VKOSPI"), 1.0, True, lambda v: f"{v:.1f}"),
         ("⚠", "VIX 공포지수", _macro_series(con, "^VIX"), 1.0, True, lambda v: f"{v:.1f}"),
+        ("⚡", "VVIX 헤지수요", _macro_series(con, "^VVIX"), 1.0, True, lambda v: f"{v:.0f}"),
         ("🛢", "WTI 원유", _macro_series(con, "CL=F"), 1.0, True, lambda v: f"${v:.2f}"),
         ("◆", "금", _macro_series(con, "GC=F"), 1.0, True, lambda v: f"${v:,.0f}"),
+        ("₿", "BTC 비트코인", _macro_series(con, "BTC-USD"), 1.0, True, lambda v: f"${v:,.0f}"),
         ("↗", "US 10Y 국채", _macro_series(con, "^TNX"), 1.0, False, lambda v: f"{v:.2f}%"),
         ("⚖", "10Y-3M 스프레드", spread, 1.0, False, lambda v: f"{v:.2f}%"),
         ("▤", "HYG 하이일드", _macro_series(con, "HYG"), 1.0, True, lambda v: f"${v:.2f}"),
+        ("🇰🇷", "KR 국고채 10Y", _macro_series(con, "ECOS:KTB10Y"), 1.0, False, lambda v: f"{v:.2f}%"),
         ("🇰🇷", "KR 국고채 3Y", _macro_series(con, "ECOS:KTB3Y"), 1.0, False, lambda v: f"{v:.2f}%"),
         ("⚖", "KR 10Y-3Y", kr_spread, 1.0, False, lambda v: f"{v:.2f}%"),
     ]
