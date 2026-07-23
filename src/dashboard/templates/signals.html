@@ -49,6 +49,12 @@
 {% if hist %}
 <div class="card" id="prog" style="margin-top:16px;overflow-x:auto">
   <div class="sub" style="margin-bottom:6px">진행 표 — 실제 값과 판정 (최신순, 30일/페이지 · {{ page }}/{{ pages }}p)</div>
+  <div class="pills" style="margin-bottom:8px">
+    <span class="sub" style="margin:0;align-self:center">연도:</span>
+    {% for y, p in year_pages %}
+    <a href="/signals?mkt={{ mkt }}&page={{ p }}#prog" class="{{ 'on' if y == cur_year }}">{{ y }}</a>
+    {% endfor %}
+  </div>
   <table>
     <thead><tr>
       <th style="text-align:left;white-space:nowrap">날짜</th>
@@ -100,12 +106,6 @@
     <a href="/signals?mkt={{ mkt }}&page={{ p }}#prog" class="{{ 'on' if on }}">{{ p }}</a>
     {% endfor %}
     {% if page < pages %}<a href="/signals?mkt={{ mkt }}&page={{ page + 1 }}#prog">다음 →</a><a href="/signals?mkt={{ mkt }}&page={{ pages }}#prog">끝 »</a>{% endif %}
-  </div>
-  <div class="pills" style="justify-content:center">
-    <span class="sub" style="margin:0;align-self:center">연도:</span>
-    {% for y, p in year_pages %}
-    <a href="/signals?mkt={{ mkt }}&page={{ p }}#prog" class="{{ 'on' if y == cur_year }}">{{ y }}</a>
-    {% endfor %}
   </div>
   <div class="reason" style="margin-top:6px">🚦 = 매수신호일(VIX≥30 또는 VIX·VVIX 동시) · 저점까지 = 신호 후 126거래일 내 최저점(며칠 뒤·추가하락) · +1/+7/+21/+63일 = 신호 당일 종가에 {{ idxs[0].name }}을 샀을 때의 이후 수익(63일 미확정이면 현재까지 진행) · 연도 필로 2007년까지 이동</div>
 </div>
