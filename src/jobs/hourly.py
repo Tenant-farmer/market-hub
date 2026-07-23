@@ -18,8 +18,8 @@ load_dotenv()
 
 from src import db
 from src.collectors import (
-    base, earnings, econ_calendar, fed, gurus, kr_capex, kr_flows, kr_sectors, kr_stocks,
-    macro, news, sentiment, us_capex, us_sectors, us_stocks,
+    base, dart, earnings, econ_calendar, fed, gurus, kr_capex, kr_flows, kr_sectors,
+    kr_stocks, macro, news, sentiment, us_capex, us_sectors, us_stocks,
 )
 
 
@@ -43,6 +43,7 @@ def main():
     base.run_collector("sentiment", sentiment.collect)
     base.run_collector("macro", lambda c: macro.collect(c, days=5))
     base.run_collector("news", news.collect)
+    base.run_collector("dart", dart.collect)      # 공시 (DART_API_KEY 없으면 0건 통과)
 
     con = db.connect()
     from src.jobs import watchdog

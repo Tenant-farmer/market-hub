@@ -101,7 +101,12 @@ def home():
     try:
         news = [dict(r) for r in con.execute(
             "SELECT dt, market, title, url, source, keyword FROM news "
-            "ORDER BY dt DESC LIMIT 8").fetchall()]
+            "WHERE source != 'DART' ORDER BY dt DESC LIMIT 6").fetchall()]
+        # 공시 보장 슬롯 (공시 dt는 09:00 고정이라 뉴스에 밀림 — 최근 2건 별도 확보)
+        news += [dict(r) for r in con.execute(
+            "SELECT dt, market, title, url, source, keyword FROM news "
+            "WHERE source='DART' AND dt >= datetime('now','localtime','-2 days') "
+            "ORDER BY dt DESC LIMIT 2").fetchall()]
     except Exception:                     # 첫 수집 전엔 테이블 없음
         news = []
 

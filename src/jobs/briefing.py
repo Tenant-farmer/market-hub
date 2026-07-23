@@ -219,12 +219,20 @@ def build_text(con) -> str:
     try:
         import html as _html
 
-        rows = con.execute("SELECT keyword, title, url FROM news ORDER BY dt DESC LIMIT 4").fetchall()
+        rows = con.execute("SELECT keyword, title, url FROM news WHERE source != 'DART' "
+                           "ORDER BY dt DESC LIMIT 4").fetchall()
         if rows:
             L.append("<b>📰 헤드라인</b>")
             for r in rows:
                 L.append(f"• [{r['keyword']}] <a href=\"{_html.escape(r['url'])}\">"
                          f"{_html.escape(r['title'][:60])}</a>")
+        # 공시 보장 슬롯 — 뉴스에 밀리지 않게 최근 2건 별도 (보유·로테이션 종목)
+        drows = con.execute("SELECT keyword, title, url FROM news WHERE source='DART' "
+                            "AND dt >= datetime('now','localtime','-2 days') "
+                            "ORDER BY dt DESC LIMIT 2").fetchall()
+        for r in drows:
+            L.append(f"• [{r['keyword']}] <a href=\"{_html.escape(r['url'])}\">"
+                     f"{_html.escape(r['title'][:60])}</a>")
     except Exception:
         pass
 
