@@ -54,7 +54,7 @@ EXIT_CHECK = int(os.getenv("EXIT_CHECK_SEC", "60"))     # 손절은 지연이 �
 ENTRY_CHECK = int(os.getenv("SIGNAL_ENTRY_CHECK_SEC", "3600"))
 RECONCILE = int(os.getenv("RECONCILE_SEC", "300"))
 WATCH = int(os.getenv("WATCHDOG_CHECK_SEC", "1800"))    # 상호 감시(hourly 생존) 주기
-ROT_CHECK = int(os.getenv("ROTATION_CHECK_SEC", "21600"))  # 로테이션 점검(모듈이 주1회 자체 게이트)
+ROT_CHECK = int(os.getenv("ROTATION_CHECK_SEC", "3600"))   # 로테이션 점검(주1회 자체 게이트, KR 장중 재시도용 1h)
 
 
 def main() -> None:
@@ -110,14 +110,16 @@ def main() -> None:
             if os.getenv("ROTATION_ENABLED") == "1" and time.time() - last_rot >= ROT_CHECK:
                 from src.trading import leader_rotation
 
-                res = leader_rotation.evaluate()
-                if res and (res.get("enters") or res.get("exits")):
-                    _record("ok", len(res["enters"]) + len(res["exits"]),
-                            f"로테이션 {res['week']}: 진입 {len(res['enters'])} "
-                            f"이탈 {len(res['exits'])}")
-                    _log(f"로테이션 {res['week']}: +{[e['symbol'] for e in res['enters']]} "
-                         f"-{[e['symbol'] for e in res['exits']]}")
-                    _log(f"로테이션 즉시 처리: {engine.process_once()}")
+                for mk in ("US", "KR"):
+                    res = leader_rotation.evaluate(market=mk)
+                    if res and (res.get("enters") or res.get("exits")):
+                        _record("ok", len(res["enters"]) + len(res["exits"]),
+                                f"로테이션[{mk}] {res['week']}: 진입 {len(res['enters'])} "
+                                f"이탈 {len(res['exits'])}")
+                        _log(f"로테이션[{mk}] {res['week']}: "
+                             f"+{[e['symbol'] for e in res['enters']]} "
+                             f"-{[e['symbol'] for e in res['exits']]}")
+                        _log(f"로테이션 즉시 처리: {engine.process_once()}")
                 last_rot = time.time()
             # 상호 감시 — 시간별 수집 정체 시 텔레그램 경보 (30분 주기)
             if time.time() - last_watch >= WATCH:

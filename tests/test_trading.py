@@ -406,7 +406,7 @@ def test_leader_rotation(con, monkeypatch):
     syms = [f"S{i:02d}" for i in range(1, 13)]
     ranks = pd.Series({s: float(i + 1) for i, s in enumerate(syms)})
     px = pd.Series({s: 100.0 for s in syms})
-    monkeypatch.setattr(rot, "_ranks", lambda c: (ranks, px))
+    monkeypatch.setattr(rot, "_ranks", lambda c, market="US": (ranks, px))
 
     res = rot.evaluate(con)
     assert len(res["enters"]) == 10 and res["exits"] == []
@@ -416,10 +416,10 @@ def test_leader_rotation(con, monkeypatch):
     assert rot.evaluate(con).get("skipped")            # 같은 주 재실행 → 멱등 스킵
 
     # 다음 주 시뮬레이션: S01 순위 이탈(40위) → 매도 + S11 교체 진입
-    con.execute("DELETE FROM rotation_meta WHERE key='last_week'")
+    con.execute("DELETE FROM rotation_meta WHERE key='last_week_US'")
     ranks2 = ranks.copy()
     ranks2["S01"], ranks2["S11"] = 40.0, 1.0
-    monkeypatch.setattr(rot, "_ranks", lambda c: (ranks2, px))
+    monkeypatch.setattr(rot, "_ranks", lambda c, market="US": (ranks2, px))
     res2 = rot.evaluate(con)
     assert [e["symbol"] for e in res2["exits"]] == ["S01"]
     assert any(e["symbol"] == "S11" for e in res2["enters"])
@@ -427,10 +427,38 @@ def test_leader_rotation(con, monkeypatch):
     assert con.execute("SELECT COUNT(*) c FROM signals WHERE source='rotation' "
                        "AND action='sell'").fetchone()["c"] == 1
 
-    con.execute("DELETE FROM rotation_meta WHERE key='last_week'")
+    con.execute("DELETE FROM rotation_meta WHERE key='last_week_US'")
     before = con.execute("SELECT COUNT(*) c FROM signals").fetchone()["c"]
     rot.evaluate(con, dry=True)                        # dry → 신호/장부 무변경
     assert con.execute("SELECT COUNT(*) c FROM signals").fetchone()["c"] == before
+
+
+def test_leader_rotation_kr(con, monkeypatch):
+    """KR 로테이션: 정수 주 사이징(비싼 종목 스킵) + 장외 defer + 장중 진입, US와 주간키 분리."""
+    import pandas as pd
+
+    from src.trading import leader_rotation as rot
+    from src.trading.brokers import alpaca, kiwoom
+
+    monkeypatch.setattr(alpaca, "configured", lambda: False)
+    monkeypatch.setattr(kiwoom, "configured", lambda: False)
+    monkeypatch.setenv("ROTATION_SLOT_KRW", "2000000")
+    codes = [f"{100000 + i}" for i in range(12)]                 # 6자리 = KR
+    ranks = pd.Series({c: float(i + 1) for i, c in enumerate(codes)})
+    px = pd.Series({c: 1_500_000.0 for c in codes})
+    px[codes[0]] = 3_000_000.0                                   # rank1이 슬롯보다 비쌈 → 스킵
+    monkeypatch.setattr(rot, "_ranks", lambda c, market="US": (ranks, px))
+
+    monkeypatch.setattr(kiwoom.KiwoomBroker, "is_market_open", lambda self, t: False)
+    assert rot.evaluate(con, market="KR").get("deferred")        # 장외 → 보류(주간키 미소모)
+
+    monkeypatch.setattr(kiwoom.KiwoomBroker, "is_market_open", lambda self, t: True)
+    res = rot.evaluate(con, market="KR")
+    syms = [e["symbol"] for e in res["enters"]]
+    assert codes[0] not in syms and len(syms) == 9               # rank 2~10 진입 (비싼 1위 스킵)
+    assert all(isinstance(e["qty"], int) and e["qty"] == 1 for e in res["enters"])
+    assert rot.evaluate(con, market="KR").get("skipped")         # KR 주간 멱등
+    assert con.execute("SELECT COUNT(*) c FROM rotation_slots").fetchone()["c"] == 9
 
 
 def test_dashboard_auth(monkeypatch):
