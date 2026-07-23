@@ -118,6 +118,18 @@ def build_text(con) -> str:
     kr_top = queries.kr_leaders(con, n=5)
     if kr_top:
         L.append("<b>KR 주도주</b>: " + " · ".join(r["name"] for r in kr_top))
+
+    # 뉴스 헤드라인 (최신 4 — 시장·보유종목, news 수집기)
+    try:
+        import html as _html
+
+        rows = con.execute("SELECT keyword, title FROM news ORDER BY dt DESC LIMIT 4").fetchall()
+        if rows:
+            L.append("")
+            for r in rows:
+                L.append(f"📰 [{r['keyword']}] {_html.escape(r['title'][:60])}")
+    except Exception:
+        pass
     return "\n".join(L)
 
 

@@ -435,6 +435,22 @@
   {% endif %}
 </div>
 
+{# ---- 뉴스 (Google RSS + yfinance, 매시 갱신) ---- #}
+{% if news %}
+<div class="card" style="margin-top:16px">
+  <div class="sub" style="margin-bottom:6px">📰 시장·보유종목 뉴스
+    <span style="color:var(--muted)">— 코스피 · 보유종목 · SPY/QQQ, 매시 갱신</span></div>
+  {% for n in news %}
+  <div style="display:flex;gap:8px;align-items:baseline;padding:4px 0;border-bottom:1px solid var(--grid);min-width:0">
+    <span class="chip" style="flex:none">{{ n.keyword }}</span>
+    <a href="{{ n.url }}" target="_blank" rel="noopener"
+       style="color:var(--ink-2);text-decoration:none;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ n.title }}</a>
+    <span style="flex:none;color:var(--muted);font-size:12px">{{ n.dt[5:16].replace('T', ' ') }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
 {# ---- 수급 상위 종목 + 신선도 ---- #}
 <div class="grid2" style="margin-top:16px">
   <div class="card">

@@ -19,7 +19,7 @@ load_dotenv()
 from src import db
 from src.collectors import (
     base, earnings, econ_calendar, fed, gurus, kr_capex, kr_flows, kr_sectors, kr_stocks,
-    macro, sentiment, us_capex, us_sectors, us_stocks,
+    macro, news, sentiment, us_capex, us_sectors, us_stocks,
 )
 
 
@@ -42,6 +42,7 @@ def main():
 
     base.run_collector("sentiment", sentiment.collect)
     base.run_collector("macro", lambda c: macro.collect(c, days=5))
+    base.run_collector("news", news.collect)
 
     con = db.connect()
     ran_kr = ran_us = False

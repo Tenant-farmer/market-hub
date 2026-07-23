@@ -97,6 +97,14 @@ def home():
     sflows = queries.sector_flows(con, kr_names)
     sflows_in, sflows_out = sflows[:5], [s for s in reversed(sflows[-5:]) if s["tot_1w"] < 0]
 
+    # 뉴스 (Google RSS + yfinance news, 매시 수집)
+    try:
+        news = [dict(r) for r in con.execute(
+            "SELECT dt, market, title, url, source, keyword FROM news "
+            "ORDER BY dt DESC LIMIT 8").fetchall()]
+    except Exception:                     # 첫 수집 전엔 테이블 없음
+        news = []
+
     fresh = queries.freshness(con)
     con.close()
     return render_template(
@@ -118,5 +126,5 @@ def home():
         us_rel=us_rel, us_names=us_names, us_bench=us_bench,
         us_flow=us_flow, capex=capex,
         kr_flow=kr_flow, kr_capex=kr_capex,
-        fresh=fresh,
+        news=news, fresh=fresh,
     )
