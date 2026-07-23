@@ -57,6 +57,12 @@ def main():
         con.commit()
     except Exception as e:
         print("  [portfolio] 스냅샷 실패:", str(e)[:80])
+    try:                           # 일일 매매일지 갱신 (docs/journal/YYYY-MM-DD.md)
+        from src.jobs import journal
+
+        journal.write_today(con)
+    except Exception as e:
+        print("  [journal] 일지 실패:", str(e)[:80])
     ran_kr = ran_us = False
 
     if kr_session:
