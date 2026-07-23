@@ -195,17 +195,34 @@ class KiwoomBroker(BrokerAdapter):
             return {"ok": False, "msg": str(e)[:120]}
 
     def account_balance(self) -> dict | None:
-        """kt00018 계좌평가잔고내역 → {예탁·총손익 + 보유종목별 평가손익}. 조회 실패 시 None."""
+        """kt00018 계좌평가잔고내역 → {예탁·총손익 + 보유종목별 평가손익}. 조회 실패 시 None.
+
+        여러 프로세스(대시보드·텔레그램·reconcile)가 동시에 키움을 때리면 레이트리밋(1700)에
+        걸려 간헐 실패 → 사전 스로틀 + 1700/순간오류 시 짧게 대기 후 최대 2회 재시도.
+        """
+        d = {}
+        for attempt in range(3):
+            try:
+                _throttle()                            # 1초 최소 간격 (submit_order와 공유)
+                r = requests.post(
+                    f"{_base()}/api/dostk/acnt",
+                    headers={"Content-Type": "application/json;charset=UTF-8",
+                             "authorization": f"Bearer {_token()}", "api-id": "kt00018"},
+                    json={"qry_tp": "1", "dmst_stex_tp": "KRX"}, timeout=15,
+                )
+                d = r.json() if r.content else {}
+                if d.get("return_code") == 0:
+                    break
+                msg = str(d.get("return_msg", ""))
+                if "1700" in msg or d.get("return_code") in (3, 8):   # 레이트리밋/일시 → 재시도
+                    time.sleep(1.2)
+                    continue
+                return None                            # 그 외 오류(인증 등)는 재시도 무의미
+            except Exception:
+                time.sleep(1.0)
+        if d.get("return_code") != 0:
+            return None
         try:
-            r = requests.post(
-                f"{_base()}/api/dostk/acnt",
-                headers={"Content-Type": "application/json;charset=UTF-8",
-                         "authorization": f"Bearer {_token()}", "api-id": "kt00018"},
-                json={"qry_tp": "1", "dmst_stex_tp": "KRX"}, timeout=15,
-            )
-            d = r.json() if r.content else {}
-            if d.get("return_code") != 0:
-                return None
             holdings = [
                 {
                     "code": h["stk_cd"].lstrip("A"), "name": h.get("stk_nm", ""),

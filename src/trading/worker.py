@@ -114,6 +114,14 @@ def main() -> None:
                         f"{u['coid'][:16]} {u['from']}->{u['to']}" for u in up))
                     _log(f"reconcile {len(up)}건")
                 last_recon = time.time()
+            # 매매 체결 알림 — 새 주문을 전략별로 묶어 텔레그램 (매 폴, 미알림 있을 때만)
+            if os.getenv("TELEGRAM_BOT_TOKEN"):
+                from src.jobs import trade_alerts
+
+                con_t = db.connect()
+                if trade_alerts.notify_new_orders(con_t):
+                    _log("매매 알림 발송")
+                con_t.close()
             # 주도주 로테이션 — ROTATION_ENABLED=1 일 때만 (모듈이 ISO주당 1회 자체 게이트)
             if os.getenv("ROTATION_ENABLED") == "1" and time.time() - last_rot >= ROT_CHECK:
                 from src.trading import leader_rotation
