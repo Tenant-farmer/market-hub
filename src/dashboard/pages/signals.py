@@ -54,11 +54,11 @@ def signals():
     # ---- 하단 진행 표 (두 지수 + 기간 선택) & 매수신호 이력 (전 기간 에피소드 + 진입지연 연구) ----
     from bisect import bisect_right
 
+    PER = 30
     try:
-        days = int(request.args.get("days", 90))
+        page = max(1, int(request.args.get("page", 1)))
     except ValueError:
-        days = 90
-    days = days if days in (30, 90, 250) else 90
+        page = 1
 
     def _tools(data):
         ds = [d["time"] for d in data]
@@ -82,7 +82,7 @@ def signals():
     by2 = {t: c for t, c in zip(d2_, c2_)}
 
     hist, p1, p2 = [], None, None
-    for m in marks[-(days + 1):]:
+    for m in marks:                                    # 전체 이력 (페이지네이션으로 열람)
         t = m["time"]
         c1v, c2v = by1.get(t), by2.get(t)
         fg = fng_by.get(t)
@@ -99,7 +99,12 @@ def signals():
                 row["fwd_run"] = ((c1_[-1] / c1_[i] - 1) * 100, len(c1_) - 1 - i)
         p1, p2 = c1v or p1, c2v or p2
         hist.append(row)
-    hist = hist[1:][::-1]
+    hist = hist[1:][::-1]                              # 최신순
+    pages = max(1, -(-len(hist) // PER))
+    page = min(page, pages)
+    hist = hist[(page - 1) * PER: page * PER]
+    lo = max(1, page - 3)
+    page_links = [(p, p == page) for p in range(lo, min(pages, lo + 6) + 1)]
 
     # 신호 에피소드 (15일 갭 기준) — 그날 샀으면 +21/+63일 수익
     greens = [(m["time"], vix_by.get(m["time"], 0), vvix_by.get(m["time"]),
@@ -131,6 +136,7 @@ def signals():
 
     pills = [("미국 (SPY·QQQ)", "us", mkt == "us"), ("한국 (코스피·코스닥)", "kr", mkt == "kr")]
     return render_template("signals.html", mkt=mkt, idxs=idxs, vix=vix, vvix=vvix,
-                           fng=fng, marks=marks, avoid=avoid, hist=hist, days=days,
+                           fng=fng, marks=marks, avoid=avoid, hist=hist,
+                           page=page, pages=pages, page_links=page_links,
                            episodes=episodes, delay_stats=delay_stats, best_delay=best,
                            pills=pills)

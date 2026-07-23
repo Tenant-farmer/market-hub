@@ -47,21 +47,14 @@
 {# ---- 진행 표 (두 지수 + 기간 선택) ---- #}
 {% if hist %}
 <div class="card" style="margin-top:16px;overflow-x:auto">
-  <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:6px">
-    <span class="sub" style="margin:0">진행 표 — 실제 값과 판정 (최신순)</span>
-    <span class="pills" style="margin:0 0 0 auto">
-      {% for d in (30, 90, 250) %}
-      <a href="/signals?mkt={{ mkt }}&days={{ d }}" class="{{ 'on' if days == d }}">{{ d }}일</a>
-      {% endfor %}
-    </span>
-  </div>
+  <div class="sub" style="margin-bottom:6px">진행 표 — 실제 값과 판정 (최신순, 30일/페이지 · {{ page }}/{{ pages }}p)</div>
   <table>
     <thead><tr>
-      <th style="text-align:left">날짜</th>
+      <th style="text-align:left;white-space:nowrap">날짜</th>
       <th>{{ idxs[0].name if idxs else '지수' }}</th><th>등락</th>
       <th>{{ idxs[1].name if idxs|length > 1 }}</th><th>등락</th>
       <th>VIX</th><th>VVIX</th><th>F&amp;G</th><th style="text-align:left">판정</th>
-      <th>신호後63일</th>
+      <th style="white-space:nowrap">신호後 63일</th>
     </tr></thead>
     <tbody>
     {% for h in hist %}
@@ -91,7 +84,14 @@
     {% endfor %}
     </tbody>
   </table>
-  <div class="reason" style="margin-top:6px">🚦 = 매수신호일(VIX≥30 또는 VIX·VVIX 동시) · 신호後63일 = 그날 {{ idxs[0].name }}을 샀을 때 63거래일 뒤 수익(미확정이면 현재까지)</div>
+  <div class="pills" style="margin-top:10px;justify-content:center">
+    {% if page > 1 %}<a href="/signals?mkt={{ mkt }}&page={{ page - 1 }}">← 이전</a>{% endif %}
+    {% for p, on in page_links %}
+    <a href="/signals?mkt={{ mkt }}&page={{ p }}" class="{{ 'on' if on }}">{{ p }}</a>
+    {% endfor %}
+    {% if page < pages %}<a href="/signals?mkt={{ mkt }}&page={{ page + 1 }}">다음 →</a>{% endif %}
+  </div>
+  <div class="reason" style="margin-top:6px">🚦 = 매수신호일(VIX≥30 또는 VIX·VVIX 동시) · 신호後 63일 = 그날 {{ idxs[0].name }}을 샀을 때 63거래일 뒤 수익(미확정이면 현재까지) · 페이지를 넘기면 2015년까지 전체 열람</div>
 </div>
 {% endif %}
 
