@@ -48,6 +48,73 @@ def _alpaca_view():
         return None
 
 
+def _tagger(con):
+    """보유 종목 → 전략 귀속 (로테이션/신호진입/기본보유/수동)."""
+    try:
+        rot = {str(r["symbol"]) for r in con.execute("SELECT symbol FROM rotation_slots")}
+    except Exception:
+        rot = set()
+    sig = {"SPY", os.getenv("SIGNAL_ENTRY_SYMBOL", "SPY"),
+           os.getenv("SIGNAL_ENTRY_SYMBOL_KR", "069500")} - {""}
+    base_hold = {"005930", "010950", "AAPL"}
+
+    def tag(code):
+        if code in rot:
+            return "로테이션"
+        if code in sig:
+            return "신호진입"
+        if code in base_hold:
+            return "기본보유"
+        return "수동"
+    return tag
+
+
+def _spark(vals, w=240, h=44):
+    """값 목록 → 인라인 SVG polyline 좌표 (없으면 None)."""
+    v = [x for x in vals if x is not None]
+    if len(v) < 2:
+        return None
+    lo, hi = min(v), max(v)
+    span = (hi - lo) or 1
+    step = w / (len(v) - 1)
+    return " ".join(f"{i * step:.1f},{h - 3 - (x - lo) / span * (h - 6):.1f}"
+                    for i, x in enumerate(v))
+
+
+def _trend(con):
+    """portfolio_snapshots + 환율 → 일별 원화 합산 시리즈."""
+    try:
+        rows = con.execute("SELECT date, broker, equity, pl FROM portfolio_snapshots "
+                           "ORDER BY date").fetchall()
+    except Exception:
+        return None
+    if not rows:
+        return None
+    fx = {r["date"]: r["close"] for r in con.execute(
+        "SELECT date, close FROM prices_daily WHERE symbol='KRW=X' ORDER BY date")}
+    fx_dates = sorted(fx)
+    by_date = {}
+    for r in rows:
+        by_date.setdefault(r["date"], {})[r["broker"]] = r
+    days = []
+    last_rate = None
+    for d in sorted(by_date):
+        rate = next((fx[x] for x in reversed(fx_dates) if x <= d), None) or last_rate
+        last_rate = rate or last_rate
+        kr = by_date[d].get("kiwoom")
+        us = by_date[d].get("alpaca")
+        total = (kr["equity"] if kr else 0) + (us["equity"] * rate if us and rate else 0)
+        days.append({"date": d, "kr": kr["equity"] if kr else None,
+                     "us": us["equity"] if us else None,
+                     "total": total or None,
+                     "pl": ((kr["pl"] if kr else 0) + (us["pl"] * rate if us and rate else 0))})
+    return {
+        "days": days, "rate": last_rate,
+        "spark": _spark([d["total"] for d in days]),
+        "first": next((d for d in days if d["total"]), None), "last": days[-1],
+    }
+
+
 @bp.get("/positions")
 def positions():
     con = db.connect()
@@ -61,6 +128,8 @@ def positions():
         "SELECT created_at, broker, ticker, action, qty, price, status, message "
         "FROM orders ORDER BY id DESC LIMIT 15"
     ).fetchall()
+    tag = _tagger(con)
+    trend = _trend(con)
     con.close()
 
     gate = {
@@ -75,8 +144,21 @@ def positions():
     kr = kiwoom.KiwoomBroker().account_balance() if kiwoom.configured() else None
     kr_mock = kiwoom.is_mock() if kiwoom.configured() else True
     us = _alpaca_view()
+    for h in (kr or {}).get("holdings", []) + (us or {}).get("holdings", []):
+        h["tag"] = tag(h["code"])
+    # 전략별 합계 (원화 환산 — 환율 없으면 US분 생략)
+    rate = (trend or {}).get("rate")
+    strat = {}
+    for h in (kr or {}).get("holdings", []):
+        s = strat.setdefault(h["tag"] + " KR", {"value": 0, "pl": 0})
+        s["value"] += h["value"]; s["pl"] += h["pl"]
+    for h in (us or {}).get("holdings", []):
+        if rate:
+            s = strat.setdefault(h["tag"] + " US", {"value": 0, "pl": 0})
+            s["value"] += h["value"] * rate; s["pl"] += h["pl"] * rate
 
     return render_template(
         "positions.html", gate=gate, kr=kr, kr_mock=kr_mock, us=us,
         recent_orders=[dict(r) for r in recent_orders],
+        trend=trend, strat=strat,
     )

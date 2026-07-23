@@ -20,6 +20,47 @@
   <div class="reason" style="margin-top:8px">주문상한 {{ "{:,.0f}".format(gate.max_usd) }} USD / {{ "{:,.0f}".format(gate.max_krw) }} KRW · 일일 {{ gate.max_daily }}건 (오늘 {{ gate.orders_today }}건) · 실전은 mode=live + arm 둘 다</div>
 </div>
 
+{# ---- 자산 요약 + 에쿼티 추이 ---- #}
+{% if trend and trend.last.total %}
+<div class="card" style="margin-bottom:16px">
+  <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:center">
+    <div>
+      <div class="sub">합산 총자산 (원화 환산)</div>
+      <div style="font-size:1.5em;font-weight:700">{{ "{:,.0f}".format(trend.last.total) }}원</div>
+      <div class="reason">키움 {{ "{:,.0f}".format(trend.last.kr or 0) }}원 ·
+        Alpaca ${{ "{:,.0f}".format(trend.last.us or 0) }}
+        {% if trend.rate %}(@{{ "{:,.0f}".format(trend.rate) }}원){% endif %}</div>
+    </div>
+    <div>
+      <div class="sub">미실현 손익 합산</div>
+      <div style="font-size:1.25em;font-weight:700" class="{{ 'pos' if trend.last.pl > 0 else 'neg' if trend.last.pl < 0 }}">
+        {{ "{:+,.0f}".format(trend.last.pl) }}원</div>
+      {% if trend.first and trend.first.date != trend.last.date %}
+      <div class="reason">추적 시작({{ trend.first.date[5:] }}) 대비
+        {{ "{:+,.0f}".format(trend.last.total - trend.first.total) }}원</div>
+      {% endif %}
+    </div>
+    {% if trend.spark %}
+    <div style="margin-left:auto">
+      <div class="sub">에쿼티 추이 ({{ trend.days|length }}일)</div>
+      <svg viewBox="0 0 240 44" width="240" height="44" style="display:block">
+        <polyline points="{{ trend.spark }}" fill="none" stroke="var(--accent)" stroke-width="2"/>
+      </svg>
+      <div class="reason">{{ trend.days[0].date[5:] }} ~ {{ trend.last.date[5:] }} · 매시 갱신, 하루 마지막 값</div>
+    </div>
+    {% endif %}
+  </div>
+  {% if strat %}
+  <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:10px;border-top:1px solid var(--grid);padding-top:8px">
+    {% for name, s in strat.items()|sort %}
+    <span class="reason">{{ name }} <strong>{{ "{:,.0f}".format(s.value) }}원</strong>
+      <span class="{{ 'pos' if s.pl > 0 else 'neg' if s.pl < 0 }}">{{ "{:+,.0f}".format(s.pl) }}</span></span>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
 {# ---- KR 포지션 (키움) ---- #}
 <div class="card" style="margin-bottom:16px;overflow-x:auto">
   <div class="sub" style="margin-bottom:6px">KR 보유 — 키움{{ ' 모의' if kr_mock else ' 실전' }}
@@ -28,11 +69,12 @@
   </div>
   {% if kr and kr.holdings %}
   <table>
-    <thead><tr><th style="text-align:left">종목</th><th>수량</th><th>매입가</th><th>현재가</th><th>평가금액</th><th>평가손익</th><th>수익률</th></tr></thead>
+    <thead><tr><th style="text-align:left">종목</th><th style="text-align:left">전략</th><th>수량</th><th>매입가</th><th>현재가</th><th>평가금액</th><th>평가손익</th><th>수익률</th></tr></thead>
     <tbody>
     {% for h in kr.holdings %}
       <tr>
         <td style="text-align:left"><a href="/stock/{{ h.code }}" style="color:var(--ink);text-decoration:none">{{ h.name }}</a> <span class="reason">{{ h.code }}</span></td>
+        <td style="text-align:left"><span class="reason">{{ h.tag }}</span></td>
         <td>{{ '{:,.0f}'.format(h.qty) }}</td>
         <td>{{ '{:,.0f}'.format(h.avg) }}</td>
         <td>{{ '{:,.0f}'.format(h.cur) }}</td>
@@ -58,11 +100,12 @@
   </div>
   {% if us and us.holdings %}
   <table>
-    <thead><tr><th style="text-align:left">종목</th><th>수량</th><th>매입가</th><th>현재가</th><th>평가금액</th><th>평가손익</th><th>수익률</th></tr></thead>
+    <thead><tr><th style="text-align:left">종목</th><th style="text-align:left">전략</th><th>수량</th><th>매입가</th><th>현재가</th><th>평가금액</th><th>평가손익</th><th>수익률</th></tr></thead>
     <tbody>
     {% for h in us.holdings %}
       <tr>
         <td style="text-align:left"><strong>{{ h.code }}</strong></td>
+        <td style="text-align:left"><span class="reason">{{ h.tag }}</span></td>
         <td>{{ '%g'|format(h.qty) }}</td>
         <td>${{ "{:,.2f}".format(h.avg) }}</td>
         <td>${{ "{:,.2f}".format(h.cur) }}</td>

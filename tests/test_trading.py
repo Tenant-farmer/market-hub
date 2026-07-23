@@ -504,3 +504,21 @@ def test_engine_kill_switch(client, con, monkeypatch):
     res = engine.process_once(con)
     assert res == {"processed": 0, "rejected": 1}
     assert con.execute("SELECT COUNT(*) n FROM orders").fetchone()["n"] == 0
+
+
+def test_portfolio_snapshot_upsert(con, monkeypatch):
+    """같은 날 두 번 스냅샷 → 브로커당 1행 (마지막 값 승리)."""
+    from src.trading import portfolio
+    from src.trading.brokers import alpaca, kiwoom
+
+    monkeypatch.setattr(kiwoom, "configured", lambda: True)
+    monkeypatch.setattr(alpaca, "configured", lambda: False)
+    bal = {"cash": 500_000_000, "pur": 20e6, "value": 21e6, "pl": 1e6, "plpc": 5.0,
+           "holdings": []}
+    monkeypatch.setattr(kiwoom.KiwoomBroker, "account_balance", lambda self: dict(bal))
+    assert portfolio.snapshot(con) == 1
+    bal["cash"] = 501_000_000
+    assert portfolio.snapshot(con) == 1
+    rows = con.execute("SELECT * FROM portfolio_snapshots").fetchall()
+    assert len(rows) == 1 and rows[0]["equity"] == 501_000_000
+    assert rows[0]["cash"] == 501_000_000 - 21e6

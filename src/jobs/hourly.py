@@ -50,6 +50,13 @@ def main():
     from src.jobs import watchdog
 
     watchdog.check_engine(con)     # 엔진 워커 생존 감시 (정체 시 텔레그램 경보)
+    try:                           # 계좌 에쿼티 스냅샷 (하루 마지막 값이 EOD 근사)
+        from src.trading import portfolio
+
+        portfolio.snapshot(con)
+        con.commit()
+    except Exception as e:
+        print("  [portfolio] 스냅샷 실패:", str(e)[:80])
     ran_kr = ran_us = False
 
     if kr_session:
