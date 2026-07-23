@@ -359,6 +359,28 @@ def test_reconcile_kiwoom_fill_and_watchdog(con, monkeypatch):
     assert reconcile.reconcile(con) == []                       # 재실행 멱등
 
 
+def test_watchdog_alert_once(con, monkeypatch):
+    """상호 감시 — 정체 시 경보 1회(쿨다운 중복 방지), 회복 시 무경보."""
+    from src import notify
+    from src.jobs import watchdog
+
+    con.execute("CREATE TABLE collector_runs "
+                "(collector TEXT, run_at TEXT, status TEXT, rows INT, message TEXT)")
+    con.commit()
+    sent = []
+    monkeypatch.setattr(notify, "send", lambda t: sent.append(t) or True)
+
+    assert watchdog.check_engine(con) == 1          # 하트비트 없음 → 경보
+    assert watchdog.check_engine(con) == 0          # 쿨다운 내 재호출 → 무경보
+    assert len(sent) == 1 and "엔진" in sent[0]
+
+    con.execute("INSERT INTO collector_runs VALUES "
+                "('sentiment', datetime('now','localtime'), 'ok', 1, NULL)")
+    con.commit()
+    assert watchdog.check_hourly(con) == 0          # 수집 정상 → 무경보
+    assert len(sent) == 1
+
+
 def test_dashboard_auth(monkeypatch):
     import base64
 

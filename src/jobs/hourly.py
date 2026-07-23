@@ -45,6 +45,9 @@ def main():
     base.run_collector("news", news.collect)
 
     con = db.connect()
+    from src.jobs import watchdog
+
+    watchdog.check_engine(con)     # 엔진 워커 생존 감시 (정체 시 텔레그램 경보)
     ran_kr = ran_us = False
 
     if kr_session:

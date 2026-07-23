@@ -53,6 +53,7 @@ def _log(msg: str) -> None:
 EXIT_CHECK = int(os.getenv("EXIT_CHECK_SEC", "60"))     # 손절은 지연이 돈 → 1분 감지
 ENTRY_CHECK = int(os.getenv("SIGNAL_ENTRY_CHECK_SEC", "3600"))
 RECONCILE = int(os.getenv("RECONCILE_SEC", "300"))
+WATCH = int(os.getenv("WATCHDOG_CHECK_SEC", "1800"))    # 상호 감시(hourly 생존) 주기
 
 
 def main() -> None:
@@ -60,7 +61,7 @@ def main() -> None:
          f"entry {ENTRY_CHECK}s, reconcile {RECONCILE}s")
     _record("ok", 0, "worker 시작")
     last_beat = time.time()
-    last_exit = last_entry = last_recon = 0.0
+    last_exit = last_entry = last_recon = last_watch = 0.0
     while True:
         try:
             res = engine.process_once()
@@ -103,6 +104,15 @@ def main() -> None:
                         f"{u['coid'][:16]} {u['from']}->{u['to']}" for u in up))
                     _log(f"reconcile {len(up)}건")
                 last_recon = time.time()
+            # 상호 감시 — 시간별 수집 정체 시 텔레그램 경보 (30분 주기)
+            if time.time() - last_watch >= WATCH:
+                from src.jobs import watchdog
+
+                con_w = db.connect()
+                if watchdog.check_hourly(con_w):
+                    _log("워치독: hourly 정체 경보 발송")
+                con_w.close()
+                last_watch = time.time()
         except Exception:
             tb = traceback.format_exc(limit=3)
             _record("error", 0, tb)

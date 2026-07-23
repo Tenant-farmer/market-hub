@@ -130,6 +130,27 @@ def build_text(con) -> str:
                 L.append(f"📰 [{r['keyword']}] {_html.escape(r['title'][:60])}")
     except Exception:
         pass
+
+    # 시스템 상태 한 줄 (무인 가동 관찰용 — 24h 수집·주문·경보·게이트)
+    try:
+        import os as _os
+
+        c24 = lambda q: con.execute(q).fetchone()["c"]                     # noqa: E731
+        ok = c24("SELECT COUNT(*) c FROM collector_runs WHERE status='ok' "
+                 "AND run_at >= datetime('now','localtime','-1 day')")
+        err = c24("SELECT COUNT(*) c FROM collector_runs WHERE status='error' "
+                  "AND run_at >= datetime('now','localtime','-1 day')")
+        ords = c24("SELECT COUNT(*) c FROM orders "
+                   "WHERE created_at >= datetime('now','localtime','-1 day')")
+        wd = c24("SELECT COUNT(*) c FROM collector_runs WHERE collector='watchdog' "
+                 "AND run_at >= datetime('now','localtime','-1 day')")
+        gates = (f"청산 {'ON' if _os.getenv('EXIT_ENABLED') == '1' else 'off'}"
+                 f"·진입 {'ON' if _os.getenv('SIGNAL_ENTRY_ENABLED') == '1' else 'off'}")
+        L.append("")
+        L.append(f"⚙ 시스템(24h): 수집 ok {ok}{f'/에러 {err}' if err else ''} · 주문 {ords}건"
+                 + (f" · 🚨경보 {wd}" if wd else "") + f" · {gates}")
+    except Exception:
+        pass
     return "\n".join(L)
 
 
