@@ -183,6 +183,37 @@ def vix_signal(con):
     return sig
 
 
+def kr_signal(con):
+    """KR 전용 매수신호 — VKOSPI≥30 & KOSPI 52주 고점 대비 -5% 이하.
+
+    근거: scripts/vkospi_backtest.py (2010~24: +63d 승률 75%/중앙 +5.3%, 저점지연 22일
+    — 글로벌 VIX 신호의 58일 시차 해소). 낙폭 조건은 멜트업(상승 과열 변동성)을
+    공포와 구분 — 고점 근처 고변동에선 발동하지 않음. VKOSPI 미수집이면 None.
+    """
+    try:
+        vk = _macro_series(con, "VKOSPI", 5)
+        ks = _macro_series(con, "1001", 260)          # KOSPI 지수 (52주 창)
+    except Exception:                                 # prices_daily 미생성 (테스트/신규 설치)
+        return None
+    if not vk or len(ks) < 200:
+        return None
+    v, dd = vk[-1], (ks[-1] / max(ks) - 1) * 100
+    if v >= 30 and dd <= -5:
+        sig = {"state": "buy", "emoji": "🟢", "cls": "pos",
+               "label": "KR 매수 구간 — 로컬 공포",
+               "desc": "VKOSPI 30+ & 낙폭 5%+ · 2010~24 승률 75% · 중앙값 +5.3%"}
+    elif v >= 30:
+        sig = {"state": "hold_melt", "emoji": "🟠", "cls": "hot",
+               "label": "KR 보류 — 과열 변동성",
+               "desc": "VKOSPI 30+ 이나 낙폭 5% 미달 — 공포 아닌 멜트업 변동성"}
+    else:
+        sig = {"state": "neutral", "emoji": "⚪", "cls": "",
+               "label": "KR 평시 — 신호 없음",
+               "desc": "VKOSPI 30 미만"}
+    sig.update({"vkospi": v, "kospi_dd": dd})
+    return sig
+
+
 def regime(con, sym: str, ma_days: int = 200):
     """시장 레짐: 종가 vs 200일 이평 — 모멘텀 크래시 회피용 신호등."""
     rows = con.execute(

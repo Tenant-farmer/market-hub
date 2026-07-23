@@ -117,6 +117,19 @@
     VIX {{ '%.1f'|format(signal.vix) }} · VVIX {{ '%.1f'|format(signal.vvix) }} (5일평균 {{ '%.1f'|format(signal.vvix5) }}){% if signal.fng is not none %} · F&G {{ '%.0f'|format(signal.fng) }}{% endif %}
     <div style="color:var(--muted)">근거: VIX×VVIX 19년 + F&G 6년 백테스트 (docs/HISTORY.md)</div>
   </div>
+  {% if kr_sig %}
+  <div style="flex-basis:100%;border-top:1px solid var(--grid);padding-top:8px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+    <span style="font-size:18px">{{ kr_sig.emoji }}</span>
+    <div>
+      <strong class="{{ kr_sig.cls }}">{{ kr_sig.label }}</strong>
+      <div class="reason">{{ kr_sig.desc }}</div>
+    </div>
+    <div style="margin-left:auto;text-align:right" class="reason">
+      VKOSPI {{ '%.1f'|format(kr_sig.vkospi) }} · KOSPI 고점比 {{ '%+.1f%%'|format(kr_sig.kospi_dd) }}
+      <div style="color:var(--muted)">근거: VKOSPI 16년 백테스트 (scripts/vkospi_backtest.py)</div>
+    </div>
+  </div>
+  {% endif %}
 </div>
 {% endif %}
 

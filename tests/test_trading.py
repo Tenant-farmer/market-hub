@@ -250,9 +250,11 @@ def test_signal_entry(con, monkeypatch):
     monkeypatch.setenv("SIGNAL_ENTRY_SYMBOL", "QQQ")
     assert signal_entry.check_entry(con, dry=True)["symbol"] == "QQQ"
     assert con.execute("SELECT COUNT(*) c FROM signals WHERE ticker='QQQ'").fetchone()["c"] == 0
-    # KR 확장: KR 장중이면 KODEX200 같이 emit, 장외면 US만 (다음 장중 사이클에 나감)
+    # KR 확장: KR 신호(VKOSPI≥30 & 낙폭 5%+)가 green + 장중이면 KODEX200 emit — US와 독립
     from src.trading.brokers import kiwoom
     monkeypatch.setenv("SIGNAL_ENTRY_SYMBOL_KR", "069500")
+    monkeypatch.setattr(signal_entry, "kr_signal",
+                        lambda c: {"state": "buy", "label": "KR 매수 구간"})
     monkeypatch.setattr(kiwoom.KiwoomBroker, "is_market_open", lambda self, t: True)
     out = signal_entry.check_entry(con)
     assert [x["symbol"] for x in out["entries"]] == ["QQQ", "069500"]
@@ -262,6 +264,19 @@ def test_signal_entry(con, monkeypatch):
     con.commit()
     out = signal_entry.check_entry(con)
     assert [x["symbol"] for x in out["entries"]] == ["QQQ"]
+    # KR만 green (US 평시) → KR만 emit
+    monkeypatch.setattr(signal_entry, "vix_signal", lambda c: {"state": "neutral", "label": "평시"})
+    monkeypatch.setattr(kiwoom.KiwoomBroker, "is_market_open", lambda self, t: True)
+    con.execute("DELETE FROM signals")
+    con.commit()
+    out = signal_entry.check_entry(con)
+    assert [x["symbol"] for x in out["entries"]] == ["069500"]
+    # KR 과열보류(hold_melt — 낙폭 미달) → emit 없음
+    monkeypatch.setattr(signal_entry, "kr_signal",
+                        lambda c: {"state": "hold_melt", "label": "과열 변동성"})
+    con.execute("DELETE FROM signals")
+    con.commit()
+    assert signal_entry.check_entry(con) is None
 
 
 def test_reconcile(con, monkeypatch):

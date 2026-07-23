@@ -11,7 +11,7 @@ from src.dashboard.queries_calendar import (  # noqa: F401  (re-export)
     earnings_upcoming, econ_upcoming, fed_watch,
 )
 from src.dashboard.queries_macro import (  # noqa: F401  (re-export)
-    bench_snapshot, classify_vix_signal, macro_context, market_ratio,
+    bench_snapshot, classify_vix_signal, kr_signal, macro_context, market_ratio,
     regime, sentiment_latest, treasury_line, vix_signal,
 )
 

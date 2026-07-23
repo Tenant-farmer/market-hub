@@ -46,6 +46,7 @@ def home():
     sparks = {s: _spark(con, s) for s in ("SPY", "QQQ", "1001", "2001")}
     macro = queries.macro_context(con)
     signal = queries.vix_signal(con)
+    kr_sig = queries.kr_signal(con)
     kq_ratio = queries.market_ratio(con)
     earnings = queries.earnings_upcoming(con)
     econ = queries.econ_upcoming(con)
@@ -117,6 +118,7 @@ def home():
         spy=spy, kospi=kospi,
         qqq=qqq, kosdaq=kosdaq, qqq_regime=qqq_regime, kosdaq_regime=kosdaq_regime,
         spy_regime=spy_regime, kospi_regime=kospi_regime, macro=macro, signal=signal,
+        kr_sig=kr_sig,
         sparks=sparks,
         kq_ratio=kq_ratio, earnings=earnings, econ=econ, trend=trend, treasury=treasury,
         fed_next=fed_next,

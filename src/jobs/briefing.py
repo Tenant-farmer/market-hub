@@ -69,7 +69,11 @@ def build_text(con) -> str:
          f"({'월화수목금토일'[today.weekday()]})"]
     sig = queries.vix_signal(con)                      # 매수 신호등은 최상단 독립 표기
     if sig:
-        L.append(f"🚦 <b>매수 신호등: {sig['emoji']} {sig['label']}</b>")
+        L.append(f"🚦 <b>매수 신호등(US): {sig['emoji']} {sig['label']}</b>")
+    ksig = queries.kr_signal(con)                      # KR 전용 (VKOSPI≥30 & 낙폭 5%+)
+    if ksig:
+        L.append(f"🚦 <b>매수 신호등(KR): {ksig['emoji']} {ksig['label']}</b>"
+                 f" — VKOSPI {ksig['vkospi']:.0f} · 고점比 {ksig['kospi_dd']:+.1f}%")
     L.append("")
     us_names = config.load()["us"].get("names", {})
     kr_names = queries.kr_index_names(con)

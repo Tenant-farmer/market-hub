@@ -1,8 +1,10 @@
 """매수 신호등(green) → 지수 ETF 진입 신호 자동 생성.
 
-백테스트 결론(2007~): 시스템 엣지는 '지수+타이밍'에 있고 '선정'엔 없음. green(VIX≥30 또는
-VIX≥20&VVIX≥95)일 때 SIGNAL_ENTRY_SYMBOL(기본 SPY)을 매수 신호로 signals 큐에 emit → 기존
-리스크·실전 게이트·브로커·청산 파이프라인이 그대로 처리. 진입은 신호가, 실주문 여부는 게이트가 결정.
+백테스트 결론(2007~): 시스템 엣지는 '지수+타이밍'에 있고 '선정'엔 없음. 진입 조건은 시장별 분리:
+- US: 글로벌 신호등 green(VIX≥30 또는 VIX≥20&VVIX≥95) → SIGNAL_ENTRY_SYMBOL(기본 SPY)
+- KR: **VKOSPI≥30 & KOSPI 낙폭 5%+** (kr_signal — 2010~24 승률 75%, 저점지연 22일로
+  글로벌 VIX의 58일 시차 해소; scripts/vkospi_backtest.py) → SIGNAL_ENTRY_SYMBOL_KR
+emit된 신호는 기존 리스크·실전 게이트·브로커·청산 파이프라인이 그대로 처리.
 
 - 게이트: SIGNAL_ENTRY_ENABLED=1 일 때만 (기본 off — 예기치 않은 자동매수 방지)
 - 멱등: 하루 1회 (signal-entry-{sym}-{today}) → green이 여러 날 지속되면 매일 1주씩 분할 진입
@@ -13,7 +15,7 @@ import os
 from datetime import date, datetime
 
 from src import db
-from src.dashboard.queries_macro import vix_signal
+from src.dashboard.queries_macro import kr_signal, vix_signal
 from src.trading import ensure_tables
 
 
@@ -31,9 +33,9 @@ def _emit_one(con, sym, qty, label, dry):
 
 
 def check_entry(con=None, dry=False):
-    """green이면 지수 매수 신호 emit — US(SPY) + KR(KODEX200, KR 장중일 때만).
+    """시장별 green 판정 후 지수 매수 신호 emit — US(SPY) / KR(KODEX200, KR 장중일 때만).
 
-    KR 백테스트 근거: 신호 타이밍이 KR에선 보유를 이김(KOSPI +478%>+402%) — KR 유일 검증 엣지.
+    US는 글로벌 신호등, KR은 kr_signal(VKOSPI+낙폭)로 독립 판정 — 2026-07-23 교체.
     KR은 장외 주문이 키움에서 거부되므로 장중에만 emit(green이 지속되면 다음 장중 사이클에 나감).
     반환: {"signal": 라벨, "entries": [{symbol, qty}...]} 또는 None.
     """
@@ -41,22 +43,27 @@ def check_entry(con=None, dry=False):
     if own:
         con = db.connect()
     ensure_tables(con)
-    out = None
+    entries, labels = [], []
     sig = vix_signal(con)
     if sig and str(sig.get("state", "")).startswith("buy"):     # buy1/buy2/buy3 = green
-        entries = [_emit_one(con, os.getenv("SIGNAL_ENTRY_SYMBOL", "SPY"),
-                             float(os.getenv("SIGNAL_ENTRY_QTY", "1")), sig["label"], dry)]
-        kr_sym = os.getenv("SIGNAL_ENTRY_SYMBOL_KR", "069500")   # KODEX 200
-        if kr_sym:
-            from src.trading.brokers import kiwoom
+        entries.append(_emit_one(con, os.getenv("SIGNAL_ENTRY_SYMBOL", "SPY"),
+                                 float(os.getenv("SIGNAL_ENTRY_QTY", "1")), sig["label"], dry))
+        labels.append(f"US {sig['label']}")
+    ksig = kr_signal(con)
+    kr_sym = os.getenv("SIGNAL_ENTRY_SYMBOL_KR", "069500")       # KODEX 200
+    if kr_sym and ksig and ksig["state"] == "buy":
+        from src.trading.brokers import kiwoom
 
-            if kiwoom.KiwoomBroker().is_market_open(kr_sym):
-                entries.append(_emit_one(con, kr_sym,
-                                         float(os.getenv("SIGNAL_ENTRY_QTY_KR", "1")),
-                                         sig["label"], dry))
+        if kiwoom.KiwoomBroker().is_market_open(kr_sym):
+            entries.append(_emit_one(con, kr_sym,
+                                     float(os.getenv("SIGNAL_ENTRY_QTY_KR", "1")),
+                                     ksig["label"], dry))
+            labels.append(f"KR {ksig['label']}")
+    out = None
+    if entries:
         if not dry:
             con.commit()
-        out = {"signal": sig["label"], "entries": entries,
+        out = {"signal": " / ".join(labels), "entries": entries,
                "symbol": entries[0]["symbol"], "qty": entries[0]["qty"]}   # 하위호환 필드
     if own:
         con.close()
