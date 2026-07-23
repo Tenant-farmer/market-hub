@@ -44,9 +44,11 @@ def _refresh_econ(con, d: str) -> None:
         r = requests.get(ECON_URL, params={"date": d}, headers=UA, timeout=20)
         for row in (r.json().get("data") or {}).get("rows") or []:
             act = (row.get("actual") or "").strip()
-            if act:
-                con.execute("UPDATE econ_calendar SET actual=? WHERE date=? AND event=?",
-                            (act, d, (row.get("eventName") or "").strip()))
+            if act:                                    # 동명 이벤트(GDP QoQ/YoY) 구분: consensus 병행 매칭
+                con.execute("UPDATE econ_calendar SET actual=? WHERE date=? AND event=? "
+                            "AND consensus=?",
+                            (act, d, (row.get("eventName") or "").strip(),
+                             row.get("consensus") or ""))
         con.commit()
     except Exception:
         pass
@@ -74,7 +76,7 @@ def check(con, now: datetime | None = None) -> int:
         age = (now - rel).total_seconds()
         if age < 0 or age > 7200:                      # 아직 전 / 2시간 경과 → 스킵
             continue
-        key = f"econ_{r['date']}_{r['event']}"
+        key = f"econ_{r['date']}_{r['event']}_{r['consensus']}"
         if con.execute("SELECT 1 FROM collector_runs WHERE collector='event_alert' "
                        "AND message=? LIMIT 1", (key,)).fetchone():
             continue
@@ -82,8 +84,9 @@ def check(con, now: datetime | None = None) -> int:
         if not actual and r["date"] not in refreshed:  # 값 재조회 (날짜당 1콜/사이클)
             _refresh_econ(con, r["date"])
             refreshed.add(r["date"])
-            r2 = con.execute("SELECT actual FROM econ_calendar WHERE date=? AND event=?",
-                             (r["date"], r["event"])).fetchone()
+            r2 = con.execute("SELECT actual FROM econ_calendar WHERE date=? AND event=? "
+                             "AND consensus=?",
+                             (r["date"], r["event"], r["consensus"] or "")).fetchone()
             actual = (r2["actual"] or "").strip() if r2 else ""
         if not actual and age < 1800:                  # 30분까진 값 기다림
             continue
@@ -96,10 +99,28 @@ def check(con, now: datetime | None = None) -> int:
                   + (f" ({tail})" if tail else ""))
             n += 1
 
-    # ---- 실적 (감시: 로테이션 US + AAPL) — 발표 시간대 도달 ----
+    # ---- 실적 — 감시: 로테이션 US + 보유 + 메가캡 + 섹터별 시총 1위 ----
+    watch = {"AAPL"}
     try:
-        watch = {str(x["symbol"]) for x in con.execute("SELECT symbol FROM rotation_slots")
-                 if not str(x["symbol"]).isdigit()} | {"AAPL"}
+        from src.collectors.news import MEGACAPS
+
+        watch |= set(MEGACAPS)
+    except Exception:
+        pass
+    try:
+        watch |= {str(x["symbol"]) for x in con.execute("SELECT symbol FROM rotation_slots")
+                  if not str(x["symbol"]).isdigit()}
+    except Exception:
+        pass
+    try:                                               # 섹터별 시총 1위 (US)
+        watch |= {r["symbol"] for r in con.execute(
+            "SELECT symbol FROM (SELECT m.symbol, ROW_NUMBER() OVER "
+            "(PARTITION BY sm.sector_name ORDER BY m.mcap DESC) rn "
+            "FROM stock_meta m JOIN sector_map sm "
+            "ON sm.stock_code=m.symbol AND sm.market='US_STOCK') WHERE rn=1")}
+    except Exception:
+        pass
+    try:
         ers = con.execute(
             "SELECT symbol, date, when_time, name, eps_forecast FROM earnings_calendar "
             "WHERE date >= ? AND date <= ?",
@@ -117,8 +138,18 @@ def check(con, now: datetime | None = None) -> int:
         key = f"earn_{e['date']}_{e['symbol']}"
         if _once(con, key):
             eps = f" — 예상 EPS {e['eps_forecast']}" if e["eps_forecast"] else ""
-            _send(f"📈 <b>{e['symbol']}</b> 실적 발표 시간대 ({'장전' if pre else '장 마감 후'})"
-                  f"{eps} · {e['name'][:30]}")
+            msg = (f"📈 <b>{e['symbol']}</b> 실적 발표 시간대 "
+                   f"({'장전' if pre else '장 마감 후'}){eps} · {e['name'][:30]}")
+            try:                                       # 관련 뉴스 2건 (제목 링크 + 요약 한 줄)
+                for nr in con.execute(
+                        "SELECT title, url, summary FROM news WHERE code=? "
+                        "ORDER BY dt DESC LIMIT 2", (e["symbol"],)):
+                    msg += f"\n· <a href=\"{nr['url']}\">{nr['title'][:60]}</a>"
+                    if nr["summary"]:
+                        msg += f"\n  {nr['summary'][:100]}"
+            except Exception:
+                pass
+            _send(msg)
             n += 1
     return n
 

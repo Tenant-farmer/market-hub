@@ -20,6 +20,7 @@ import yfinance as yf
 KR_QUERIES = [("코스피", None), ("삼성전자", "005930"), ("S-Oil", "010950")]
 KR_STATIC = {"005930": "삼성전자", "010950": "S-Oil"}   # dart_corp 없을 때 이름 폴백
 US_SYMBOLS = ["SPY", "QQQ", "AAPL"]
+MEGACAPS = ["NVDA", "MSFT", "GOOGL", "AMZN", "TSLA", "MU"]   # AAPL은 US_SYMBOLS에 이미
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 
 
@@ -30,6 +31,11 @@ def _ensure(con):
         "source TEXT, title TEXT, keyword TEXT)"
     )
     con.execute("CREATE INDEX IF NOT EXISTS idx_news_dt ON news(dt)")
+    try:                                                # 기사 요약 컬럼 (마이그레이션 안전)
+        con.execute("ALTER TABLE news ADD COLUMN summary TEXT")
+        con.commit()
+    except Exception:
+        pass
 
 
 def _iso_local(dt) -> str:
@@ -78,7 +84,9 @@ def _naver(keyword: str) -> list[dict]:
             dt = _iso_local(parsedate_to_datetime(it.get("pubDate") or ""))
         except Exception:
             dt = datetime.now().isoformat(timespec="seconds")
-        out.append({"title": title, "url": url, "dt": dt, "source": "NAVER"})
+        summ = html.unescape(re.sub(r"</?b>", "", it.get("description") or "")).strip()[:200]
+        out.append({"title": title, "url": url, "dt": dt, "source": "NAVER",
+                    "summary": summ})
     return out
 
 
@@ -124,7 +132,8 @@ def _yf_news(sym: str) -> list[dict]:
         prov = c.get("provider")
         out.append({"title": title, "url": url, "dt": _iso_local(dt),
                     "source": (prov.get("displayName") if isinstance(prov, dict)
-                               else it.get("publisher") or "")})
+                               else it.get("publisher") or ""),
+                    "summary": (c.get("summary") or "").strip()[:200]})
     return out
 
 
@@ -137,19 +146,30 @@ def collect(con) -> int:
         try:
             for it in (_naver(kw) if use_naver else _google_rss(kw)):
                 n += con.execute(
-                    "INSERT OR IGNORE INTO news (url, dt, market, code, source, title, keyword) "
-                    "VALUES (?,?,?,?,?,?,?)",
-                    (it["url"], it["dt"], "KR", code, it["source"], it["title"], kw),
+                    "INSERT OR IGNORE INTO news "
+                    "(url, dt, market, code, source, title, keyword, summary) "
+                    "VALUES (?,?,?,?,?,?,?,?)",
+                    (it["url"], it["dt"], "KR", code, it["source"], it["title"], kw,
+                     it.get("summary") or ""),
                 ).rowcount
         except Exception as e:                        # 키워드 하나 실패해도 나머지 계속
             print(f"  [news] KR '{kw}' 실패: {str(e)[:60]}")
-    for sym in US_SYMBOLS:
+    # US 감시: 기본 + 메가캡 + 로테이션 슬롯 (실적 알림의 관련 뉴스 재료)
+    us_syms = list(US_SYMBOLS) + MEGACAPS
+    try:
+        us_syms += [str(r["symbol"]) for r in con.execute("SELECT symbol FROM rotation_slots")
+                    if not str(r["symbol"]).isdigit()]
+    except Exception:
+        pass
+    for sym in dict.fromkeys(us_syms):
         try:
             for it in _yf_news(sym):
                 n += con.execute(
-                    "INSERT OR IGNORE INTO news (url, dt, market, code, source, title, keyword) "
-                    "VALUES (?,?,?,?,?,?,?)",
-                    (it["url"], it["dt"], "US", sym, it["source"], it["title"], sym),
+                    "INSERT OR IGNORE INTO news "
+                    "(url, dt, market, code, source, title, keyword, summary) "
+                    "VALUES (?,?,?,?,?,?,?,?)",
+                    (it["url"], it["dt"], "US", sym, it["source"], it["title"], sym,
+                     it.get("summary") or ""),
                 ).rowcount
         except Exception as e:
             print(f"  [news] US '{sym}' 실패: {str(e)[:60]}")

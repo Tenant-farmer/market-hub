@@ -977,6 +977,16 @@ S&P500 현구성 499종목 × 11.5년(2015~), top10 진입/top30 이탈 밴드, 
 - 첫 일지(07-23): 주문 30건(스피드테스트 12 + US 로테이션 8 접수 + KR 로테이션 10 체결),
   KOSPI +4.40% 반등, KR 신호등 green — 2주 판정 근거자료 축적 시작
 
+### 알림 확대 + 공유 터널 상시화 (2026-07-23, 사용자 요청)
+- 실적 감시 23종목으로 확대: 메가캡 7 + 섹터별 시총 1위 11(stock_meta×sector_map 윈도함수)
+  + 로테이션 US + 보유. 알림에 관련 뉴스 2건(제목 링크+요약 100자) 첨부
+- news 테이블 summary 컬럼 신설(ALTER 안전) — 네이버 description·yf summary 저장,
+  US 뉴스 수집도 메가캡+로테이션으로 동적 확대. 경제지표는 major만(기존 유지),
+  동명 이벤트(GDP QoQ/YoY) 구분 위해 키·갱신에 consensus 병행
+- 공유 터널: DASH_PASS 설정(Basic Auth) + market-hub-tunnel 작업(tunnel_keeper.py —
+  localhost.run 유지, 60s 백오프, URL 텔레그램 통지). 진단: 배너는 TTY(-tt) 필요,
+  잦은 재시도가 핸드셰이크 스로틀 유발 → 백오프 확대. 로컬 401 검증(무단 접근 차단)
+
 ### 지표·실적 발표 즉시 알림 (2026-07-23, 사용자 요청)
 - src/jobs/event_alerts.py — 워커 5분 주기: ①major 경제지표 발표시각(gmt+9h) 도달 →
   Nasdaq API 재조회로 actual 확인 → '발표: 실제 vs 예상·이전' 텔레그램 (30분까지 값 대기,

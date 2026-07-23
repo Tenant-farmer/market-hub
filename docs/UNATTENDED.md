@@ -34,3 +34,10 @@
   (대시보드도 동일 요령 — `app\.py` 매칭)
 - **긴급 정지**: `.env`에 `KILL_SWITCH=1` + 워커 재시작 (paper·미무장이라 이미 실돈 안전)
 - 게이트 해제: `.env`에서 `EXIT_ENABLED`/`SIGNAL_ENTRY_ENABLED` 제거 후 워커 재시작
+
+## 공유 터널 (market-hub-tunnel, 2026-07-23~)
+- scripts/tunnel_keeper.py — localhost.run ssh 역터널 상시 유지, 끊기면 60초 후 재접속,
+  URL 변경 시 텔레그램 통지. Basic Auth(DASH_PASS) 필수 — 미설정이면 기동 거부
+- **중지(사용자가 끄라고 하면)**: `schtasks /End /TN market-hub-tunnel` + ssh/tunnel_keeper
+  프로세스 kill + `schtasks /Delete /TN market-hub-tunnel /F`(영구 제거 시)
+- 무료 티어라 재접속 시 URL 바뀔 수 있음 → 텔레그램에 오는 최신 URL을 친구에게 공유
