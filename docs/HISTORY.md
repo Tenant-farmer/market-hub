@@ -977,6 +977,14 @@ S&P500 현구성 499종목 × 11.5년(2015~), top10 진입/top30 이탈 밴드, 
 - 첫 일지(07-23): 주문 30건(스피드테스트 12 + US 로테이션 8 접수 + KR 로테이션 10 체결),
   KOSPI +4.40% 반등, KR 신호등 green — 2주 판정 근거자료 축적 시작
 
+### 공유 터널 ngrok 고정 도메인 전환 (2026-07-23)
+- localhost.run 무료는 세션 1~3분 단명+주소 회전 실측 → 부적합. 사용자 ngrok 가입
+  (NGROK_AUTHTOKEN/DOMAIN in .env) → tunnel_keeper ngrok 모드 (고정 도메인, 주소 불변,
+  15s 재기동; env 없으면 localhost.run 폴백 유지)
+- 검증: 무인증 401(0.4s)·인증 200(0.6s, gzip) — 서울 인근 엣지라 압도적으로 빠름.
+  주소 melony-semiskilled-mireille.ngrok-free.dev (텔레그램 통지 완료)
+- 향후: Cloudflare 도메인 구매 시 named tunnel로 승격 (웹훅 고정 주소 겸용)
+
 ### 대시보드 gzip 압축 (2026-07-23) — 터널 체감 개선
 - 사용자 "접속 너무 오래 걸림" → 진단: 무압축 전송 (지표분석 1.2~1.4MB — 20년 시계열 JSON)
   × 해외 경유 무료 터널. after_request gzip(레벨 6, 텍스트 500B+) → 개요 178→38KB,

@@ -1,7 +1,8 @@
-"""대시보드 공유 터널 유지 — localhost.run ssh 역터널 (사용자가 끄라고 할 때까지).
+"""대시보드 공유 터널 유지 (사용자가 끄라고 할 때까지).
 
-- 끊기면 10초 후 자동 재접속. 무료 티어라 재접속 시 URL이 바뀔 수 있음 →
-  새 URL을 텔레그램으로 통지 (친구에게 다시 공유)
+- NGROK_DOMAIN + NGROK_AUTHTOKEN 설정 시: **ngrok 고정 도메인** (주소 불변, 권장) —
+  기동 시 주소를 텔레그램 통지, 끊기면 15초 후 재기동 (에이전트 자체 재접속도 있음)
+- 없으면 폴백: localhost.run ssh 역터널 (무료지만 주소가 수 분마다 회전 — 임시 데모용)
 - 보안: DASH_PASS 필수 (Basic Auth) — 이 스크립트는 비번 미설정이면 기동 거부
 - 중지: schtasks /End /TN market-hub-tunnel + 프로세스 kill (docs/UNATTENDED.md)
 """
@@ -40,9 +41,42 @@ def _notify(text: str):
         pass
 
 
+def _ngrok_loop(domain: str):
+    """ngrok 고정 도메인 — 주소 불변. 프로세스 죽으면 15초 후 재기동."""
+    notified = False
+    env = dict(os.environ)
+    env["NGROK_AUTHTOKEN"] = (os.getenv("NGROK_AUTHTOKEN") or "").strip()
+    while True:
+        _log(f"ngrok 기동: https://{domain}")
+        try:
+            p = subprocess.Popen(
+                ["ngrok", "http", "5000", "--domain", domain, "--log", "stdout",
+                 "--log-format", "logfmt"],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env,
+                text=True, encoding="utf-8", errors="replace")
+            for line in p.stdout:
+                if "started tunnel" in line or "url=" in line:
+                    _log(line.strip()[:160])
+                    if not notified:
+                        notified = True
+                        _notify(f"🌐 대시보드 공유 주소(고정): https://{domain}\n"
+                                f"(아이디 admin · 비밀번호는 따로 전달한 것 — 주소는 안 바뀜)")
+                elif "ERR_NGROK" in line or "error" in line.lower():
+                    _log(line.strip()[:160])
+            p.wait()
+        except Exception as e:
+            _log(f"오류: {str(e)[:80]}")
+        _log("ngrok 종료 — 15초 후 재기동")
+        time.sleep(15)
+
+
 def main():
     if not os.getenv("DASH_PASS"):
         _log("DASH_PASS 미설정 — 공개 노출 위험, 기동 거부")
+        return
+    domain = (os.getenv("NGROK_DOMAIN") or "").strip().replace("https://", "").rstrip("/")
+    if domain and os.getenv("NGROK_AUTHTOKEN"):
+        _ngrok_loop(domain)
         return
     last_url = None
     while True:
