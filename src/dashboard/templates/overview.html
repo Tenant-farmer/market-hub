@@ -498,4 +498,16 @@
     </table>
   </div>
 </div>
+<script>
+// 장중 자동 갱신 — KR 09:00~15:30 / US(KST) 22:30~05:00, 탭이 보일 때만 (수집이 시간 단위라 120초)
+(function () {
+  function inSession() {
+    const n = new Date(), d = n.getDay(), hm = n.getHours() * 100 + n.getMinutes();
+    if (d === 0 || d === 6) return hm <= 500 && d === 6;
+    return (hm >= 900 && hm <= 1530) || hm >= 2230 || hm <= 500;
+  }
+  if (!inSession()) return;
+  setInterval(() => { if (document.visibilityState === "visible") location.reload(); }, 120000);
+})();
+</script>
 {% endblock %}

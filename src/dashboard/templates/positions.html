@@ -4,8 +4,22 @@
 {% block body %}
 <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
   <h1>자동매매 포지션</h1>
-  <span class="sub">KR(키움 모의) + US(Alpaca 페이퍼) 실시간 평가손익 · <a href="/health" style="color:var(--accent);text-decoration:none">수집기 상태 →</a></span>
+  <span class="sub">KR(키움 모의) + US(Alpaca 페이퍼) 실시간 평가손익 · <a href="/health" style="color:var(--accent);text-decoration:none">수집기 상태 →</a>
+    <span id="live-dot" style="display:none;color:var(--up)"> · ● 장중 60초 자동 갱신</span></span>
 </div>
+<script>
+// 장중 자동 갱신 — KR 09:00~15:30 / US(KST) 22:30~05:00, 탭이 보일 때만
+(function () {
+  function inSession() {
+    const n = new Date(), d = n.getDay(), hm = n.getHours() * 100 + n.getMinutes();
+    if (d === 0 || d === 6) return hm <= 500 && d === 6;          // 토요일 새벽 = 금요일 미국장
+    return (hm >= 900 && hm <= 1530) || hm >= 2230 || hm <= 500;
+  }
+  if (!inSession()) return;
+  document.getElementById("live-dot").style.display = "inline";
+  setInterval(() => { if (document.visibilityState === "visible") location.reload(); }, 60000);
+})();
+</script>
 
 {# ---- 실전 게이트 ---- #}
 <div class="card" style="margin:12px 0 16px;border:1px solid {{ 'var(--warn)' if gate.live_hot else 'var(--grid)' }}">
