@@ -91,10 +91,11 @@ def signals():
                "fng": fg, "avoid": 1 if (fg or 0) >= 75 else 0, "sig": green,
                "close": c1v, "chg": (c1v / p1 - 1) * 100 if (c1v and p1) else None,
                "close2": c2v, "chg2": (c2v / p2 - 1) * 100 if (c2v and p2) else None,
-               "f7": None, "f21": None, "f63": None, "fwd_run": None}
+               "f1": None, "f7": None, "f21": None, "f63": None, "fwd_run": None}
         if green:
             i = asof1(t)
-            row["f7"], row["f21"], row["f63"] = fwd1(i, 7), fwd1(i, 21), fwd1(i, 63)
+            row["f1"], row["f7"], row["f21"], row["f63"] = (
+                fwd1(i, 1), fwd1(i, 7), fwd1(i, 21), fwd1(i, 63))
             if row["f63"] is None and i is not None and c1_:
                 row["fwd_run"] = ((c1_[-1] / c1_[i] - 1) * 100, len(c1_) - 1 - i)
         p1, p2 = c1v or p1, c2v or p2
@@ -115,8 +116,9 @@ def signals():
             continue
         i1, i2 = asof1(t), asof2(t)
         ep = {"date": t, "vix": v, "vvix": w, "s": s,
-              "a7": fwd1(i1, 7), "a21": fwd1(i1, 21), "a63": fwd1(i1, 63),
-              "b7": fwd2(i2, 7), "b21": fwd2(i2, 21), "b63": fwd2(i2, 63), "run": None}
+              "a1": fwd1(i1, 1), "a7": fwd1(i1, 7), "a21": fwd1(i1, 21), "a63": fwd1(i1, 63),
+              "b1": fwd2(i2, 1), "b7": fwd2(i2, 7), "b21": fwd2(i2, 21), "b63": fwd2(i2, 63),
+              "run": None}
         if ep["a63"] is None and i1 is not None and c1_:
             ep["run"] = ((c1_[-1] / c1_[i1] - 1) * 100, len(c1_) - 1 - i1)
         episodes.append(ep)
