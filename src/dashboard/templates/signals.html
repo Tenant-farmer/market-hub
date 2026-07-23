@@ -2,6 +2,7 @@
 {% set active = 'signals' %}
 {% block title %}지표 분석 — market-hub{% endblock %}
 {% block body %}
+{% macro ret(v) %}{% if v is not none %}<span class="{{ 'pos' if v > 0 else 'neg' }}">{{ '%+.1f%%'|format(v) }}</span>{% else %}<span style="color:var(--muted)">–</span>{% endif %}{% endmacro %}
 <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
 <style>
   .tbtn { background:none; border:1px solid var(--border); border-radius:999px;
@@ -54,7 +55,7 @@
       <th>{{ idxs[0].name if idxs else '지수' }}</th><th>등락</th>
       <th>{{ idxs[1].name if idxs|length > 1 }}</th><th>등락</th>
       <th>VIX</th><th>VVIX</th><th>F&amp;G</th><th style="text-align:left">판정</th>
-      <th style="white-space:nowrap">신호後 63일</th>
+      <th style="white-space:nowrap">신호後7일</th><th style="white-space:nowrap">21일</th><th style="white-space:nowrap">63일</th>
     </tr></thead>
     <tbody>
     {% for h in hist %}
@@ -75,8 +76,10 @@
           {% if h.avoid %}<span style="color:#199e70">{{ ' + ' if h.s }}■ F&G회피</span>{% endif %}
           {% if h.sig %}<span style="color:#d03b3b"> 🚦</span>{% endif %}
         </td>
-        <td>
-          {% if h.fwd is not none %}<span class="{{ 'pos' if h.fwd > 0 else 'neg' }}">{{ '%+.1f%%'|format(h.fwd) }}</span>
+        <td>{{ ret(h.f7) }}</td>
+        <td>{{ ret(h.f21) }}</td>
+        <td style="white-space:nowrap">
+          {% if h.f63 is not none %}{{ ret(h.f63) }}
           {% elif h.fwd_run %}<span class="{{ 'pos' if h.fwd_run[0] > 0 else 'neg' }}">{{ '%+.1f%%'|format(h.fwd_run[0]) }}</span> <span style="color:var(--muted)">({{ h.fwd_run[1] }}일째)</span>
           {% else %}<span style="color:var(--muted)">–</span>{% endif %}
         </td>
@@ -91,7 +94,7 @@
     {% endfor %}
     {% if page < pages %}<a href="/signals?mkt={{ mkt }}&page={{ page + 1 }}">다음 →</a>{% endif %}
   </div>
-  <div class="reason" style="margin-top:6px">🚦 = 매수신호일(VIX≥30 또는 VIX·VVIX 동시) · 신호後 63일 = 그날 {{ idxs[0].name }}을 샀을 때 63거래일 뒤 수익(미확정이면 현재까지) · 페이지를 넘기면 2015년까지 전체 열람</div>
+  <div class="reason" style="margin-top:6px">🚦 = 매수신호일(VIX≥30 또는 VIX·VVIX 동시) · 신호後 7/21/63일 = 그날 {{ idxs[0].name }}을 샀을 때의 수익(63일 미확정이면 현재까지 진행) · 페이지를 넘기면 2015년까지 전체 열람</div>
 </div>
 {% endif %}
 
@@ -109,8 +112,8 @@
   <table>
     <thead><tr>
       <th style="text-align:left">신호일</th><th>VIX</th><th>VVIX</th><th style="text-align:left">유형</th>
-      <th>{{ idxs[0].name }} +21일</th><th>{{ idxs[0].name }} +63일</th>
-      <th>{{ idxs[1].name if idxs|length > 1 }} +63일</th>
+      <th style="white-space:nowrap">{{ idxs[0].name }} +7일</th><th>+21일</th><th>+63일</th>
+      <th style="white-space:nowrap;border-left:1px solid var(--baseline)">{{ idxs[1].name if idxs|length > 1 }} +7일</th><th>+21일</th><th>+63일</th>
     </tr></thead>
     <tbody>
     {% for e in episodes %}
@@ -119,13 +122,16 @@
         <td style="{{ 'color:#e6a817;font-weight:600' if e.vix >= 20 }}">{{ '%.1f'|format(e.vix) }}</td>
         <td style="{{ 'color:#9085e9;font-weight:600' if e.vvix and e.vvix >= 95 }}">{{ '%.1f'|format(e.vvix) if e.vvix is not none else '–' }}</td>
         <td style="text-align:left">{% if e.s == 3 %}<span style="color:#d03b3b;font-weight:700">■ VIX+VVIX</span>{% else %}<span style="color:#e6a817">■ VIX≥30</span>{% endif %}</td>
-        <td class="{{ 'pos' if e.f21 and e.f21 > 0 else 'neg' if e.f21 and e.f21 < 0 }}">{{ '%+.1f%%'|format(e.f21) if e.f21 is not none else '–' }}</td>
-        <td>
-          {% if e.f63 is not none %}<span class="{{ 'pos' if e.f63 > 0 else 'neg' }}">{{ '%+.1f%%'|format(e.f63) }}</span>
+        <td>{{ ret(e.a7) }}</td>
+        <td>{{ ret(e.a21) }}</td>
+        <td style="white-space:nowrap">
+          {% if e.a63 is not none %}{{ ret(e.a63) }}
           {% elif e.run %}<span class="{{ 'pos' if e.run[0] > 0 else 'neg' }}">{{ '%+.1f%%'|format(e.run[0]) }}</span> <span style="color:var(--muted)">({{ e.run[1] }}일째)</span>
           {% else %}<span style="color:var(--muted)">–</span>{% endif %}
         </td>
-        <td class="{{ 'pos' if e.f63b and e.f63b > 0 else 'neg' if e.f63b and e.f63b < 0 }}">{{ '%+.1f%%'|format(e.f63b) if e.f63b is not none else '–' }}</td>
+        <td style="border-left:1px solid var(--baseline)">{{ ret(e.b7) }}</td>
+        <td>{{ ret(e.b21) }}</td>
+        <td>{{ ret(e.b63) }}</td>
       </tr>
     {% endfor %}
     </tbody>
