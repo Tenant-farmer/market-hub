@@ -51,6 +51,23 @@ def signals():
                       "s": 3 if (a and b) else 1 if a else 2 if b else 0})
     avoid = [{"time": d["time"], "value": 1 if d["value"] >= 75 else 0} for d in fng]
 
+    # 하단 진행 표 — 최근 30거래일 실제 값 + 판정
+    by_idx = {d["time"]: d["value"] for d in (idxs[0]["data"] if idxs else [])}
+    vix_by = {d["time"]: d["value"] for d in vix}
+    fng_by = {d["time"]: d["value"] for d in fng}
+    hist, prev_close = [], None
+    for m in marks[-31:]:
+        t = m["time"]
+        c = by_idx.get(t)
+        chg = (c / prev_close - 1) * 100 if (c is not None and prev_close) else None
+        if c is not None:
+            prev_close = c
+        fg = fng_by.get(t)
+        hist.append({"date": t, "close": c, "chg": chg, "vix": vix_by.get(t),
+                     "vvix": vvix_by.get(t), "fng": fg, "s": m["s"],
+                     "avoid": 1 if (fg or 0) >= 75 else 0})
+    hist = hist[1:][::-1]                                       # 최신이 위로, 30행
+
     pills = [("미국 (SPY·QQQ)", "us", mkt == "us"), ("한국 (코스피·코스닥)", "kr", mkt == "kr")]
     return render_template("signals.html", mkt=mkt, idxs=idxs, vix=vix, vvix=vvix,
-                           fng=fng, marks=marks, avoid=avoid, pills=pills)
+                           fng=fng, marks=marks, avoid=avoid, hist=hist, pills=pills)

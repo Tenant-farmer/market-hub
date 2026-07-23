@@ -219,11 +219,12 @@ def build_text(con) -> str:
     try:
         import html as _html
 
-        rows = con.execute("SELECT keyword, title FROM news ORDER BY dt DESC LIMIT 4").fetchall()
+        rows = con.execute("SELECT keyword, title, url FROM news ORDER BY dt DESC LIMIT 4").fetchall()
         if rows:
             L.append("<b>📰 헤드라인</b>")
             for r in rows:
-                L.append(f"• [{r['keyword']}] {_html.escape(r['title'][:60])}")
+                L.append(f"• [{r['keyword']}] <a href=\"{_html.escape(r['url'])}\">"
+                         f"{_html.escape(r['title'][:60])}</a>")
     except Exception:
         pass
 
