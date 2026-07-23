@@ -44,68 +44,112 @@ def _hot_list(rows, names):
     return [names.get(r["code"], r["code"]) for r in rows if r.get("hot")]
 
 
+def _last2(con, sym, market=None):
+    """최근 종가와 전일 대비 % (시세판 라인용)."""
+    q = ("SELECT close FROM prices_daily WHERE symbol=? "
+         + ("AND market=? " if market else "") + "ORDER BY date DESC LIMIT 2")
+    rows = con.execute(q, (sym, market) if market else (sym,)).fetchall()
+    if not rows:
+        return None, None
+    chg = ((rows[0]["close"] / rows[1]["close"] - 1) * 100
+           if len(rows) > 1 and rows[1]["close"] else None)
+    return rows[0]["close"], chg
+
+
+def _fmt_px(v, chg, won=False):
+    p = f"{v:,.0f}" if (won or v >= 1000) else f"{v:,.2f}"
+    return p + (f" {chg:+.2f}%" if chg is not None else "")
+
+
 def build_text(con) -> str:
-    today = date.today().isoformat()
-    L = [f"<b>📊 market-hub 브리핑</b> · {today}", ""]
+    from src.dashboard.fmt import fmt_krw
 
-    # 시장 온도
-    spy, kospi = queries.bench_snapshot(con, "SPY"), queries.bench_snapshot(con, "1001")
-    rs, rk = queries.regime(con, "SPY"), queries.regime(con, "1001")
-    senti = queries.sentiment_latest(con)
-    if spy:
-        L.append(f"S&P500 {spy['close']:,.0f} ({spy['ret21']:+.1f}% 1M) {REGIME[rs['above']] if rs else ''}")
-    if kospi:
-        L.append(f"코스피 {kospi['close']:,.0f} ({kospi['ret21']:+.1f}% 1M) {REGIME[rk['above']] if rk else ''}")
-    fng = (senti.get("fear_greed") or {}).get("value")
-    vix = (senti.get("vix") or {}).get("value")
-    if fng or vix:
-        L.append((f"F&G {fng:.0f} ({_fng_label(fng)})" if fng else "")
-                 + (" · " if fng and vix else "")
-                 + (f"VIX {vix:.1f}" if vix else ""))
-    sig = queries.vix_signal(con)
-    if sig:
-        L.append(f"매수 신호등: {sig['emoji']} {sig['label']} (VVIX {sig['vvix']:.0f})")
-    L.append("")
-
-    # 주도 섹터
+    today = date.today()
+    L = [f"<b>📊 market-hub 시세판</b> · {today.isoformat()} "
+         f"({'월화수목금토일'[today.weekday()]})", ""]
     us_names = config.load()["us"].get("names", {})
     kr_names = queries.kr_index_names(con)
     _, us_rank = queries.ranking(con, "us_sector")
     _, kr_rank = queries.ranking(con, "kr_sector")
-    L.append(f"<b>US 주도</b>: {_sector_line(us_rank, us_names)}")
-    L.append(f"<b>KR 주도</b>: {_sector_line(kr_rank, kr_names)}")
-    hot = _hot_list(us_rank, us_names) + _hot_list(kr_rank, kr_names)
-    if hot:
-        L.append(f"⚠ 과열: {', '.join(hot)}")
-    L.append("")
 
-    # KR 수급 (1주)
-    mf = {(m["mkt"], m["inv_ko"]): m for m in queries.market_flows(con)}
-    kf, ki = mf.get(("KOSPI", "외국인")), mf.get(("KOSPI", "기관"))
-    if kf and ki:
-        L.append(f"<b>KOSPI 수급(5일)</b>: 외인 {kf['d5_fmt']} · 기관 {ki['d5_fmt']}")
+    # ---------- 🇰🇷 국장 ----------
+    L.append("<b>🇰🇷 국장 (최근 마감)</b>")
+    kv, kc = _last2(con, "1001")
+    qv, qc = _last2(con, "2001")
+    rk = queries.regime(con, "1001")
+    parts = []
+    if kv:
+        parts.append(f"코스피 {_fmt_px(kv, kc, won=True)}"
+                     + (" 🟢" if rk and rk["above"] else " 🔴" if rk else ""))
+    if qv:
+        parts.append(f"코스닥 {_fmt_px(qv, qc)}")
+    if parts:
+        L.append("• " + " · ".join(parts))
+    d0 = con.execute("SELECT MAX(date) d FROM prices_daily WHERE market='KR'").fetchone()["d"]
+    d1 = con.execute("SELECT MAX(date) d FROM prices_daily WHERE market='KR' AND date<?",
+                     (d0,)).fetchone()["d"] if d0 else None
+    if d0 and d1:
+        r = con.execute(
+            "SELECT SUM(a.close>b.close) up, SUM(a.close=b.close) fl, SUM(a.close<b.close) dn "
+            "FROM prices_daily a JOIN prices_daily b ON b.symbol=a.symbol AND b.market='KR' "
+            "AND b.date=? WHERE a.market='KR' AND a.date=?", (d1, d0)).fetchone()
+        if r and r["up"] is not None:
+            L.append(f"• 상승 {r['up']} / 보합 {r['fl']} / 하락 {r['dn']}")
+        tops = con.execute(
+            "SELECT m.name, p0.close c0, p1.close c1 FROM stock_meta s "
+            "JOIN sector_map m ON m.stock_code=s.symbol AND m.market='KR' "
+            "JOIN prices_daily p0 ON p0.symbol=s.symbol AND p0.market='KR' AND p0.date=? "
+            "JOIN prices_daily p1 ON p1.symbol=s.symbol AND p1.market='KR' AND p1.date=? "
+            "WHERE s.mcap IS NOT NULL ORDER BY s.mcap DESC LIMIT 4", (d0, d1)).fetchall()
+        if tops:
+            L.append("• " + " · ".join(
+                f"{t['name']} {t['c0']:,.0f} {(t['c0'] / t['c1'] - 1) * 100:+.1f}%"
+                for t in tops if t["c1"]))
+    fd = con.execute("SELECT MAX(date) d FROM investor_flows WHERE scope='market'"
+                     ).fetchone()["d"]
+    if fd:
+        fl = {(r["code"], r["investor"]): r["net_value"] for r in con.execute(
+            "SELECT code, investor, net_value FROM investor_flows "
+            "WHERE scope='market' AND date=?", (fd,))}
+        for mkt, ko in (("KOSPI", "코스피"), ("KOSDAQ", "코스닥")):
+            trio = [(iko, fl.get((mkt, inv))) for inv, iko in
+                    (("individual", "개인"), ("foreign", "외국인"), ("institution", "기관"))]
+            if any(v is not None for _, v in trio):
+                L.append(f"• 수급({ko}, {fd[5:]}): " + " · ".join(
+                    f"{iko} {fmt_krw(v)}" for iko, v in trio if v is not None))
     sf = queries.sector_flows(con, kr_names)
     if sf:
         inflow = " · ".join(f"{s['name']} {s['tot_1w_fmt']}" for s in sf[:2])
         out = sf[-1]
-        L.append(f"업종 유입: {inflow} / 유출: {out['name']} {out['tot_1w_fmt']}")
+        L.append(f"• 업종 수급(1주): 유입 {inflow} / 유출 {out['name']} {out['tot_1w_fmt']}")
+    L.append(f"• 주도 업종: {_sector_line(kr_rank, kr_names)}")
+    kr_top = queries.kr_leaders(con, n=5)
+    if kr_top:
+        L.append("• 주도주: " + " · ".join(r["name"] for r in kr_top))
     L.append("")
 
-    # 실적·지표 일정 (임박 2일)
-    earn = [e for e in queries.earnings_upcoming(con, days=2, limit=10) if e["dd"] <= 1]
-    if earn:
-        L.append("📅 실적: " + " · ".join(f"{e['symbol']}({e['dday']} {e['time_ko']})" for e in earn[:6]))
-    econ = [e for e in queries.econ_upcoming(con, days=1, limit=20) if e["major"] and e["dd"] == 0]
-    if econ:
-        L.append("📈 지표: " + " · ".join(f"{e['event'][:22]}({e['kst']})" for e in econ[:4]))
-    fw = queries.fed_watch(con)
-    fomc = fw and fw["next"] and fw["next"]["dday"] <= 1
-    if fomc:
-        L.append(f"📌 FOMC {fw['next']['date']} (D-{fw['next']['dday']}) — 결과는 한국시간 새벽")
-    if earn or econ or fomc:
-        L.append("")
-
-    # 주도주 TOP5
+    # ---------- 🇺🇸 미국장 ----------
+    L.append("<b>🇺🇸 미국장 (최근 마감)</b>")
+    sv, sc = _last2(con, "SPY", "US")
+    nv, nc = _last2(con, "QQQ", "US")
+    rs = queries.regime(con, "SPY")
+    parts = []
+    if sv:
+        parts.append(f"S&P500(SPY) {_fmt_px(sv, sc)}"
+                     + (" 🟢" if rs and rs["above"] else " 🔴" if rs else ""))
+    if nv:
+        parts.append(f"나스닥(QQQ) {_fmt_px(nv, nc)}")
+    if parts:
+        L.append("• " + " · ".join(parts))
+    mega = []
+    for sym, nm in (("NVDA", "엔비디아"), ("MSFT", "MS"), ("AAPL", "애플"), ("GOOGL", "알파벳"),
+                    ("AMZN", "아마존"), ("TSLA", "테슬라"), ("MU", "마이크론")):
+        _, c = _last2(con, sym, "US_STOCK")
+        if c is not None:
+            mega.append(f"{nm} {c:+.1f}%")
+    if mega:
+        L.append("• " + " · ".join(mega))
+    L.append(f"• 주도 섹터: {_sector_line(us_rank, us_names)}")
     us_top = con.execute(
         """
         SELECT code, MAX(CASE WHEN metric='leader_score' THEN value END) s
@@ -114,10 +158,61 @@ def build_text(con) -> str:
         GROUP BY code ORDER BY s DESC LIMIT 5
         """
     ).fetchall()
-    L.append("<b>US 주도주</b>: " + " · ".join(r["code"] for r in us_top))
-    kr_top = queries.kr_leaders(con, n=5)
-    if kr_top:
-        L.append("<b>KR 주도주</b>: " + " · ".join(r["name"] for r in kr_top))
+    L.append("• 주도주: " + " · ".join(r["code"] for r in us_top))
+    hot = _hot_list(us_rank, us_names) + _hot_list(kr_rank, kr_names)
+    if hot:
+        L.append(f"• ⚠ 과열: {', '.join(hot)}")
+    L.append("")
+
+    # ---------- 🌍 컨텍스트 ----------
+    L.append("<b>🌍 컨텍스트</b>")
+    fx = []
+    for sym, nm, dol in (("KRW=X", "원/달러", False), ("DX-Y.NYB", "달러인덱스", False),
+                         ("BTC-USD", "BTC", True)):
+        v, c = _last2(con, sym, "MACRO")
+        if v:
+            val = f"${v:,.0f}" if dol else (f"{v:,.2f}" if v < 1000 else f"{v:,.1f}")
+            fx.append(f"{nm} {val}" + (f" {c:+.2f}%" if c is not None else ""))
+    if fx:
+        L.append("• " + " · ".join(fx))
+    mac = [m for m in (queries.macro_context(con) or []) if "VIX" not in m["label"]]
+    if mac:
+        half = (len(mac) + 1) // 2
+        L.append("• " + " · ".join(f"{m['label']} {m['val']}" for m in mac[:half]))
+        if mac[half:]:
+            L.append("• " + " · ".join(f"{m['label']} {m['val']}" for m in mac[half:]))
+    senti = queries.sentiment_latest(con)
+    fng = (senti.get("fear_greed") or {}).get("value")
+    sig = queries.vix_signal(con)
+    bits = []
+    if sig:
+        bits.append(f"VIX {sig['vix']:.1f} · VVIX {sig['vvix']:.0f}")
+    if fng is not None:
+        bits.append(f"F&G {fng:.0f}({_fng_label(fng)})")
+    if bits:
+        L.append("• " + " · ".join(bits))
+    if sig:
+        L.append(f"• 매수 신호등: {sig['emoji']} {sig['label']}")
+    L.append("")
+
+    # ---------- 📅 일정 (임박) ----------
+    earn = [e for e in queries.earnings_upcoming(con, days=2, limit=10) if e["dd"] <= 1]
+    seen = set()
+    econ = [e for e in queries.econ_upcoming(con, days=1, limit=20)
+            if e["major"] and e["dd"] == 0
+            and not ((e["event"], e["kst"]) in seen or seen.add((e["event"], e["kst"])))]
+    fw = queries.fed_watch(con)
+    fomc = fw and fw["next"] and fw["next"]["dday"] <= 1
+    if earn or econ or fomc:
+        L.append("<b>📅 일정</b>")
+        if earn:
+            L.append("• 실적: " + " · ".join(
+                f"{e['symbol']}({e['dday']} {e['time_ko']})" for e in earn[:6]))
+        if econ:
+            L.append("• 지표: " + " · ".join(f"{e['event'][:22]}({e['kst']})" for e in econ[:4]))
+        if fomc:
+            L.append(f"• FOMC {fw['next']['date']} (D-{fw['next']['dday']}) — 결과는 한국시간 새벽")
+        L.append("")
 
     # 뉴스 헤드라인 (최신 4 — 시장·보유종목, news 수집기)
     try:
@@ -125,9 +220,9 @@ def build_text(con) -> str:
 
         rows = con.execute("SELECT keyword, title FROM news ORDER BY dt DESC LIMIT 4").fetchall()
         if rows:
-            L.append("")
+            L.append("<b>📰 헤드라인</b>")
             for r in rows:
-                L.append(f"📰 [{r['keyword']}] {_html.escape(r['title'][:60])}")
+                L.append(f"• [{r['keyword']}] {_html.escape(r['title'][:60])}")
     except Exception:
         pass
 

@@ -47,7 +47,9 @@ kosdaq_sector_codes = [
 
 [macro]
 # 시장 컨텍스트 지표 (^VIX는 us_sectors가 이미 수집 — 중복 제외)
-symbols = ["CL=F", "GC=F", "^TNX", "^IRX", "HYG", "^VVIX", "^FVX", "^TYX"]
+# KRW=X 원/달러 · DX-Y.NYB 달러인덱스 · BTC-USD 비트코인 (시세판 브리핑용)
+symbols = ["CL=F", "GC=F", "^TNX", "^IRX", "HYG", "^VVIX", "^FVX", "^TYX",
+           "KRW=X", "DX-Y.NYB", "BTC-USD"]
 
 [fed]
 # FOMC 결정일(회의 2일차) — 연준 공식 캘린더, 매년 갱신 필요
