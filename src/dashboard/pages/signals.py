@@ -1,7 +1,8 @@
-"""지표 분석 (/signals) — 대표지수 + 공포지표(VIX·VVIX·F&G) 시계열 동기화 + 매수신호 음영.
+"""지표 분석 (/signals) — 대표지수 + 공포지표 시계열 동기화 + 매수신호 음영.
 
-공포지표는 미국(글로벌) 지표. 한국은 글로벌 공포에 베타로 움직이므로 같은 신호를 KR 지수 위에 겹침.
-매수신호 green ⟺ VIX≥30 또는 (VIX≥20 & VVIX≥95) — 개요 신호등과 동일 정의.
+- US: 글로벌 신호 (VIX≥30 또는 VIX≥20&VVIX≥95) — 개요 신호등과 동일
+- KR: 신호 기준 토글 (?sig=) — vkospi(기본, 현행 매매규칙: VKOSPI≥30 & KOSPI 낙폭-5%)
+  / global(글로벌 신호를 KR 지수 위에 겹침 — 비교용). 진행표·이력·지연연구 모두 선택 기준으로 재계산.
 """
 from flask import Blueprint, render_template, request
 
@@ -33,22 +34,49 @@ def signals():
     mkt = request.args.get("mkt", "us")
     if mkt not in ("us", "kr"):
         mkt = "us"
+    sig_v = mkt == "kr" and request.args.get("sig", "vkospi") != "global"
+    sigmode = "vkospi" if sig_v else "global"
     con = db.connect()
     idxs = [{"code": c, "name": n, "data": _close(con, c, m)} for c, m, n in IDX[mkt]]
     vix = _close(con, "^VIX", "US_INDEX")
     vvix = _close(con, "^VVIX", "MACRO")
+    vk = _close(con, "VKOSPI", "KR_INDEX") if mkt == "kr" else []
     fng = _sent(con, "fear_greed")
     con.close()
 
-    # 음영 = 원인 지표의 라인색: VIX만(≥20) 주황 / VVIX만(≥95) 보라 / 둘 다 빨강 (s: 1/2/3)
     vvix_by = {d["time"]: d["value"] for d in vvix}
-    marks = []
-    for d in vix:
-        a = d["value"] >= 20
-        w = vvix_by.get(d["time"])
-        b = w is not None and w >= 95
-        marks.append({"time": d["time"], "value": 1 if (a or b) else 0,
-                      "s": 3 if (a and b) else 1 if a else 2 if b else 0})
+    vk_by = {d["time"]: d["value"] for d in vk}
+    dd_by = {}
+    if sig_v:
+        # KR 현행 규칙: VKOSPI≥30 & KOSPI 52주(252일) 고점 대비 -5% 이하
+        # 음영: 매수신호 빨강(s=3) / VKOSPI≥30인데 낙폭 미달(과열 변동성) 주황(s=1)
+        from bisect import bisect_right as _br
+
+        kd = [d["time"] for d in idxs[0]["data"]]
+        kc = [d["value"] for d in idxs[0]["data"]]
+        roll_by = {t: (c / max(kc[max(0, i - 251): i + 1]) - 1) * 100
+                   for i, (t, c) in enumerate(zip(kd, kc))}
+        marks = []
+        for d in vk:
+            t = d["time"]
+            dv = roll_by.get(t)
+            if dv is None:                             # 휴장 불일치 시 직전 KOSPI 기준
+                j = _br(kd, t) - 1
+                dv = roll_by[kd[j]] if j >= 0 else None
+            dd_by[t] = dv
+            hot = d["value"] >= 30
+            g = hot and dv is not None and dv <= -5
+            marks.append({"time": t, "value": 1 if hot else 0,
+                          "s": 3 if g else 1 if hot else 0})
+    else:
+        # 글로벌: 음영 = 원인 지표의 라인색 — VIX만(≥20) 주황 / VVIX만(≥95) 보라 / 둘 다 빨강
+        marks = []
+        for d in vix:
+            a = d["value"] >= 20
+            w = vvix_by.get(d["time"])
+            b = w is not None and w >= 95
+            marks.append({"time": d["time"], "value": 1 if (a or b) else 0,
+                          "s": 3 if (a and b) else 1 if a else 2 if b else 0})
     avoid = [{"time": d["time"], "value": 1 if d["value"] >= 75 else 0} for d in fng]
 
     # ---- 하단 진행 표 (두 지수 + 기간 선택) & 매수신호 이력 (전 기간 에피소드 + 진입지연 연구) ----
@@ -80,14 +108,19 @@ def signals():
     fng_by = {d["time"]: d["value"] for d in fng}
     by1 = {t: c for t, c in zip(d1_, c1_)}
     by2 = {t: c for t, c in zip(d2_, c2_)}
+    # 표의 지표 컬럼: 글로벌=VIX/VVIX, VKOSPI 모드=VKOSPI/고점比 낙폭
+    ia_by, ib_by = (vk_by, dd_by) if sig_v else (vix_by, vvix_by)
+
+    def _green(m):
+        return m["s"] == 3 if sig_v else (vix_by.get(m["time"], 0) >= 30) or m["s"] == 3
 
     hist, p1, p2 = [], None, None
     for m in marks:                                    # 전체 이력 (페이지네이션으로 열람)
         t = m["time"]
         c1v, c2v = by1.get(t), by2.get(t)
         fg = fng_by.get(t)
-        green = (vix_by.get(t, 0) >= 30) or m["s"] == 3
-        row = {"date": t, "s": m["s"], "vix": vix_by.get(t), "vvix": vvix_by.get(t),
+        green = _green(m)
+        row = {"date": t, "s": m["s"], "vix": ia_by.get(t), "vvix": ib_by.get(t),
                "fng": fg, "avoid": 1 if (fg or 0) >= 75 else 0, "sig": green,
                "close": c1v, "chg": (c1v / p1 - 1) * 100 if (c1v and p1) else None,
                "close2": c2v, "chg2": (c2v / p2 - 1) * 100 if (c2v and p2) else None,
@@ -121,8 +154,8 @@ def signals():
     page_links = [(p, p == page) for p in range(lo, min(pages, lo + 6) + 1)]
 
     # 신호 에피소드 (15일 갭 기준) — 그날 샀으면 +21/+63일 수익
-    greens = [(m["time"], vix_by.get(m["time"], 0), vvix_by.get(m["time"]),
-               (vix_by.get(m["time"], 0) >= 30) or m["s"] == 3, m["s"]) for m in marks]
+    greens = [(m["time"], ia_by.get(m["time"], 0), ib_by.get(m["time"]),
+               _green(m), m["s"]) for m in marks]
     episodes = []
     for k, (t, v, w, g, s) in enumerate(greens):
         if not g or any(gg[3] for gg in greens[max(0, k - 15):k]):
@@ -164,10 +197,17 @@ def signals():
         ep_year = ""
 
     pills = [("미국 (SPY·QQQ)", "us", mkt == "us"), ("한국 (코스피·코스닥)", "kr", mkt == "kr")]
-    return render_template("signals.html", mkt=mkt, idxs=idxs, vix=vix, vvix=vvix,
+    # 차트 패널 데이터: VKOSPI 모드는 패널2=VKOSPI, 패널3=KOSPI 고점比 낙폭
+    if sig_v:
+        panel_a = vk
+        panel_b = [{"time": t, "value": dd_by[t]} for t in sorted(dd_by)
+                   if dd_by[t] is not None]
+    else:
+        panel_a, panel_b = vix, vvix
+    return render_template("signals.html", mkt=mkt, idxs=idxs, vix=panel_a, vvix=panel_b,
                            fng=fng, marks=marks, avoid=avoid, hist=hist,
                            page=page, pages=pages, page_links=page_links,
                            year_pages=year_pages, cur_year=cur_year,
                            ep_years=ep_years, ep_year=ep_year,
                            episodes=episodes, delay_stats=delay_stats, best_delay=best,
-                           pills=pills)
+                           pills=pills, sigmode=sigmode, sigv=sig_v)

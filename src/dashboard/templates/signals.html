@@ -3,6 +3,7 @@
 {% block title %}지표 분석 — market-hub{% endblock %}
 {% block body %}
 {% macro ret(v) %}{% if v is not none %}<span class="{{ 'pos' if v > 0 else 'neg' }}">{{ '%+.1f%%'|format(v) }}</span>{% else %}<span style="color:var(--muted)">–</span>{% endif %}{% endmacro %}
+{% set q = '&sig=' ~ sigmode if mkt == 'kr' else '' %}
 <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
 <style>
   .tbtn { background:none; border:1px solid var(--border); border-radius:999px;
@@ -20,6 +21,11 @@
 
 <div class="pills" style="margin-top:8px">
   {% for label, key, on in pills %}<a href="/signals?mkt={{ key }}" class="{{ 'on' if on }}">{{ label }}</a>{% endfor %}
+  {% if mkt == 'kr' %}
+  <span class="sub" style="margin:0 0 0 12px;align-self:center">신호 기준:</span>
+  <a href="/signals?mkt=kr&sig=vkospi" class="{{ 'on' if sigv }}">VKOSPI 현행 규칙 (≥30 &amp; 낙폭-5%)</a>
+  <a href="/signals?mkt=kr&sig=global" class="{{ 'on' if not sigv }}">글로벌 VIX×VVIX</a>
+  {% endif %}
 </div>
 
 <div class="card">
@@ -31,17 +37,29 @@
   </div>
   <div id="p_index" style="height:280px"></div>
 
+  {% if sigv %}
+  <div class="plabel">VKOSPI <small>— 코스피200 변동성지수(한국 공포). 30 임계선 · 2010~</small></div>
+  {% else %}
   <div class="plabel">VIX <small>— 변동성(공포). 20·30 임계선</small></div>
+  {% endif %}
   <div id="p_vix" style="height:130px"></div>
 
+  {% if sigv %}
+  <div class="plabel">KOSPI 고점比 낙폭 <small>— 52주 최고 대비 %. -5% 임계선</small></div>
+  {% else %}
   <div class="plabel">VVIX <small>— 변동성의 변동성(크래시 헤지 수요). 95 임계선</small></div>
+  {% endif %}
   <div id="p_vvix" style="height:130px"></div>
 
   <div class="plabel">Fear &amp; Greed <small>— CNN 심리지수(0 공포 ~ 100 탐욕). 2020-09~</small></div>
   <div id="p_fng" style="height:130px"></div>
 
   <div class="reason" style="margin-top:10px">
+    {% if sigv %}
+    회색 세로선을 드래그하면 네 패널이 같이 움직입니다 · VKOSPI 2010~ (현행 KR 매매규칙: VKOSPI≥30 &amp; 낙폭-5% → 빨강 음영, 낙폭 미달 고변동은 주황) · F&amp;G는 참고(미국 심리)
+    {% else %}
     회색 세로선을 드래그하면 네 패널이 같이 움직입니다 · 지수·VIX·VVIX 2007~(금융위기 포함), F&amp;G 2020-09~ · 공포지표는 글로벌(미국) 기준
+    {% endif %}
   </div>
 </div>
 
@@ -52,7 +70,7 @@
   <div class="pills" style="margin-bottom:8px">
     <span class="sub" style="margin:0;align-self:center">연도:</span>
     {% for y, p in year_pages %}
-    <a href="/signals?mkt={{ mkt }}&page={{ p }}#prog" class="{{ 'on' if y == cur_year }}">{{ y }}</a>
+    <a href="/signals?mkt={{ mkt }}{{ q }}&page={{ p }}#prog" class="{{ 'on' if y == cur_year }}">{{ y }}</a>
     {% endfor %}
   </div>
   <table>
@@ -60,7 +78,7 @@
       <th style="text-align:left;white-space:nowrap">날짜</th>
       <th>{{ idxs[0].name if idxs else '지수' }}</th><th>등락</th>
       <th>{{ idxs[1].name if idxs|length > 1 }}</th><th>등락</th>
-      <th>VIX</th><th>VVIX</th><th>F&amp;G</th><th style="text-align:left">판정</th>
+      <th>{{ 'VKOSPI' if sigv else 'VIX' }}</th><th>{{ '고점比%' if sigv else 'VVIX' }}</th><th>F&amp;G</th><th style="text-align:left">판정</th>
       <th style="white-space:nowrap">저점까지</th>
       <th style="white-space:nowrap">+1일</th><th style="white-space:nowrap">+7일</th><th style="white-space:nowrap">+21일</th><th style="white-space:nowrap">+63일</th>
     </tr></thead>
@@ -72,14 +90,25 @@
         <td class="{{ 'pos' if h.chg and h.chg > 0 else 'neg' if h.chg and h.chg < 0 }}">{{ '%+.2f%%'|format(h.chg) if h.chg is not none else '–' }}</td>
         <td>{{ ('{:,.0f}' if h.close2 and h.close2 >= 1000 else '{:,.2f}').format(h.close2) if h.close2 is not none else '–' }}</td>
         <td class="{{ 'pos' if h.chg2 and h.chg2 > 0 else 'neg' if h.chg2 and h.chg2 < 0 }}">{{ '%+.2f%%'|format(h.chg2) if h.chg2 is not none else '–' }}</td>
+        {% if sigv %}
+        <td style="{{ 'color:#e6a817;font-weight:600' if h.vix and h.vix >= 30 }}">{{ '%.1f'|format(h.vix) if h.vix is not none else '–' }}</td>
+        <td style="{{ 'color:#d03b3b;font-weight:600' if h.vvix is not none and h.vvix <= -5 }}">{{ '%+.1f'|format(h.vvix) if h.vvix is not none else '–' }}</td>
+        {% else %}
         <td style="{{ 'color:#e6a817;font-weight:600' if h.vix and h.vix >= 20 }}">{{ '%.1f'|format(h.vix) if h.vix is not none else '–' }}</td>
         <td style="{{ 'color:#9085e9;font-weight:600' if h.vvix and h.vvix >= 95 }}">{{ '%.1f'|format(h.vvix) if h.vvix is not none else '–' }}</td>
+        {% endif %}
         <td style="{{ 'color:#199e70;font-weight:600' if h.fng and h.fng >= 75 }}">{{ '%.0f'|format(h.fng) if h.fng is not none else '–' }}</td>
         <td style="text-align:left">
+          {% if sigv %}
+          {% if h.s == 3 %}<span style="color:#d03b3b;font-weight:700">■ 매수신호</span>
+          {% elif h.s == 1 %}<span style="color:#e6a817">■ 과열변동성</span>
+          {% elif not h.avoid %}<span style="color:var(--muted)">—</span>{% endif %}
+          {% else %}
           {% if h.s == 3 %}<span style="color:#d03b3b;font-weight:700">■ VIX+VVIX</span>
           {% elif h.s == 1 %}<span style="color:#e6a817">■ VIX</span>
           {% elif h.s == 2 %}<span style="color:#9085e9">■ VVIX</span>
           {% elif not h.avoid %}<span style="color:var(--muted)">—</span>{% endif %}
+          {% endif %}
           {% if h.avoid %}<span style="color:#199e70">{{ ' + ' if h.s }}■ F&G회피</span>{% endif %}
           {% if h.sig %}<span style="color:#d03b3b"> 🚦</span>{% endif %}
         </td>
@@ -101,25 +130,25 @@
     </tbody>
   </table>
   <div class="pills" style="margin-top:10px;justify-content:center">
-    {% if page > 1 %}<a href="/signals?mkt={{ mkt }}&page=1#prog">« 처음</a><a href="/signals?mkt={{ mkt }}&page={{ page - 1 }}#prog">← 이전</a>{% endif %}
+    {% if page > 1 %}<a href="/signals?mkt={{ mkt }}{{ q }}&page=1#prog">« 처음</a><a href="/signals?mkt={{ mkt }}{{ q }}&page={{ page - 1 }}#prog">← 이전</a>{% endif %}
     {% for p, on in page_links %}
-    <a href="/signals?mkt={{ mkt }}&page={{ p }}#prog" class="{{ 'on' if on }}">{{ p }}</a>
+    <a href="/signals?mkt={{ mkt }}{{ q }}&page={{ p }}#prog" class="{{ 'on' if on }}">{{ p }}</a>
     {% endfor %}
-    {% if page < pages %}<a href="/signals?mkt={{ mkt }}&page={{ page + 1 }}#prog">다음 →</a><a href="/signals?mkt={{ mkt }}&page={{ pages }}#prog">끝 »</a>{% endif %}
+    {% if page < pages %}<a href="/signals?mkt={{ mkt }}{{ q }}&page={{ page + 1 }}#prog">다음 →</a><a href="/signals?mkt={{ mkt }}{{ q }}&page={{ pages }}#prog">끝 »</a>{% endif %}
   </div>
-  <div class="reason" style="margin-top:6px">🚦 = 매수신호일(VIX≥30 또는 VIX·VVIX 동시) · 저점까지 = 신호 후 126거래일 내 최저점(며칠 뒤·추가하락) · +1/+7/+21/+63일 = 신호 당일 종가에 {{ idxs[0].name }}을 샀을 때의 이후 수익(63일 미확정이면 현재까지 진행) · 연도 필로 2007년까지 이동</div>
+  <div class="reason" style="margin-top:6px">🚦 = 매수신호일({{ 'VKOSPI≥30 & 낙폭-5% — 현행 KR 매매규칙' if sigv else 'VIX≥30 또는 VIX·VVIX 동시' }}) · 저점까지 = 신호 후 126거래일 내 최저점(며칠 뒤·추가하락) · +1/+7/+21/+63일 = 신호 당일 종가에 {{ idxs[0].name }}을 샀을 때의 이후 수익(63일 미확정이면 현재까지 진행) · 연도 필로 {{ '2010' if sigv else '2007' }}년까지 이동</div>
 </div>
 {% endif %}
 
 {# ---- 매수신호 이력 (전 기간 에피소드) — 그날 샀으면? ---- #}
 {% if episodes %}
 <div class="card" id="ep" style="margin-top:16px;overflow-x:auto">
-  <div class="sub" style="margin-bottom:4px">🚦 매수신호 이력 — {{ ep_year + '년' if ep_year else '2007~' }} 에피소드 {{ episodes|length }}건 (15일 갭 기준, 최신순)
+  <div class="sub" style="margin-bottom:4px">🚦 매수신호 이력 — {{ ep_year + '년' if ep_year else ('2010~' if sigv else '2007~') }} 에피소드 {{ episodes|length }}건 (15일 갭 기준, 최신순{{ ' · VKOSPI 현행 규칙' if sigv }})
     <span style="color:var(--muted)">· 저점까지 = 신호 후 126거래일 내 최저점(며칠 뒤·추가하락)</span></div>
   <div class="pills" style="margin-bottom:8px">
-    <a href="/signals?mkt={{ mkt }}&page={{ page }}#ep" class="{{ 'on' if not ep_year }}">전체</a>
+    <a href="/signals?mkt={{ mkt }}{{ q }}&page={{ page }}#ep" class="{{ 'on' if not ep_year }}">전체</a>
     {% for y in ep_years %}
-    <a href="/signals?mkt={{ mkt }}&page={{ page }}&ep_year={{ y }}#ep" class="{{ 'on' if y == ep_year }}">{{ y }}</a>
+    <a href="/signals?mkt={{ mkt }}{{ q }}&page={{ page }}&ep_year={{ y }}#ep" class="{{ 'on' if y == ep_year }}">{{ y }}</a>
     {% endfor %}
   </div>
   {% if delay_stats %}
@@ -131,7 +160,7 @@
   {% endif %}
   <table>
     <thead><tr>
-      <th style="text-align:left">신호일</th><th>VIX</th><th>VVIX</th><th style="text-align:left">유형</th>
+      <th style="text-align:left">신호일</th><th>{{ 'VKOSPI' if sigv else 'VIX' }}</th><th>{{ '고점比%' if sigv else 'VVIX' }}</th><th style="text-align:left">유형</th>
       <th style="white-space:nowrap">저점까지</th>
       <th style="white-space:nowrap">{{ idxs[0].name }} +1일</th><th>+7일</th><th>+21일</th><th>+63일</th>
       <th style="white-space:nowrap;border-left:1px solid var(--baseline)">{{ idxs[1].name if idxs|length > 1 }} +1일</th><th>+7일</th><th>+21일</th><th>+63일</th>
@@ -140,9 +169,15 @@
     {% for e in episodes %}
       <tr>
         <td style="text-align:left;color:var(--muted)">{{ e.date }}</td>
+        {% if sigv %}
+        <td style="{{ 'color:#e6a817;font-weight:600' if e.vix >= 30 }}">{{ '%.1f'|format(e.vix) }}</td>
+        <td style="{{ 'color:#d03b3b;font-weight:600' if e.vvix is not none and e.vvix <= -5 }}">{{ '%+.1f'|format(e.vvix) if e.vvix is not none else '–' }}</td>
+        <td style="text-align:left"><span style="color:#d03b3b;font-weight:700">■ VKOSPI+낙폭</span></td>
+        {% else %}
         <td style="{{ 'color:#e6a817;font-weight:600' if e.vix >= 20 }}">{{ '%.1f'|format(e.vix) }}</td>
         <td style="{{ 'color:#9085e9;font-weight:600' if e.vvix and e.vvix >= 95 }}">{{ '%.1f'|format(e.vvix) if e.vvix is not none else '–' }}</td>
         <td style="text-align:left">{% if e.s == 3 %}<span style="color:#d03b3b;font-weight:700">■ VIX+VVIX</span>{% else %}<span style="color:#e6a817">■ VIX≥30</span>{% endif %}</td>
+        {% endif %}
         <td style="white-space:nowrap">
           {% if e.trough %}{% if e.trough[0] == 0 %}<span class="pos">당일이 저점</span>
           {% else %}<span style="color:var(--muted)">{{ e.trough[0] }}일 뒤</span> <span class="neg">{{ '%+.1f%%'|format(e.trough[1]) }}</span>{% endif %}
@@ -202,12 +237,20 @@
   cIdx.priceScale("sig").applyOptions({ scaleMargins: { top: 0, bottom: 0 } });
 
   // ---- 음영 토글: 지표별로 켜고 끄며 따로 보기 ----
+  {% if sigv %}
+  const MARK_DEFS = [
+    { key: 1, label: "VKOSPI≥30 (낙폭미달)", color: MARK_COLOR[1] },
+    { key: 3, label: "매수신호 (≥30 & 낙폭-5%)", color: MARK_COLOR[3] },
+    { key: "a", label: "F&G회피", color: "rgba(25,158,112,0.28)" },
+  ];
+  {% else %}
   const MARK_DEFS = [
     { key: 1, label: "VIX≥20", color: MARK_COLOR[1] },
     { key: 2, label: "VVIX≥95", color: MARK_COLOR[2] },
     { key: 3, label: "둘 다", color: MARK_COLOR[3] },
     { key: "a", label: "F&G회피", color: "rgba(25,158,112,0.28)" },
   ];
+  {% endif %}
   const enabled = new Set([1, 2, 3, "a"]);
   function renderMarks() {
     sig.setData(MARKS.map(d => ({ time: d.time, value: d.value,
@@ -246,14 +289,24 @@
     idxbar.appendChild(b);
   });
 
-  // ---- VIX / VVIX / F&G 패널 ----
+  // ---- 지표 패널 (모드별: VKOSPI+낙폭 또는 VIX+VVIX) ----
   const cVix = mk("p_vix", 130);
   const vixL = cVix.addLineSeries({ color: "#e6a817", lineWidth: 1, priceLineVisible: false });
-  vixL.setData(VIX); hline(vixL, 20, "#c98500", "20"); hline(vixL, 30, "#d03b3b", "30");
+  vixL.setData(VIX);
+  {% if sigv %}
+  hline(vixL, 30, "#d03b3b", "30");
+  {% else %}
+  hline(vixL, 20, "#c98500", "20"); hline(vixL, 30, "#d03b3b", "30");
+  {% endif %}
 
   const cVvix = mk("p_vvix", 130);
   const vvixL = cVvix.addLineSeries({ color: "#9085e9", lineWidth: 1, priceLineVisible: false });
-  vvixL.setData(VVIX); hline(vvixL, 95, "#d03b3b", "95");
+  vvixL.setData(VVIX);
+  {% if sigv %}
+  hline(vvixL, -5, "#d03b3b", "-5%");
+  {% else %}
+  hline(vvixL, 95, "#d03b3b", "95");
+  {% endif %}
 
   const cFng = mk("p_fng", 130);
   const fngL = cFng.addLineSeries({ color: "#199e70", lineWidth: 1, priceLineVisible: false });
