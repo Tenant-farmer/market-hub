@@ -381,6 +381,45 @@ def test_watchdog_alert_once(con, monkeypatch):
     assert len(sent) == 1
 
 
+def test_leader_rotation(con, monkeypatch):
+    """로테이션: top10 진입 → 주간 멱등 → 이탈(rank>30)·교체 → dry 무변경."""
+    import pandas as pd
+
+    from src.trading import leader_rotation as rot
+    from src.trading.brokers import alpaca
+
+    monkeypatch.setattr(alpaca, "configured", lambda: False)
+    monkeypatch.setenv("ROTATION_SLOT_USD", "100")
+    syms = [f"S{i:02d}" for i in range(1, 13)]
+    ranks = pd.Series({s: float(i + 1) for i, s in enumerate(syms)})
+    px = pd.Series({s: 100.0 for s in syms})
+    monkeypatch.setattr(rot, "_ranks", lambda c: (ranks, px))
+
+    res = rot.evaluate(con)
+    assert len(res["enters"]) == 10 and res["exits"] == []
+    assert con.execute("SELECT COUNT(*) c FROM rotation_slots").fetchone()["c"] == 10
+    assert con.execute("SELECT COUNT(*) c FROM signals WHERE source='rotation' "
+                       "AND action='buy'").fetchone()["c"] == 10
+    assert rot.evaluate(con).get("skipped")            # 같은 주 재실행 → 멱등 스킵
+
+    # 다음 주 시뮬레이션: S01 순위 이탈(40위) → 매도 + S11 교체 진입
+    con.execute("DELETE FROM rotation_meta WHERE key='last_week'")
+    ranks2 = ranks.copy()
+    ranks2["S01"], ranks2["S11"] = 40.0, 1.0
+    monkeypatch.setattr(rot, "_ranks", lambda c: (ranks2, px))
+    res2 = rot.evaluate(con)
+    assert [e["symbol"] for e in res2["exits"]] == ["S01"]
+    assert any(e["symbol"] == "S11" for e in res2["enters"])
+    assert con.execute("SELECT COUNT(*) c FROM rotation_slots").fetchone()["c"] == 10
+    assert con.execute("SELECT COUNT(*) c FROM signals WHERE source='rotation' "
+                       "AND action='sell'").fetchone()["c"] == 1
+
+    con.execute("DELETE FROM rotation_meta WHERE key='last_week'")
+    before = con.execute("SELECT COUNT(*) c FROM signals").fetchone()["c"]
+    rot.evaluate(con, dry=True)                        # dry → 신호/장부 무변경
+    assert con.execute("SELECT COUNT(*) c FROM signals").fetchone()["c"] == before
+
+
 def test_dashboard_auth(monkeypatch):
     import base64
 

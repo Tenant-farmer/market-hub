@@ -50,6 +50,12 @@ def _status(con):
     print(f"  대상         : {os.getenv('SIGNAL_ENTRY_SYMBOL', 'SPY')} "
           f"x {os.getenv('SIGNAL_ENTRY_QTY', '1')}")
     print("  미리보기: python -m src.trading.signal_entry")
+    print("--- 주도주 로테이션 (126일) ---")
+    ro_on = os.getenv("ROTATION_ENABLED") == "1"
+    print(f"  자동로테이션 : {'ON' if ro_on else 'OFF (ROTATION_ENABLED=1 로 켬)'}")
+    print(f"  규칙         : top10 진입 / top30 이탈 · 주 1회 · "
+          f"슬롯 10개 x ${float(os.getenv('ROTATION_SLOT_USD', '1000')):,.0f}")
+    print("  미리보기: python -m src.trading.leader_rotation --dry")
 
 
 def main(argv):

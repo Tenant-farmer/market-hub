@@ -48,6 +48,11 @@ def _held(con) -> list:
                                 "plpc": float(p.get("unrealized_plpc", 0) or 0) * 100})
         except Exception:
             pass
+    try:                                # 로테이션 슬롯은 자체 이탈규칙(rank>30)이 관리 → 청산 제외
+        rot = {r["symbol"] for r in con.execute("SELECT symbol FROM rotation_slots")}
+        out = [p for p in out if p["code"] not in rot]
+    except Exception:
+        pass
     return out
 
 
