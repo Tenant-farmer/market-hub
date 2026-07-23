@@ -1,9 +1,11 @@
-"""주문 엔진 상시 워커 — signals 큐를 짧은 주기로 폴링해 자동 처리.
+"""주문 엔진 상시 워커 — 백업 스위퍼 + 주기 작업(청산/신호진입/체결동기화).
 
-수신기(receiver)는 신호를 큐에 넣고 즉시 200을 주고, 실제 주문 처리는 이 워커가 담당한다.
+웹훅 신호는 수신기가 적재 직후 스레드로 **즉시 처리**(~1초), 이 워커의 폴링은 그 백업 스위퍼.
+청산·신호진입이 emit한 신호도 같은 사이클에서 즉시 처리(다음 폴 안 기다림 — 매도 시차 제거).
 PC: 작업 스케줄러 ONLOGON(run_engine.bat) 상시 가동. VPS: systemd 서비스.
 
-- ENGINE_POLL_SEC      (기본 15): 폴링 간격 (자동매매 실시간성 ↔ 부하 트레이드오프)
+- ENGINE_POLL_SEC      (기본 15): 백업 폴링 간격
+- EXIT_CHECK_SEC       (기본 60): 청산 규칙 평가 주기 — 손절은 지연이 돈이라 1분
 - ENGINE_HEARTBEAT_SEC (기본 900): 아무 일 없어도 살아있음 기록 주기 → /health에서 확인
 - process_once 예외는 잡아 기록하고 루프 유지 (브로커 일시 장애에 워커가 죽지 않음)
 
@@ -48,7 +50,7 @@ def _log(msg: str) -> None:
         pass
 
 
-EXIT_CHECK = int(os.getenv("EXIT_CHECK_SEC", "300"))
+EXIT_CHECK = int(os.getenv("EXIT_CHECK_SEC", "60"))     # 손절은 지연이 돈 → 1분 감지
 ENTRY_CHECK = int(os.getenv("SIGNAL_ENTRY_CHECK_SEC", "3600"))
 RECONCILE = int(os.getenv("RECONCILE_SEC", "300"))
 
@@ -79,6 +81,7 @@ def main() -> None:
                     _record("ok", len(trig), "청산 신호: " + ", ".join(
                         f"{t['code']} {t['reason']}" for t in trig))
                     _log(f"청산 신호 {len(trig)}건: {[t['reason'] for t in trig]}")
+                    _log(f"청산 즉시 처리: {engine.process_once()}")   # 매도는 다음 폴 안 기다림
                 last_exit = time.time()
             # 신호진입 — SIGNAL_ENTRY_ENABLED=1 일 때만 (green→지수 매수), 하루 1회 멱등
             if os.getenv("SIGNAL_ENTRY_ENABLED") == "1" and time.time() - last_entry >= ENTRY_CHECK:
@@ -88,6 +91,7 @@ def main() -> None:
                 if e:
                     _record("ok", 1, f"신호진입: {e['symbol']} ({e['signal']})")
                     _log(f"신호진입 emit: {e}")
+                    _log(f"진입 즉시 처리: {engine.process_once()}")
                 last_entry = time.time()
             # 체결 상태 동기화 — 주문 안 냄(안전), 항상 RECONCILE 주기
             if time.time() - last_recon >= RECONCILE:

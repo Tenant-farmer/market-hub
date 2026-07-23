@@ -1,6 +1,7 @@
 """트레이딩뷰 웹훅 수신기 — POST /hook/tv.
 
-TV 3초 룰: 검증 + signals INSERT만 하고 즉시 200. 주문 처리는 엔진이 비동기(폴링).
+TV 3초 룰: 검증 + signals INSERT 후 즉시 200. 주문 처리는 **적재 직후 별도 스레드가 즉시 실행**
+(시차 ~0.1-1초) + 워커 폴링(15초)이 백업 스위퍼 — 스레드가 실패해도 신호는 유실되지 않음.
 페이로드 예 (TV 알림 메시지에 JSON으로 작성):
   {"secret": "...", "ticker": "AAPL", "action": "buy", "qty": 1,
    "price": {{close}}, "strategy": "breakout", "time": "{{timenow}}"}
@@ -12,14 +13,31 @@ import hashlib
 import hmac
 import json
 import os
+import threading
 from datetime import datetime, timezone
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 from src import db
 from src.trading import ensure_tables
 
 bp = Blueprint("hook", __name__)
+
+_proc_lock = threading.Lock()
+
+
+def _process_now():
+    """적재된 신호 즉시 처리 (별도 스레드) — 실패해도 워커가 15초 내 백업 처리."""
+    if not _proc_lock.acquire(blocking=False):
+        return                                    # 이미 처리 중인 스레드가 큐를 비움
+    try:
+        from src.trading import engine
+
+        engine.process_once()
+    except Exception:
+        pass
+    finally:
+        _proc_lock.release()
 
 
 def _num(v):
@@ -66,4 +84,6 @@ def tv_hook():
     con.commit()
     dup = cur.rowcount == 0
     con.close()
+    if not dup and not current_app.testing:       # 새 신호 → 즉시 처리 (폴링 시차 제거)
+        threading.Thread(target=_process_now, daemon=True).start()
     return jsonify({"ok": True, "dup": dup}), 200

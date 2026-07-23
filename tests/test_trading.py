@@ -72,6 +72,23 @@ def test_hook_inserts_and_dedupes(client, con):
     assert len(con.execute("SELECT * FROM signals").fetchall()) == 2
 
 
+def test_hook_immediate_process(monkeypatch):
+    """수신 즉시 처리 — 엔진 호출 + 동시 실행 방지 락(점유 중이면 스킵)."""
+    from src.trading import engine as eng
+    from src.trading import receiver
+
+    calls = []
+    monkeypatch.setattr(eng, "process_once", lambda: calls.append(1))
+    receiver._process_now()
+    assert calls == [1]
+    receiver._proc_lock.acquire()                  # 다른 스레드가 처리 중인 상황
+    try:
+        receiver._process_now()                    # 락 점유 → 스킵 (큐는 그쪽이 비움)
+        assert calls == [1]
+    finally:
+        receiver._proc_lock.release()
+
+
 def test_engine_paper_log_and_risk(client, con, monkeypatch):
     from src.trading.brokers import alpaca, kiwoom
 
