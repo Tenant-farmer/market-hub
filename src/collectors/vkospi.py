@@ -38,7 +38,8 @@ def _rows_for(key: str, d: date) -> list[tuple]:
     rows = []
     for it in _fetch(key, d.strftime("%Y%m%d")):
         name = (it.get("IDX_NM") or "").strip()
-        sym = VOL_MAP.get(name) or ("VKOSPI" if "변동성" in name and "코스피" in name else None)
+        # 정확명만 매칭 — 느슨한 포함 검색은 '가치저변동성' 등 전략지수를 잡아 값을 오염시킴
+        sym = VOL_MAP.get(name)
         if not sym:
             continue
         c = _num(it.get("CLSPRC_IDX"))
