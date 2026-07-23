@@ -34,3 +34,28 @@ def set_armed(con, armed: bool) -> None:
         (1 if armed else 0, datetime.now().isoformat(timespec="seconds")),
     )
     con.commit()
+
+
+def _ensure_kill(con) -> None:
+    # 커넥션마다 시도 — 프로세스 플래그로 캐시하면 테스트/다중 DB에서 누락됨
+    try:
+        con.execute("ALTER TABLE trading_state ADD COLUMN kill INTEGER DEFAULT 0")
+        con.commit()
+    except Exception:                 # 이미 있음
+        pass
+
+
+def get_kill(con) -> bool:
+    """DB 킬스위치 (텔레그램 /킬스위치 — env KILL_SWITCH와 OR로 적용)."""
+    _ensure_kill(con)
+    get_state(con)                    # 행 보장
+    row = con.execute("SELECT kill FROM trading_state WHERE id=1").fetchone()
+    return bool(row and row["kill"])
+
+
+def set_kill(con, on: bool) -> None:
+    _ensure_kill(con)
+    get_state(con)
+    con.execute("UPDATE trading_state SET kill=?, updated_at=? WHERE id=1",
+                (1 if on else 0, datetime.now().isoformat(timespec="seconds")))
+    con.commit()

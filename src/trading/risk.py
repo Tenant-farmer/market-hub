@@ -107,6 +107,13 @@ def check(con, sig) -> tuple[bool, str]:
     """(허용 여부, 사유). sig는 signals 테이블 row."""
     if os.getenv("KILL_SWITCH", "") == "1":
         return False, "킬스위치 활성 (KILL_SWITCH=1)"
+    try:                              # DB 킬스위치 (텔레그램 /킬스위치 on — 전 프로세스 공유)
+        from src.trading import state as _state
+
+        if _state.get_kill(con):
+            return False, "킬스위치 활성 (텔레그램 /킬스위치 on)"
+    except Exception:
+        pass
     if not sig["ticker"]:
         return False, "티커 없음"
     if sig["action"] not in ALLOWED_ACTIONS:

@@ -568,3 +568,24 @@ def test_daily_loss_gate(con, monkeypatch):
     monkeypatch.setenv("MAX_DAILY_LOSS_PCT", "0")
     ok, _ = risk.check(con, buy)
     assert ok
+
+
+def test_telegram_kill_switch(con, monkeypatch):
+    """/킬스위치 on → DB 킬 → 리스크 게이트 차단 (전 프로세스 공유), off → 재개."""
+    from src import db as db_mod
+    from src.trading import telegram_cmd
+
+    monkeypatch.setattr(db_mod, "connect", lambda: _NoClose(con))
+    monkeypatch.delenv("KILL_SWITCH", raising=False)
+
+    out = telegram_cmd.handle("/킬스위치 on")
+    assert "ON" in out
+    ok, why = risk.check(con, {"ticker": "AAPL", "action": "buy", "qty": 1, "price": None})
+    assert not ok and "킬스위치" in why
+    out = telegram_cmd.handle("/킬스위치")            # 상태 조회
+    assert "ON" in out
+    out = telegram_cmd.handle("/킬스위치 off")
+    assert "OFF" in out
+    ok, _ = risk.check(con, {"ticker": "AAPL", "action": "buy", "qty": 1, "price": None})
+    assert ok
+    assert "명령" in telegram_cmd.handle("/도움말")    # 미지원/도움말 → 목록

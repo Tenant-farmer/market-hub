@@ -61,6 +61,13 @@ def main() -> None:
     _log(f"start - poll {POLL}s, heartbeat {HEARTBEAT}s, exit {EXIT_CHECK}s, "
          f"entry {ENTRY_CHECK}s, reconcile {RECONCILE}s")
     _record("ok", 0, "worker 시작")
+    if os.getenv("TELEGRAM_BOT_TOKEN") and os.getenv("TELEGRAM_CHAT_ID"):
+        import threading
+
+        from src.trading import telegram_cmd
+
+        threading.Thread(target=telegram_cmd.poll_loop, daemon=True).start()
+        _log("telegram 명령 폴러 기동 (/잔고 /신호 /킬스위치)")
     last_beat = time.time()
     last_exit = last_entry = last_recon = last_watch = last_rot = 0.0
     while True:
