@@ -23,4 +23,24 @@ def create_app() -> Flask:
     from src.dashboard.auth import require_auth   # Basic Auth (DASH_PASS 설정 시)
 
     app.before_request(require_auth)
+
+    import gzip
+
+    from flask import request
+
+    @app.after_request
+    def _gzip(resp):
+        """텍스트 응답 gzip — 지표분석 등 시계열 JSON이 1MB+라 터널 공유 시 체감 좌우."""
+        if (resp.direct_passthrough or resp.status_code != 200
+                or "gzip" not in (request.headers.get("Accept-Encoding") or "")
+                or resp.content_length is None or resp.content_length < 500
+                or not (resp.mimetype or "").startswith(("text/", "application/json",
+                                                         "application/javascript"))):
+            return resp
+        resp.set_data(gzip.compress(resp.get_data(), compresslevel=6))
+        resp.headers["Content-Encoding"] = "gzip"
+        resp.headers["Content-Length"] = str(len(resp.get_data()))
+        resp.headers["Vary"] = "Accept-Encoding"
+        return resp
+
     return app
