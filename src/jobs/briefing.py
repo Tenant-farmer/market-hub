@@ -185,6 +185,22 @@ def build_text(con) -> str:
         L.append("• " + " · ".join(f"{m['label']} {m['val']}" for m in mac[:half]))
         if mac[half:]:
             L.append("• " + " · ".join(f"{m['label']} {m['val']}" for m in mac[half:]))
+    # 한국 거시 (ECOS) — 기준금리·CPI 전년비 (국고금리는 위 매크로 카드에 포함)
+    try:
+        base_r = con.execute("SELECT close FROM prices_daily WHERE symbol='ECOS:BASE' "
+                             "ORDER BY date DESC LIMIT 1").fetchone()
+        cpi = con.execute("SELECT date, close FROM prices_daily WHERE symbol='ECOS:CPI' "
+                          "ORDER BY date DESC LIMIT 13").fetchall()
+        kr_bits = []
+        if base_r:
+            kr_bits.append(f"한은 기준금리 {base_r['close']:.2f}%")
+        if len(cpi) >= 13:
+            yoy = (cpi[0]["close"] / cpi[12]["close"] - 1) * 100
+            kr_bits.append(f"CPI {yoy:+.1f}% ({int(cpi[0]['date'][5:7])}월, 전년비)")
+        if kr_bits:
+            L.append("• 🏦 " + " · ".join(kr_bits))
+    except Exception:
+        pass
     senti = queries.sentiment_latest(con)
     fng = (senti.get("fear_greed") or {}).get("value")
     bits = []

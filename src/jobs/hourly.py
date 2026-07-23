@@ -18,8 +18,8 @@ load_dotenv()
 
 from src import db
 from src.collectors import (
-    base, dart, earnings, econ_calendar, fed, gurus, kr_capex, kr_flows, kr_sectors,
-    kr_stocks, macro, news, sentiment, us_capex, us_sectors, us_stocks,
+    base, dart, earnings, econ_calendar, ecos, fed, gurus, kr_capex, kr_flows,
+    kr_sectors, kr_stocks, macro, news, sentiment, us_capex, us_sectors, us_stocks,
 )
 
 
@@ -80,6 +80,9 @@ def main():
             base.run_collector("kr_sectors", lambda c: kr_sectors.collect(c, days=5))
             base.run_collector("kr_flows", lambda c: kr_flows.collect(c, days=90))
             ran_kr = True
+        # 한은 거시 (기준금리·국고금리·CPI) 하루 1회 — 키 없으면 0건 통과
+        if wd < 6 and not _ran_today(con, "ecos"):
+            base.run_collector("ecos", ecos.collect)
         if wd == 0 and not _ran_today(con, "kr_map"):
             base.run_collector("kr_map", kr_sectors.refresh_constituents)
         # CapEx는 분기 공시 — 25일 이상 지났으면 재수집 (사실상 월 1회)

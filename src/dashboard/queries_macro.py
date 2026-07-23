@@ -58,6 +58,17 @@ def macro_context(con) -> list[dict]:
         ).fetchall()
     ][::-1]
 
+    # 한국 국고채 장단기 (ECOS — 키 없으면 시리즈가 비어 카드 자동 생략)
+    kr_spread = [
+        r["v"] for r in con.execute(
+            """
+            SELECT (a.close - b.close) v FROM prices_daily a
+            JOIN prices_daily b ON b.date = a.date AND b.symbol = 'ECOS:KTB3Y'
+            WHERE a.symbol = 'ECOS:KTB10Y' ORDER BY a.date DESC LIMIT 270
+            """
+        ).fetchall()
+    ][::-1]
+
     spec = [
         ("⚠", "VIX 공포지수", _macro_series(con, "^VIX"), 1.0, True, lambda v: f"{v:.1f}"),
         ("🛢", "WTI 원유", _macro_series(con, "CL=F"), 1.0, True, lambda v: f"${v:.2f}"),
@@ -65,6 +76,8 @@ def macro_context(con) -> list[dict]:
         ("↗", "US 10Y 국채", _macro_series(con, "^TNX"), 1.0, False, lambda v: f"{v:.2f}%"),
         ("⚖", "10Y-3M 스프레드", spread, 1.0, False, lambda v: f"{v:.2f}%"),
         ("▤", "HYG 하이일드", _macro_series(con, "HYG"), 1.0, True, lambda v: f"${v:.2f}"),
+        ("🇰🇷", "KR 국고채 3Y", _macro_series(con, "ECOS:KTB3Y"), 1.0, False, lambda v: f"{v:.2f}%"),
+        ("⚖", "KR 10Y-3Y", kr_spread, 1.0, False, lambda v: f"{v:.2f}%"),
     ]
     out = []
     for icon, label, vals, scale, pctchg, fmt in spec:
