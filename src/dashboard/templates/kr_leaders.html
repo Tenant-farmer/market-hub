@@ -34,7 +34,7 @@
   <table>
     <thead><tr>
       <th>#</th><th>종목</th><th style="text-align:left">이름</th><th>업종</th><th>시가총액</th>
-      <th>주도점수</th><th>1M %</th><th>RS 1M (시장)</th><th>RS 1M (업종)</th><th>거래량</th><th>52주 고점比</th>
+      <th>주도점수</th><th>1M %</th><th>RS 1M (시장)</th><th>RS 3M (시장)</th><th>RS 1M (업종)</th><th>거래량</th><th>52주 고점比</th>
     </tr></thead>
     <tbody>
     {% for r in rows %}
@@ -47,6 +47,7 @@
         <td><strong>{{ '%.0f'|format(r.score) if r.score is not none else '–' }}</strong></td>
         <td class="{{ 'pos' if r.ret21 and r.ret21 > 0 else 'neg' if r.ret21 and r.ret21 < 0 }}">{{ '%+.1f'|format(r.ret21) if r.ret21 is not none else '–' }}</td>
         <td class="{{ 'pos' if r.rs_mkt and r.rs_mkt > 0 else 'neg' if r.rs_mkt and r.rs_mkt < 0 }}">{{ '%+.1f'|format(r.rs_mkt) if r.rs_mkt is not none else '–' }}</td>
+        <td class="{{ 'pos' if r.rs_mkt63 and r.rs_mkt63 > 0 else 'neg' if r.rs_mkt63 and r.rs_mkt63 < 0 }}">{{ '%+.1f'|format(r.rs_mkt63) if r.rs_mkt63 is not none else '–' }}</td>
         <td class="{{ 'pos' if r.rs_sec and r.rs_sec > 0 else 'neg' if r.rs_sec and r.rs_sec < 0 }}">{{ '%+.1f'|format(r.rs_sec) if r.rs_sec is not none else '–' }}</td>
         <td>{{ '%.2fx'|format(r.vol_surge) if r.vol_surge is not none else '–' }}</td>
         <td>{{ '%.0f%%'|format(r.high_prox * 100) if r.high_prox is not none else '–' }}</td>

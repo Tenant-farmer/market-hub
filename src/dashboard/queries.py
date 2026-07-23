@@ -383,6 +383,7 @@ def kr_leaders(con, sector: str = "", market: str = "", n: int = 50):
                MAX(CASE WHEN a.metric='leader_score' THEN a.value END) score,
                MAX(CASE WHEN a.metric='ret_21' THEN a.value END)      ret21,
                MAX(CASE WHEN a.metric='rs_mkt_21' THEN a.value END)   rs_mkt,
+               MAX(CASE WHEN a.metric='rs_mkt_63' THEN a.value END)   rs_mkt63,
                MAX(CASE WHEN a.metric='rs_sec_21' THEN a.value END)   rs_sec,
                MAX(CASE WHEN a.metric='vol_surge' THEN a.value END)   vol_surge,
                MAX(CASE WHEN a.metric='high_prox' THEN a.value END)   high_prox
