@@ -89,11 +89,17 @@
     </tbody>
   </table>
   <div class="pills" style="margin-top:10px;justify-content:center">
-    {% if page > 1 %}<a href="/signals?mkt={{ mkt }}&page={{ page - 1 }}">← 이전</a>{% endif %}
+    {% if page > 1 %}<a href="/signals?mkt={{ mkt }}&page=1">« 처음</a><a href="/signals?mkt={{ mkt }}&page={{ page - 1 }}">← 이전</a>{% endif %}
     {% for p, on in page_links %}
     <a href="/signals?mkt={{ mkt }}&page={{ p }}" class="{{ 'on' if on }}">{{ p }}</a>
     {% endfor %}
-    {% if page < pages %}<a href="/signals?mkt={{ mkt }}&page={{ page + 1 }}">다음 →</a>{% endif %}
+    {% if page < pages %}<a href="/signals?mkt={{ mkt }}&page={{ page + 1 }}">다음 →</a><a href="/signals?mkt={{ mkt }}&page={{ pages }}">끝 »</a>{% endif %}
+  </div>
+  <div class="pills" style="justify-content:center">
+    <span class="sub" style="margin:0;align-self:center">연도:</span>
+    {% for y, p in year_pages %}
+    <a href="/signals?mkt={{ mkt }}&page={{ p }}" class="{{ 'on' if y == cur_year }}">{{ y }}</a>
+    {% endfor %}
   </div>
   <div class="reason" style="margin-top:6px">🚦 = 매수신호일(VIX≥30 또는 VIX·VVIX 동시) · +1/+7/+21/+63일 = 신호 당일 종가에 {{ idxs[0].name }}을 샀을 때의 이후 수익(63일 미확정이면 현재까지 진행) · 페이지를 넘기면 2015년까지 전체 열람</div>
 </div>

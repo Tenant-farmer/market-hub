@@ -103,7 +103,14 @@ def signals():
     hist = hist[1:][::-1]                              # 최신순
     pages = max(1, -(-len(hist) // PER))
     page = min(page, pages)
+    year_pages, seen_y = [], set()                     # 연도 바로가기 (해당 연도 첫 페이지)
+    for idx, r in enumerate(hist):
+        y = r["date"][:4]
+        if y not in seen_y:
+            seen_y.add(y)
+            year_pages.append((y, idx // PER + 1))
     hist = hist[(page - 1) * PER: page * PER]
+    cur_year = hist[0]["date"][:4] if hist else ""
     lo = max(1, page - 3)
     page_links = [(p, p == page) for p in range(lo, min(pages, lo + 6) + 1)]
 
@@ -146,5 +153,6 @@ def signals():
     return render_template("signals.html", mkt=mkt, idxs=idxs, vix=vix, vvix=vvix,
                            fng=fng, marks=marks, avoid=avoid, hist=hist,
                            page=page, pages=pages, page_links=page_links,
+                           year_pages=year_pages, cur_year=cur_year,
                            episodes=episodes, delay_stats=delay_stats, best_delay=best,
                            pills=pills)
