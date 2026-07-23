@@ -40,13 +40,17 @@ def signals():
     fng = _sent(con, "fear_greed")
     con.close()
 
+    # 음영 = 원인 지표의 라인색: VIX만(≥20) 주황 / VVIX만(≥95) 보라 / 둘 다 빨강 (s: 1/2/3)
     vvix_by = {d["time"]: d["value"] for d in vvix}
-    signal = [{"time": d["time"],
-               "value": 1 if (d["value"] >= 30 or
-                              (d["value"] >= 20 and vvix_by.get(d["time"], 0) >= 95)) else 0}
-              for d in vix]
+    marks = []
+    for d in vix:
+        a = d["value"] >= 20
+        w = vvix_by.get(d["time"])
+        b = w is not None and w >= 95
+        marks.append({"time": d["time"], "value": 1 if (a or b) else 0,
+                      "s": 3 if (a and b) else 1 if a else 2 if b else 0})
     avoid = [{"time": d["time"], "value": 1 if d["value"] >= 75 else 0} for d in fng]
 
     pills = [("미국 (SPY·QQQ)", "us", mkt == "us"), ("한국 (코스피·코스닥)", "kr", mkt == "kr")]
     return render_template("signals.html", mkt=mkt, idxs=idxs, vix=vix, vvix=vvix,
-                           fng=fng, signal=signal, avoid=avoid, pills=pills)
+                           fng=fng, marks=marks, avoid=avoid, pills=pills)

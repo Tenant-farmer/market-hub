@@ -25,10 +25,14 @@
   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">
     <span id="idxbar" style="display:flex;gap:6px"></span>
     <span class="sub" style="margin:0;margin-left:auto">
-      <span style="display:inline-block;width:10px;height:10px;background:rgba(12,163,12,.35);border-radius:2px;vertical-align:middle"></span>
-      매수신호 <small>(VIX≥30 또는 VIX≥20 &amp; VVIX≥95)</small>
-      &nbsp;&nbsp;<span style="display:inline-block;width:10px;height:10px;background:rgba(250,178,25,.35);border-radius:2px;vertical-align:middle"></span>
-      과열회피 <small>(F&amp;G≥75)</small>
+      <span style="display:inline-block;width:10px;height:10px;background:rgba(230,168,23,.55);border-radius:2px;vertical-align:middle"></span>
+      VIX≥20
+      &nbsp;<span style="display:inline-block;width:10px;height:10px;background:rgba(144,133,233,.55);border-radius:2px;vertical-align:middle"></span>
+      VVIX≥95
+      &nbsp;<span style="display:inline-block;width:10px;height:10px;background:rgba(208,59,59,.55);border-radius:2px;vertical-align:middle"></span>
+      둘 다 <small>(=매수신호 핵심구간)</small>
+      &nbsp;<span style="display:inline-block;width:10px;height:10px;background:rgba(25,158,112,.5);border-radius:2px;vertical-align:middle"></span>
+      F&amp;G≥75 회피
     </span>
   </div>
   <div id="p_index" style="height:280px"></div>
@@ -51,7 +55,10 @@
 (function () {
   const IDXS = {{ idxs|tojson }};
   const VIX = {{ vix|tojson }}, VVIX = {{ vvix|tojson }}, FNG = {{ fng|tojson }};
-  const SIGNAL = {{ signal|tojson }}, AVOID = {{ avoid|tojson }};
+  const MARKS = {{ marks|tojson }}, AVOID = {{ avoid|tojson }};
+  // 음영 = 원인 지표의 라인색 (1: VIX만 주황 / 2: VVIX만 보라 / 3: 둘 다 빨강)
+  const MARK_COLOR = { 1: "rgba(230,168,23,0.30)", 2: "rgba(144,133,233,0.32)",
+                       3: "rgba(208,59,59,0.34)" };
   const C = { bg: "#1a1a19", text: "#898781", grid: "#2c2c2a", border: "#383835" };
   const DASH = LightweightCharts.LineStyle.Dashed;
 
@@ -74,12 +81,12 @@
   const cIdx = mk("p_index", 280);
   const sig = cIdx.addHistogramSeries({ priceScaleId: "sig", base: 0,
     priceLineVisible: false, lastValueVisible: false });
-  sig.setData(SIGNAL.map(d => ({ time: d.time, value: d.value,
-    color: d.value ? "rgba(12,163,12,0.28)" : "rgba(0,0,0,0)" })));
+  sig.setData(MARKS.map(d => ({ time: d.time, value: d.value,
+    color: d.value ? MARK_COLOR[d.s] : "rgba(0,0,0,0)" })));
   const avo = cIdx.addHistogramSeries({ priceScaleId: "sig", base: 0,
     priceLineVisible: false, lastValueVisible: false });
   avo.setData(AVOID.map(d => ({ time: d.time, value: d.value,
-    color: d.value ? "rgba(250,178,25,0.26)" : "rgba(0,0,0,0)" })));
+    color: d.value ? "rgba(25,158,112,0.28)" : "rgba(0,0,0,0)" })));
   cIdx.priceScale("sig").applyOptions({ scaleMargins: { top: 0, bottom: 0 } });
   const idxLine = cIdx.addLineSeries({ color: "#3987e5", lineWidth: 2, priceLineVisible: false });
 

@@ -66,7 +66,11 @@ def build_text(con) -> str:
 
     today = date.today()
     L = [f"<b>📊 market-hub 시세판</b> · {today.isoformat()} "
-         f"({'월화수목금토일'[today.weekday()]})", ""]
+         f"({'월화수목금토일'[today.weekday()]})"]
+    sig = queries.vix_signal(con)                      # 매수 신호등은 최상단 독립 표기
+    if sig:
+        L.append(f"🚦 <b>매수 신호등: {sig['emoji']} {sig['label']}</b>")
+    L.append("")
     us_names = config.load()["us"].get("names", {})
     kr_names = queries.kr_index_names(con)
     _, us_rank = queries.ranking(con, "us_sector")
@@ -183,7 +187,6 @@ def build_text(con) -> str:
             L.append("• " + " · ".join(f"{m['label']} {m['val']}" for m in mac[half:]))
     senti = queries.sentiment_latest(con)
     fng = (senti.get("fear_greed") or {}).get("value")
-    sig = queries.vix_signal(con)
     bits = []
     if sig:
         bits.append(f"VIX {sig['vix']:.1f} · VVIX {sig['vvix']:.0f}")
@@ -191,8 +194,6 @@ def build_text(con) -> str:
         bits.append(f"F&G {fng:.0f}({_fng_label(fng)})")
     if bits:
         L.append("• " + " · ".join(bits))
-    if sig:
-        L.append(f"• 매수 신호등: {sig['emoji']} {sig['label']}")
     L.append("")
 
     # ---------- 📅 일정 (임박) ----------
