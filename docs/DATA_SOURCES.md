@@ -21,7 +21,6 @@
 | 12 | 키움 REST (모의) | KIWOOM_APP_KEY | KR 주문·체결·잔고 | 이벤트+주기 |
 | 13 | Alpaca (페이퍼) | ALPACA_API_KEY | US 주문·체결·잔고 | 이벤트+주기 |
 | 14 | Telegram Bot | BOT_TOKEN | 브리핑·경보 발신 | 아침 1회+수시 |
-| — | 네이버 검색 API | NAVER_CLIENT_ID (보유) | **미사용** (뉴스 업그레이드 백로그) | — |
 
 ---
 
