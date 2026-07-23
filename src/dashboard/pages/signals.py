@@ -155,10 +155,19 @@ def signals():
                                 "med": rets[len(rets) // 2]})
     best = max(delay_stats, key=lambda s: s["win"])["delay"] if delay_stats else None
 
+    # 이력 연도 필터 (통계는 전체 표본 유지, 표시만 필터)
+    ep_years = sorted({e["date"][:4] for e in episodes}, reverse=True)
+    ep_year = request.args.get("ep_year", "")
+    if ep_year in ep_years:
+        episodes = [e for e in episodes if e["date"][:4] == ep_year]
+    else:
+        ep_year = ""
+
     pills = [("미국 (SPY·QQQ)", "us", mkt == "us"), ("한국 (코스피·코스닥)", "kr", mkt == "kr")]
     return render_template("signals.html", mkt=mkt, idxs=idxs, vix=vix, vvix=vvix,
                            fng=fng, marks=marks, avoid=avoid, hist=hist,
                            page=page, pages=pages, page_links=page_links,
                            year_pages=year_pages, cur_year=cur_year,
+                           ep_years=ep_years, ep_year=ep_year,
                            episodes=episodes, delay_stats=delay_stats, best_delay=best,
                            pills=pills)

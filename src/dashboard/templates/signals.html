@@ -114,8 +114,14 @@
 {# ---- 매수신호 이력 (전 기간 에피소드) — 그날 샀으면? ---- #}
 {% if episodes %}
 <div class="card" style="margin-top:16px;overflow-x:auto">
-  <div class="sub" style="margin-bottom:4px">🚦 매수신호 이력 — 2007~ 에피소드 {{ episodes|length }}건 (15일 갭 기준, 최신순 · 2008 금융위기 포함)
+  <div class="sub" style="margin-bottom:4px">🚦 매수신호 이력 — {{ ep_year + '년' if ep_year else '2007~' }} 에피소드 {{ episodes|length }}건 (15일 갭 기준, 최신순)
     <span style="color:var(--muted)">· 저점까지 = 신호 후 126거래일 내 최저점(며칠 뒤·추가하락)</span></div>
+  <div class="pills" style="margin-bottom:8px">
+    <a href="/signals?mkt={{ mkt }}&page={{ page }}" class="{{ 'on' if not ep_year }}">전체</a>
+    {% for y in ep_years %}
+    <a href="/signals?mkt={{ mkt }}&page={{ page }}&ep_year={{ y }}" class="{{ 'on' if y == ep_year }}">{{ y }}</a>
+    {% endfor %}
+  </div>
   {% if delay_stats %}
   <div class="reason" style="margin-bottom:8px">
     <strong>언제 사야 하나</strong> ({{ idxs[0].name }} 63일 보유, 실계산):
