@@ -47,7 +47,7 @@
 
 {# ---- 진행 표 (두 지수 + 기간 선택) ---- #}
 {% if hist %}
-<div class="card" style="margin-top:16px;overflow-x:auto">
+<div class="card" id="prog" style="margin-top:16px;overflow-x:auto">
   <div class="sub" style="margin-bottom:6px">진행 표 — 실제 값과 판정 (최신순, 30일/페이지 · {{ page }}/{{ pages }}p)</div>
   <table>
     <thead><tr>
@@ -95,16 +95,16 @@
     </tbody>
   </table>
   <div class="pills" style="margin-top:10px;justify-content:center">
-    {% if page > 1 %}<a href="/signals?mkt={{ mkt }}&page=1">« 처음</a><a href="/signals?mkt={{ mkt }}&page={{ page - 1 }}">← 이전</a>{% endif %}
+    {% if page > 1 %}<a href="/signals?mkt={{ mkt }}&page=1#prog">« 처음</a><a href="/signals?mkt={{ mkt }}&page={{ page - 1 }}#prog">← 이전</a>{% endif %}
     {% for p, on in page_links %}
-    <a href="/signals?mkt={{ mkt }}&page={{ p }}" class="{{ 'on' if on }}">{{ p }}</a>
+    <a href="/signals?mkt={{ mkt }}&page={{ p }}#prog" class="{{ 'on' if on }}">{{ p }}</a>
     {% endfor %}
-    {% if page < pages %}<a href="/signals?mkt={{ mkt }}&page={{ page + 1 }}">다음 →</a><a href="/signals?mkt={{ mkt }}&page={{ pages }}">끝 »</a>{% endif %}
+    {% if page < pages %}<a href="/signals?mkt={{ mkt }}&page={{ page + 1 }}#prog">다음 →</a><a href="/signals?mkt={{ mkt }}&page={{ pages }}#prog">끝 »</a>{% endif %}
   </div>
   <div class="pills" style="justify-content:center">
     <span class="sub" style="margin:0;align-self:center">연도:</span>
     {% for y, p in year_pages %}
-    <a href="/signals?mkt={{ mkt }}&page={{ p }}" class="{{ 'on' if y == cur_year }}">{{ y }}</a>
+    <a href="/signals?mkt={{ mkt }}&page={{ p }}#prog" class="{{ 'on' if y == cur_year }}">{{ y }}</a>
     {% endfor %}
   </div>
   <div class="reason" style="margin-top:6px">🚦 = 매수신호일(VIX≥30 또는 VIX·VVIX 동시) · 저점까지 = 신호 후 126거래일 내 최저점(며칠 뒤·추가하락) · +1/+7/+21/+63일 = 신호 당일 종가에 {{ idxs[0].name }}을 샀을 때의 이후 수익(63일 미확정이면 현재까지 진행) · 연도 필로 2007년까지 이동</div>
@@ -113,13 +113,13 @@
 
 {# ---- 매수신호 이력 (전 기간 에피소드) — 그날 샀으면? ---- #}
 {% if episodes %}
-<div class="card" style="margin-top:16px;overflow-x:auto">
+<div class="card" id="ep" style="margin-top:16px;overflow-x:auto">
   <div class="sub" style="margin-bottom:4px">🚦 매수신호 이력 — {{ ep_year + '년' if ep_year else '2007~' }} 에피소드 {{ episodes|length }}건 (15일 갭 기준, 최신순)
     <span style="color:var(--muted)">· 저점까지 = 신호 후 126거래일 내 최저점(며칠 뒤·추가하락)</span></div>
   <div class="pills" style="margin-bottom:8px">
-    <a href="/signals?mkt={{ mkt }}&page={{ page }}" class="{{ 'on' if not ep_year }}">전체</a>
+    <a href="/signals?mkt={{ mkt }}&page={{ page }}#ep" class="{{ 'on' if not ep_year }}">전체</a>
     {% for y in ep_years %}
-    <a href="/signals?mkt={{ mkt }}&page={{ page }}&ep_year={{ y }}" class="{{ 'on' if y == ep_year }}">{{ y }}</a>
+    <a href="/signals?mkt={{ mkt }}&page={{ page }}&ep_year={{ y }}#ep" class="{{ 'on' if y == ep_year }}">{{ y }}</a>
     {% endfor %}
   </div>
   {% if delay_stats %}
