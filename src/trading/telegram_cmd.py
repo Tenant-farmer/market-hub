@@ -12,10 +12,24 @@ import requests
 API = "https://api.telegram.org/bot{token}/{method}"
 
 HELP = ("<b>명령</b>\n"
-        "/잔고 — 키움·알파카 계좌 현황\n"
-        "/신호 — 매수 신호등(US/KR) + 게이트 상태\n"
-        "/킬스위치 on|off — 전 주문 차단 토글 (인자 없으면 상태만)\n"
-        "/도움말 — 이 목록")
+        "/잔고 (/bal) — 키움·알파카 계좌 현황\n"
+        "/신호 (/sig) — 매수 신호등(US/KR) + 게이트 상태\n"
+        "/킬스위치 (/kill) on|off — 전 주문 차단 토글 (인자 없으면 상태만)\n"
+        "/help (/도움말) — 이 목록")
+
+
+def register_commands() -> bool:
+    """텔레그램 '/' 자동완성 메뉴 등록 (setMyCommands — 1회면 충분, 서버측 저장)."""
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    if not token:
+        return False
+    r = requests.post(API.format(token=token, method="setMyCommands"), json={"commands": [
+        {"command": "bal", "description": "잔고 — 키움·알파카 계좌 현황"},
+        {"command": "sig", "description": "신호 — 매수 신호등(US/KR) + 게이트"},
+        {"command": "kill", "description": "킬스위치 on|off — 전 주문 차단"},
+        {"command": "help", "description": "명령 목록"},
+    ]}, timeout=15)
+    return r.ok and r.json().get("ok", False)
 
 
 def _balance(con) -> str:
@@ -133,7 +147,7 @@ def handle(text: str) -> str:
             return _signals(con)
         if c0 in ("/킬스위치", "/kill"):
             return _kill(con, parts[1] if len(parts) > 1 else "")
-        return HELP
+        return HELP                                    # /help·/도움말·미지원 → 목록
     finally:
         con.close()
 
