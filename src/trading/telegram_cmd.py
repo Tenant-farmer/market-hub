@@ -18,22 +18,39 @@ HELP = ("<b>명령</b>\n"
         "/도움말 — 이 목록")
 
 
-def _balance() -> str:
+def _balance(con) -> str:
+    from datetime import date
+
     L = ["<b>💼 잔고</b>"]
+    today = date.today().isoformat()
+
+    def _prev(broker):
+        try:
+            r = con.execute(
+                "SELECT equity FROM portfolio_snapshots WHERE broker=? AND date<? "
+                "ORDER BY date DESC LIMIT 1", (broker, today)).fetchone()
+            return r["equity"] if r else None
+        except Exception:
+            return None
+
+    kr_eq = us_eq = None
     try:
         from src.trading.brokers import kiwoom
 
         if kiwoom.configured():
             b = kiwoom.KiwoomBroker().account_balance()
             if b:
-                L.append(f"키움{'모의' if kiwoom.is_mock() else '실전'}: "
-                         f"총자산 {b['cash']:,.0f}원 · 평가 {b['value']:,.0f}원 · "
-                         f"미실현 {b['pl']:+,.0f}원 ({b['plpc']:+.2f}%) · "
-                         f"{len(b['holdings'])}종목")
+                kr_eq = b["cash"]                      # 추정예탁자산 = 총자산
+                prev = _prev("kiwoom")
+                chg = f" (전일比 {(kr_eq / prev - 1) * 100:+.2f}%)" if prev else ""
+                L += ["", f"<b>키움{'모의' if kiwoom.is_mock() else '실전'}</b>",
+                      f"총자산 {kr_eq:,.0f}원{chg}",
+                      f"평가 {b['value']:,.0f}원 (총자산의 {b['value'] / kr_eq * 100:.1f}% 투입)",
+                      f"미실현 {b['pl']:+,.0f}원 ({b['plpc']:+.2f}%) / {len(b['holdings'])}종목"]
             else:
-                L.append("키움: 조회 실패")
+                L += ["", "키움: 조회 실패"]
     except Exception as e:
-        L.append(f"키움: 오류 {str(e)[:40]}")
+        L += ["", f"키움: 오류 {str(e)[:40]}"]
     try:
         from src.trading.brokers import alpaca
 
@@ -41,11 +58,25 @@ def _balance() -> str:
             br = alpaca.AlpacaBroker()
             a = br.get_account()
             pos = br.get_positions()
+            us_eq = float(a.get("equity") or 0)
+            mv = sum(float(p.get("market_value") or 0) for p in pos)
             pl = sum(float(p.get("unrealized_pl") or 0) for p in pos)
-            L.append(f"Alpaca: 자산 ${float(a.get('equity') or 0):,.2f} · "
-                     f"미실현 ${pl:+,.2f} · {len(pos)}종목")
+            prev = _prev("alpaca")
+            chg = f" (전일比 {(us_eq / prev - 1) * 100:+.2f}%)" if prev else ""
+            L += ["", "<b>Alpaca</b>",
+                  f"총자산 ${us_eq:,.2f}{chg}",
+                  f"평가 ${mv:,.2f} (총자산의 {mv / us_eq * 100:.2f}% 투입)" if us_eq
+                  else f"평가 ${mv:,.2f}",
+                  f"미실현 ${pl:+,.2f} / {len(pos)}종목"]
     except Exception as e:
-        L.append(f"Alpaca: 오류 {str(e)[:40]}")
+        L += ["", f"Alpaca: 오류 {str(e)[:40]}"]
+    try:                                              # 원화 합산 (최근 환율)
+        fx = con.execute("SELECT close FROM prices_daily WHERE symbol='KRW=X' "
+                         "ORDER BY date DESC LIMIT 1").fetchone()
+        if kr_eq and us_eq and fx and fx["close"]:
+            L += ["", f"합산 ≈ {kr_eq + us_eq * fx['close']:,.0f}원 (@{fx['close']:,.0f})"]
+    except Exception:
+        pass
     if len(L) == 1:
         L.append("브로커 미설정")
     return "\n".join(L)
@@ -97,7 +128,7 @@ def handle(text: str) -> str:
     con = db.connect()
     try:
         if c0 in ("/잔고", "/bal"):
-            return _balance()
+            return _balance(con)
         if c0 in ("/신호", "/sig"):
             return _signals(con)
         if c0 in ("/킬스위치", "/kill"):
