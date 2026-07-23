@@ -1,8 +1,13 @@
 """키움 REST 어댑터 — 모의(mockapi.kiwoom.com)/실전(api.kiwoom.com) 국내주식 현금 주문.
 
 인증: appkey/secretkey → /oauth2/token 접근토큰(프로세스 캐시, 만료까지 재사용).
-주문: POST /api/dostk/ordr, 헤더 api-id kt10000(매수)/kt10001(매도).
+주문: POST /api/dostk/ordr, 헤더 api-id kt10000(매수)/kt10001(매도)/kt10003(취소).
 멱등: 키움은 client_order_id 개념이 없어 orders 테이블에 이미 있으면 재제출 안 함(앱측 멱등).
+
+레이트리밋(에러 1700) 주의 — 실측으로 확인된 함정:
+- 초당 요청 한도 초과 시 '거부' 응답이 와도 **그 요청이 서버에 접수돼 있을 수 있음** (NAVER 이중매수 사건)
+- 대응: ① 주문 간 최소 1초 사전 스로틀(_throttle) ② 그래도 1700이면 kt00007로 방금 접수된
+  동일 주문이 있는지 **확인 후** 없을 때만 1회 재시도 (블라인드 재시도 금지)
 """
 import os
 import time
@@ -13,6 +18,15 @@ import requests
 from src.trading.brokers.base import BrokerAdapter, OrderRequest
 
 _TOKEN = {"val": None, "exp": None}
+_ORD_TS = {"t": 0.0}                     # 마지막 주문요청 시각 (사전 스로틀용)
+
+
+def _throttle():
+    """주문류 요청 간 최소 1초 간격 보장 — 1700(초당 한도) 예방."""
+    wait = 1.05 - (time.monotonic() - _ORD_TS["t"])
+    if wait > 0:
+        time.sleep(wait)
+    _ORD_TS["t"] = time.monotonic()
 
 
 def _num(s) -> float:
@@ -84,7 +98,8 @@ class KiwoomBroker(BrokerAdapter):
         }
         ok, status, msg = False, "error", ""
         try:
-            for _ in range(3):        # 키움 초당 요청 한도(1700) → 1초 백오프 재시도 (연속 손절 보호)
+            _throttle()
+            for _ in range(2):        # 1700이면 '유령접수 확인 후' 1회만 재시도 (블라인드 재시도 금지)
                 r = requests.post(
                     f"{_base()}/api/dostk/ordr",
                     headers={"Content-Type": "application/json;charset=UTF-8",
@@ -98,7 +113,14 @@ class KiwoomBroker(BrokerAdapter):
                 msg = ((d.get("ord_no") or "") + " " + (d.get("return_msg") or "")).strip()[:150]
                 if ok or "1700" not in msg:
                     break
-                time.sleep(1.0)
+                # 레이트리밋 거부 응답이어도 접수됐을 수 있음(실측: NAVER 이중매수) → 확인 후 재시도
+                time.sleep(1.2)
+                ghost = self._find_recent_order(req)
+                if ghost:
+                    ok, status = True, "submitted"
+                    msg = f"{ghost['ord_no']} 레이트리밋 지연접수 확인"
+                    break
+                _throttle()
         except Exception as e:
             msg = str(e)[:150]
 
@@ -112,6 +134,65 @@ class KiwoomBroker(BrokerAdapter):
         )
         con.commit()
         return {"ok": ok, "dup": False, "status": status}
+
+    def order_history(self, ord_dt: str | None = None) -> list[dict]:
+        """kt00007 계좌별주문체결내역 — 당일(기본) 주문의 체결/미체결 상태. 실패 시 []."""
+        try:
+            r = requests.post(
+                f"{_base()}/api/dostk/acnt",
+                headers={"Content-Type": "application/json;charset=UTF-8",
+                         "authorization": f"Bearer {_token()}", "api-id": "kt00007"},
+                json={"ord_dt": ord_dt or datetime.now().strftime("%Y%m%d"), "qry_tp": "1",
+                      "stk_bond_tp": "1", "sell_tp": "0", "stk_cd": "", "fr_ord_no": "",
+                      "dmst_stex_tp": "%"}, timeout=15,
+            )
+            d = r.json() if r.content else {}
+            if d.get("return_code") != 0:
+                return []
+            return [{
+                "ord_no": o.get("ord_no", ""), "code": (o.get("stk_cd") or "").lstrip("A"),
+                "name": o.get("stk_nm", ""),
+                "side": "sell" if "매도" in (o.get("io_tp_nm") or "") else "buy",
+                "qty": _num(o.get("ord_qty")), "filled": _num(o.get("cntr_qty")),
+                "remain": _num(o.get("ord_remnq")), "price": _num(o.get("cntr_uv")),
+                "tm": o.get("ord_tm", ""), "mdfy": o.get("mdfy_cncl", ""),
+            } for o in d.get("acnt_ord_cntr_prps_dtl", [])]
+        except Exception:
+            return []
+
+    def _find_recent_order(self, req: OrderRequest) -> dict | None:
+        """직전 ~25초 내 접수된 동일 종목·방향 주문 — 1700 거부 후 유령접수 확인용."""
+        side = "sell" if req.action == "sell" else "buy"
+        now = datetime.now()
+        for o in self.order_history():
+            if o["code"] != str(req.ticker) or o["side"] != side:
+                continue
+            try:
+                t = datetime.combine(now.date(),
+                                     datetime.strptime(o["tm"], "%H:%M:%S").time())
+            except ValueError:
+                continue
+            if 0 <= (now - t).total_seconds() <= 25:
+                return o
+        return None
+
+    def cancel_order(self, orig_ord_no: str, stk_cd: str, qty: int = 0) -> dict:
+        """kt10003 취소주문 — qty 0이면 전량취소. 반환 {ok, msg}."""
+        try:
+            _throttle()
+            r = requests.post(
+                f"{_base()}/api/dostk/ordr",
+                headers={"Content-Type": "application/json;charset=UTF-8",
+                         "authorization": f"Bearer {_token()}", "api-id": "kt10003"},
+                json={"dmst_stex_tp": "KRX", "orig_ord_no": str(orig_ord_no),
+                      "stk_cd": str(stk_cd), "cncl_qty": str(int(qty))}, timeout=15,
+            )
+            d = r.json() if r.content else {}
+            return {"ok": d.get("return_code") == 0,
+                    "msg": ((d.get("ord_no") or "") + " "
+                            + (d.get("return_msg") or "")).strip()[:120]}
+        except Exception as e:
+            return {"ok": False, "msg": str(e)[:120]}
 
     def account_balance(self) -> dict | None:
         """kt00018 계좌평가잔고내역 → {예탁·총손익 + 보유종목별 평가손익}. 조회 실패 시 None."""

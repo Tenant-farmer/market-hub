@@ -268,8 +268,8 @@ def test_reconcile(con, monkeypatch):
     assert reconcile.reconcile(con) == []   # 이미 종료상태 → 재폴링 안 함
 
 
-def test_kiwoom_ratelimit_retry(con, monkeypatch):
-    """키움 초당한도(1700) 거부 → 백오프 재시도로 최종 제출 (연속 손절 보호)."""
+def test_kiwoom_ratelimit_verify_then_retry(con, monkeypatch):
+    """1700 거부 → 유령접수 확인 후에만 재시도 (실측: 거부 응답이어도 접수될 수 있음 → 이중주문 방지)."""
     from src.trading.brokers import kiwoom
     from src.trading.brokers.base import OrderRequest
 
@@ -283,22 +283,80 @@ def test_kiwoom_ratelimit_retry(con, monkeypatch):
         def json(self):
             return self._d
 
-    calls = []
+    posts = []
 
-    def fake_post(url, **kw):
-        calls.append(url)
-        if len(calls) == 1:                                     # 1회차: 레이트리밋 거부
-            return R({"return_code": 5,
-                      "return_msg": "허용된 요청 개수를 초과하였습니다[1700:...]"})
-        return R({"return_code": 0, "ord_no": "0000042", "return_msg": "모의투자 매수주문완료"})
+    # case 1: 1700 거부 후 유령접수 발견 → 재제출 없이 그 주문번호로 submitted
+    def post_reject(url, **kw):
+        posts.append(kw.get("headers", {}).get("api-id"))
+        return R({"return_code": 5, "return_msg": "허용된 요청 개수를 초과하였습니다[1700:...]"})
 
-    monkeypatch.setattr(kiwoom.requests, "post", fake_post)
+    monkeypatch.setattr(kiwoom.requests, "post", post_reject)
+    monkeypatch.setattr(kiwoom.KiwoomBroker, "_find_recent_order",
+                        lambda self, req: {"ord_no": "0070001"})
     res = kiwoom.KiwoomBroker().submit_order(
         con, OrderRequest(ticker="035420", action="buy", qty=1, price=None, strategy=""),
-        client_order_id="sig-test-rl", signal_id=None)
-    assert res["ok"] and len(calls) == 2                        # 재시도 1번으로 성공
-    row = con.execute("SELECT status FROM orders WHERE client_order_id='sig-test-rl'").fetchone()
-    assert row["status"] == "submitted"
+        client_order_id="sig-rl-ghost", signal_id=None)
+    assert res["ok"] and posts == ["kt10000"]                   # 주문 POST 1회뿐 (재제출 금지)
+    assert "지연접수" in con.execute(
+        "SELECT message FROM orders WHERE client_order_id='sig-rl-ghost'").fetchone()["message"]
+
+    # case 2: 유령 없음 → 1회 재시도로 성공
+    posts.clear()
+
+    def post_then_ok(url, **kw):
+        posts.append(kw.get("headers", {}).get("api-id"))
+        if posts.count("kt10000") == 1:
+            return R({"return_code": 5, "return_msg": "...[1700:...]"})
+        return R({"return_code": 0, "ord_no": "0070002", "return_msg": "모의투자 매수주문완료"})
+
+    monkeypatch.setattr(kiwoom.requests, "post", post_then_ok)
+    monkeypatch.setattr(kiwoom.KiwoomBroker, "_find_recent_order", lambda self, req: None)
+    res = kiwoom.KiwoomBroker().submit_order(
+        con, OrderRequest(ticker="035420", action="buy", qty=1, price=None, strategy=""),
+        client_order_id="sig-rl-retry", signal_id=None)
+    assert res["ok"] and posts.count("kt10000") == 2
+
+
+def test_reconcile_kiwoom_fill_and_watchdog(con, monkeypatch):
+    """키움 체결 반영(kt00007 매칭) + 매도 미체결 워치독(취소→재제출 신호, 멱등)."""
+    from src.trading import reconcile
+    from src.trading.brokers import alpaca, kiwoom
+
+    monkeypatch.setattr(alpaca, "configured", lambda: False)
+    monkeypatch.setattr(kiwoom, "configured", lambda: True)
+    con.execute("INSERT INTO orders (client_order_id, broker, ticker, action, qty, status, "
+                "created_at, message) VALUES ('k-buy','kiwoom-mock','035720','buy',1,"
+                "'submitted', datetime('now','localtime'), '0001111 접수')")
+    con.execute("INSERT INTO orders (client_order_id, broker, ticker, action, qty, status, "
+                "created_at, message) VALUES ('k-sell','kiwoom-mock','035420','sell',1,"
+                "'submitted', datetime('now','localtime','-10 minutes'), '0002222 접수')")
+    con.execute("INSERT INTO orders (client_order_id, broker, ticker, action, qty, status, "
+                "created_at, message) VALUES ('k-cxl','kiwoom-mock','005380','buy',1,"
+                "'submitted', datetime('now','localtime','-5 minutes'), '0003333 접수')")
+    con.commit()
+    hist = [
+        {"ord_no": "0001111", "code": "035720", "side": "buy", "qty": 1, "filled": 1,
+         "remain": 0, "price": 36100, "tm": "10:00:00", "mdfy": "일반", "name": "카카오"},
+        {"ord_no": "0002222", "code": "035420", "side": "sell", "qty": 1, "filled": 0,
+         "remain": 1, "price": 0, "tm": "10:00:01", "mdfy": "일반", "name": "NAVER"},
+        # 취소 실측 시그니처: mdfy '일반'인 채 체결 0·미체결 0 (전량취소로 소멸)
+        {"ord_no": "0003333", "code": "005380", "side": "buy", "qty": 1, "filled": 0,
+         "remain": 0, "price": 0, "tm": "10:00:02", "mdfy": "일반", "name": "현대차"},
+    ]
+    canceled = []
+    monkeypatch.setattr(kiwoom.KiwoomBroker, "order_history", lambda self, ord_dt=None: hist)
+    monkeypatch.setattr(kiwoom.KiwoomBroker, "is_market_open", lambda self, t: True)
+    monkeypatch.setattr(kiwoom.KiwoomBroker, "cancel_order",
+                        lambda self, o, s, qty=0: canceled.append(o) or {"ok": True, "msg": ""})
+    monkeypatch.setattr(reconcile, "_alert", lambda text: None)
+
+    up = reconcile.reconcile(con)
+    st = {u["coid"]: u["to"] for u in up}
+    assert st == {"k-buy": "filled", "k-sell": "stale_replaced", "k-cxl": "canceled"}
+    assert canceled == ["0002222"]                              # 재제출 전 원주문 취소
+    sig = con.execute("SELECT ticker, action FROM signals WHERE source='sell-retry'").fetchone()
+    assert sig["ticker"] == "035420" and sig["action"] == "sell"
+    assert reconcile.reconcile(con) == []                       # 재실행 멱등
 
 
 def test_dashboard_auth(monkeypatch):
