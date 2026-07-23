@@ -51,23 +51,86 @@ def signals():
                       "s": 3 if (a and b) else 1 if a else 2 if b else 0})
     avoid = [{"time": d["time"], "value": 1 if d["value"] >= 75 else 0} for d in fng]
 
-    # 하단 진행 표 — 최근 30거래일 실제 값 + 판정
-    by_idx = {d["time"]: d["value"] for d in (idxs[0]["data"] if idxs else [])}
+    # ---- 하단 진행 표 (두 지수 + 기간 선택) & 매수신호 이력 (전 기간 에피소드 + 진입지연 연구) ----
+    from bisect import bisect_right
+
+    try:
+        days = int(request.args.get("days", 90))
+    except ValueError:
+        days = 90
+    days = days if days in (30, 90, 250) else 90
+
+    def _tools(data):
+        ds = [d["time"] for d in data]
+        cs = [d["value"] for d in data]
+
+        def asof(t):
+            i = bisect_right(ds, t) - 1
+            return i if i >= 0 else None
+
+        def fwd(i, n):
+            return ((cs[i + n] / cs[i] - 1) * 100
+                    if i is not None and cs[i] and i + n < len(cs) else None)
+
+        return ds, cs, asof, fwd
+
+    d1_, c1_, asof1, fwd1 = _tools(idxs[0]["data"] if idxs else [])
+    d2_, c2_, asof2, fwd2 = _tools(idxs[1]["data"] if len(idxs) > 1 else [])
     vix_by = {d["time"]: d["value"] for d in vix}
     fng_by = {d["time"]: d["value"] for d in fng}
-    hist, prev_close = [], None
-    for m in marks[-31:]:
+    by1 = {t: c for t, c in zip(d1_, c1_)}
+    by2 = {t: c for t, c in zip(d2_, c2_)}
+
+    hist, p1, p2 = [], None, None
+    for m in marks[-(days + 1):]:
         t = m["time"]
-        c = by_idx.get(t)
-        chg = (c / prev_close - 1) * 100 if (c is not None and prev_close) else None
-        if c is not None:
-            prev_close = c
+        c1v, c2v = by1.get(t), by2.get(t)
         fg = fng_by.get(t)
-        hist.append({"date": t, "close": c, "chg": chg, "vix": vix_by.get(t),
-                     "vvix": vvix_by.get(t), "fng": fg, "s": m["s"],
-                     "avoid": 1 if (fg or 0) >= 75 else 0})
-    hist = hist[1:][::-1]                                       # 최신이 위로, 30행
+        green = (vix_by.get(t, 0) >= 30) or m["s"] == 3
+        row = {"date": t, "s": m["s"], "vix": vix_by.get(t), "vvix": vvix_by.get(t),
+               "fng": fg, "avoid": 1 if (fg or 0) >= 75 else 0, "sig": green,
+               "close": c1v, "chg": (c1v / p1 - 1) * 100 if (c1v and p1) else None,
+               "close2": c2v, "chg2": (c2v / p2 - 1) * 100 if (c2v and p2) else None,
+               "fwd": None, "fwd_run": None}
+        if green:
+            i = asof1(t)
+            row["fwd"] = fwd1(i, 63)
+            if row["fwd"] is None and i is not None and c1_:
+                row["fwd_run"] = ((c1_[-1] / c1_[i] - 1) * 100, len(c1_) - 1 - i)
+        p1, p2 = c1v or p1, c2v or p2
+        hist.append(row)
+    hist = hist[1:][::-1]
+
+    # 신호 에피소드 (15일 갭 기준) — 그날 샀으면 +21/+63일 수익
+    greens = [(m["time"], vix_by.get(m["time"], 0), vvix_by.get(m["time"]),
+               (vix_by.get(m["time"], 0) >= 30) or m["s"] == 3, m["s"]) for m in marks]
+    episodes = []
+    for k, (t, v, w, g, s) in enumerate(greens):
+        if not g or any(gg[3] for gg in greens[max(0, k - 15):k]):
+            continue
+        i1, i2 = asof1(t), asof2(t)
+        ep = {"date": t, "vix": v, "vvix": w, "s": s,
+              "f21": fwd1(i1, 21), "f63": fwd1(i1, 63), "f63b": fwd2(i2, 63), "run": None}
+        if ep["f63"] is None and i1 is not None and c1_:
+            ep["run"] = ((c1_[-1] / c1_[i1] - 1) * 100, len(c1_) - 1 - i1)
+        episodes.append(ep)
+    episodes = episodes[::-1]
+
+    # 진입지연 연구 — 신호 후 며칠에 사야 하나 (63일 보유, 본지수 기준 실계산)
+    delay_stats = []
+    starts = [asof1(e["date"]) for e in episodes if asof1(e["date"]) is not None]
+    for dly in (0, 3, 5, 10, 21):
+        rets = [ (c1_[i + dly + 63] / c1_[i + dly] - 1) * 100
+                 for i in starts if i + dly + 63 < len(c1_) ]
+        if len(rets) >= 5:
+            rets.sort()
+            delay_stats.append({"delay": dly, "n": len(rets),
+                                "win": sum(1 for r in rets if r > 0) / len(rets) * 100,
+                                "med": rets[len(rets) // 2]})
+    best = max(delay_stats, key=lambda s: s["win"])["delay"] if delay_stats else None
 
     pills = [("미국 (SPY·QQQ)", "us", mkt == "us"), ("한국 (코스피·코스닥)", "kr", mkt == "kr")]
     return render_template("signals.html", mkt=mkt, idxs=idxs, vix=vix, vvix=vvix,
-                           fng=fng, marks=marks, avoid=avoid, hist=hist, pills=pills)
+                           fng=fng, marks=marks, avoid=avoid, hist=hist, days=days,
+                           episodes=episodes, delay_stats=delay_stats, best_delay=best,
+                           pills=pills)

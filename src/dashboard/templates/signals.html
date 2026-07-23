@@ -44,31 +44,88 @@
   </div>
 </div>
 
-{# ---- 최근 30거래일 진행 표 — 실제 값과 판정 ---- #}
+{# ---- 진행 표 (두 지수 + 기간 선택) ---- #}
 {% if hist %}
 <div class="card" style="margin-top:16px;overflow-x:auto">
-  <div class="sub" style="margin-bottom:6px">최근 30거래일 진행 — 실제 값과 판정 (최신순)</div>
+  <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:6px">
+    <span class="sub" style="margin:0">진행 표 — 실제 값과 판정 (최신순)</span>
+    <span class="pills" style="margin:0 0 0 auto">
+      {% for d in (30, 90, 250) %}
+      <a href="/signals?mkt={{ mkt }}&days={{ d }}" class="{{ 'on' if days == d }}">{{ d }}일</a>
+      {% endfor %}
+    </span>
+  </div>
   <table>
     <thead><tr>
-      <th style="text-align:left">날짜</th><th>{{ idxs[0].name if idxs else '지수' }}</th><th>등락</th>
+      <th style="text-align:left">날짜</th>
+      <th>{{ idxs[0].name if idxs else '지수' }}</th><th>등락</th>
+      <th>{{ idxs[1].name if idxs|length > 1 }}</th><th>등락</th>
       <th>VIX</th><th>VVIX</th><th>F&amp;G</th><th style="text-align:left">판정</th>
+      <th>신호後63일</th>
     </tr></thead>
     <tbody>
     {% for h in hist %}
       <tr>
-        <td style="text-align:left;color:var(--muted)">{{ h.date[5:] }}</td>
+        <td style="text-align:left;color:var(--muted)">{{ h.date[2:] }}</td>
         <td>{{ ('{:,.0f}' if h.close and h.close >= 1000 else '{:,.2f}').format(h.close) if h.close is not none else '–' }}</td>
         <td class="{{ 'pos' if h.chg and h.chg > 0 else 'neg' if h.chg and h.chg < 0 }}">{{ '%+.2f%%'|format(h.chg) if h.chg is not none else '–' }}</td>
+        <td>{{ ('{:,.0f}' if h.close2 and h.close2 >= 1000 else '{:,.2f}').format(h.close2) if h.close2 is not none else '–' }}</td>
+        <td class="{{ 'pos' if h.chg2 and h.chg2 > 0 else 'neg' if h.chg2 and h.chg2 < 0 }}">{{ '%+.2f%%'|format(h.chg2) if h.chg2 is not none else '–' }}</td>
         <td style="{{ 'color:#e6a817;font-weight:600' if h.vix and h.vix >= 20 }}">{{ '%.1f'|format(h.vix) if h.vix is not none else '–' }}</td>
         <td style="{{ 'color:#9085e9;font-weight:600' if h.vvix and h.vvix >= 95 }}">{{ '%.1f'|format(h.vvix) if h.vvix is not none else '–' }}</td>
         <td style="{{ 'color:#199e70;font-weight:600' if h.fng and h.fng >= 75 }}">{{ '%.0f'|format(h.fng) if h.fng is not none else '–' }}</td>
         <td style="text-align:left">
-          {% if h.s == 3 %}<span style="color:#d03b3b;font-weight:700">■ VIX+VVIX (매수핵심)</span>
+          {% if h.s == 3 %}<span style="color:#d03b3b;font-weight:700">■ VIX+VVIX</span>
           {% elif h.s == 1 %}<span style="color:#e6a817">■ VIX</span>
           {% elif h.s == 2 %}<span style="color:#9085e9">■ VVIX</span>
           {% elif not h.avoid %}<span style="color:var(--muted)">—</span>{% endif %}
           {% if h.avoid %}<span style="color:#199e70">{{ ' + ' if h.s }}■ F&G회피</span>{% endif %}
+          {% if h.sig %}<span style="color:#d03b3b"> 🚦</span>{% endif %}
         </td>
+        <td>
+          {% if h.fwd is not none %}<span class="{{ 'pos' if h.fwd > 0 else 'neg' }}">{{ '%+.1f%%'|format(h.fwd) }}</span>
+          {% elif h.fwd_run %}<span class="{{ 'pos' if h.fwd_run[0] > 0 else 'neg' }}">{{ '%+.1f%%'|format(h.fwd_run[0]) }}</span> <span style="color:var(--muted)">({{ h.fwd_run[1] }}일째)</span>
+          {% else %}<span style="color:var(--muted)">–</span>{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <div class="reason" style="margin-top:6px">🚦 = 매수신호일(VIX≥30 또는 VIX·VVIX 동시) · 신호後63일 = 그날 {{ idxs[0].name }}을 샀을 때 63거래일 뒤 수익(미확정이면 현재까지)</div>
+</div>
+{% endif %}
+
+{# ---- 매수신호 이력 (전 기간 에피소드) — 그날 샀으면? ---- #}
+{% if episodes %}
+<div class="card" style="margin-top:16px;overflow-x:auto">
+  <div class="sub" style="margin-bottom:4px">🚦 매수신호 이력 — 2015~ 에피소드 {{ episodes|length }}건 (15일 갭 기준, 최신순)</div>
+  {% if delay_stats %}
+  <div class="reason" style="margin-bottom:8px">
+    <strong>언제 사야 하나</strong> ({{ idxs[0].name }} 63일 보유, 실계산):
+    {% for s in delay_stats %}{{ '즉시' if s.delay == 0 else '+' ~ s.delay ~ '일' }} 승률 {{ '%.0f'|format(s.win) }}%·중앙값 {{ '%+.1f'|format(s.med) }}%{{ ' · ' if not loop.last }}{% endfor %}
+    → <strong style="color:var(--up)">{{ '신호 뜨면 즉시 매수가 최적' if best_delay == 0 else '+' ~ best_delay ~ '일 후 매수가 최적' }}</strong>{{ ' (기다릴수록 승률 하락)' if best_delay == 0 else ' (글로벌 공포가 이 시장에 며칠 늦게 소화되는 경향 — 표본 적으니 참고용)' }}
+  </div>
+  {% endif %}
+  <table>
+    <thead><tr>
+      <th style="text-align:left">신호일</th><th>VIX</th><th>VVIX</th><th style="text-align:left">유형</th>
+      <th>{{ idxs[0].name }} +21일</th><th>{{ idxs[0].name }} +63일</th>
+      <th>{{ idxs[1].name if idxs|length > 1 }} +63일</th>
+    </tr></thead>
+    <tbody>
+    {% for e in episodes %}
+      <tr>
+        <td style="text-align:left;color:var(--muted)">{{ e.date }}</td>
+        <td style="{{ 'color:#e6a817;font-weight:600' if e.vix >= 20 }}">{{ '%.1f'|format(e.vix) }}</td>
+        <td style="{{ 'color:#9085e9;font-weight:600' if e.vvix and e.vvix >= 95 }}">{{ '%.1f'|format(e.vvix) if e.vvix is not none else '–' }}</td>
+        <td style="text-align:left">{% if e.s == 3 %}<span style="color:#d03b3b;font-weight:700">■ VIX+VVIX</span>{% else %}<span style="color:#e6a817">■ VIX≥30</span>{% endif %}</td>
+        <td class="{{ 'pos' if e.f21 and e.f21 > 0 else 'neg' if e.f21 and e.f21 < 0 }}">{{ '%+.1f%%'|format(e.f21) if e.f21 is not none else '–' }}</td>
+        <td>
+          {% if e.f63 is not none %}<span class="{{ 'pos' if e.f63 > 0 else 'neg' }}">{{ '%+.1f%%'|format(e.f63) }}</span>
+          {% elif e.run %}<span class="{{ 'pos' if e.run[0] > 0 else 'neg' }}">{{ '%+.1f%%'|format(e.run[0]) }}</span> <span style="color:var(--muted)">({{ e.run[1] }}일째)</span>
+          {% else %}<span style="color:var(--muted)">–</span>{% endif %}
+        </td>
+        <td class="{{ 'pos' if e.f63b and e.f63b > 0 else 'neg' if e.f63b and e.f63b < 0 }}">{{ '%+.1f%%'|format(e.f63b) if e.f63b is not none else '–' }}</td>
       </tr>
     {% endfor %}
     </tbody>
