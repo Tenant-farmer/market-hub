@@ -990,6 +990,14 @@ S&P500 현구성 499종목 × 11.5년(2015~), top10 진입/top30 이탈 밴드, 
 - /leaders·/kr-leaders 쿼리에 rs_mkt_63(이미 계산·저장됨) 추가, 템플릿에 'RS 3M (시장)'
   컬럼을 RS 1M 다음에 배치 → 섹터 뷰와 통일. 공식 캡션은 기존대로 표 위 노출
 
+### VKOSPI 신호 첫 실매매 + 매매알림 버그 수정 (2026-07-24)
+- **09:14 KODEX200(069500) 첫 VKOSPI 신호 매수 체결** — 어제 만든 kr_signal(≥30&낙폭-5%)로
+  작동한 최초 실매매. 16년 13회뿐인 조건(현재 VKOSPI 82.8·낙폭 -22.1%)이 KR 개장과 함께 발동
+- **버그**: trade_alerts가 orders.strategy 컬럼을 참조했으나 그 컬럼은 signals에만 존재
+  → 매 폴 크래시(no such column: strategy), KODEX 매수는 정상 체결됐으나 알림만 누락.
+  orders.signal_id로 signals LEFT JOIN해 source 취득하도록 수정. KODEX 알림 소급 발송,
+  워커 재시작 후 에러 소멸 확인
+
 ### 매매 체결 알림 + KR 조회 실패 근본수정 (2026-07-24)
 - 사용자: "매수할 때 알림이 안 왔다" — 실제 **매매 시점 알림 기능이 없었음**(지표·실적
   발표 알림만 존재). src/jobs/trade_alerts.py: 워커가 매 폴에서 미알림 주문(notified IS NULL)을

@@ -23,22 +23,19 @@ def _ensure(con):
 def notify_new_orders(con) -> int:
     """미알림 주문을 묶어 발송, 발송 수 반환. 항상 notified 마킹(재전송 방지)."""
     _ensure(con)
+    # 전략(source)은 orders.signal_id로 signals를 조인해 정확히 가져온다
     rows = con.execute(
-        "SELECT id, created_at, broker, ticker, action, qty, price, status, "
-        "COALESCE(strategy,'') strat FROM orders WHERE notified IS NULL "
-        "AND created_at >= datetime('now','localtime','-1 day') ORDER BY id").fetchall()
+        "SELECT o.id, o.created_at, o.broker, o.ticker, o.action, o.qty, o.price, o.status, "
+        "COALESCE(s.source, '') src FROM orders o "
+        "LEFT JOIN signals s ON s.id = o.signal_id "
+        "WHERE o.notified IS NULL "
+        "AND o.created_at >= datetime('now','localtime','-1 day') ORDER BY o.id").fetchall()
     if not rows:
         return 0
     ids = [r["id"] for r in rows]
-    # 전략 추출: orders.strategy 없으면 브로커명으로 대충 — 신호 소스가 정확
     groups: dict = {}
     for r in rows:
-        src = r["strat"].split(":")[0] if r["strat"] else ""
-        if not src:                                    # signals에서 소스 역추적
-            sig = con.execute("SELECT source FROM signals WHERE ticker=? AND action=? "
-                              "ORDER BY id DESC LIMIT 1", (r["ticker"], r["action"])).fetchone()
-            src = sig["source"] if sig else "manual"
-        groups.setdefault((src, r["action"]), []).append(r)
+        groups.setdefault((r["src"] or "manual", r["action"]), []).append(r)
 
     sent = 0
     try:
