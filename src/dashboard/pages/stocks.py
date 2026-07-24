@@ -22,7 +22,7 @@ def stocks():
         cap = "all"
     sector = (request.args.get("sector") or "").strip() or None
     sort = request.args.get("sort", "mcap")
-    if sort not in ("mcap", "vol", "score", "score63"):
+    if sort not in ("mcap", "vol", "score", "rs21", "score63"):
         sort = "mcap"
     q = (request.args.get("q") or "").strip() or None
     try:
@@ -48,10 +48,11 @@ def stocks():
         (s, url(sector=s), sector == s) for s in (hub["sectors"] if hub else [])
     ]
     sort_pills = [
+        ("복합점수순", url(sort="score"), sort == "score"),
+        ("순수1개월순", url(sort="rs21"), sort == "rs21"),
+        ("순수3개월순", url(sort="score63"), sort == "score63"),
         ("시가총액순", url(sort="mcap"), sort == "mcap"),
         ("거래량순", url(sort="vol"), sort == "vol"),
-        ("주도주순", url(sort="score"), sort == "score"),
-        ("3개월 주도순", url(sort="score63"), sort == "score63"),
     ]
     pages = hub["pages"] if hub else 1
     lo = max(1, page - 3)

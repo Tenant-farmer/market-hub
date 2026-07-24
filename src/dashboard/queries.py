@@ -173,15 +173,19 @@ def stock_hub(con, mkt="kr", cap="all", sector=None, sort="mcap", q=None, page=1
         LEFT JOIN analytics_daily a63 ON a63.code = m.stock_code AND a63.scope = ?
             AND a63.metric = 'rs_mkt_63'
             AND a63.date = (SELECT MAX(date) FROM analytics_daily WHERE scope = ? AND metric = 'rs_mkt_63')
+        LEFT JOIN analytics_daily a21 ON a21.code = m.stock_code AND a21.scope = ?
+            AND a21.metric = 'rs_mkt_21'
+            AND a21.date = (SELECT MAX(date) FROM analytics_daily WHERE scope = ? AND metric = 'rs_mkt_21')
         WHERE {" AND ".join(where)}
     """
-    qargs = [d0, d1, ascope, ascope, ascope, ascope, *args]
+    qargs = [d0, d1, ascope, ascope, ascope, ascope, ascope, ascope, *args]
     total = con.execute(f"SELECT COUNT(*) n {body}", qargs).fetchone()["n"]
     order = {"vol": "p.volume DESC", "score": "a.value DESC",
-             "score63": "a63.value DESC"}.get(sort, "s.mcap DESC")
+             "rs21": "a21.value DESC", "score63": "a63.value DESC"}.get(sort, "s.mcap DESC")
     rows = con.execute(
         f"SELECT m.stock_code code, m.name, m.sector_name sector, s.mcap, "
-        f"p.close, p.volume, pp.close prev, a.value score, a63.value score63 {body} "
+        f"p.close, p.volume, pp.close prev, a.value score, a63.value score63, "
+        f"a21.value rs21 {body} "
         f"ORDER BY {order} LIMIT ? OFFSET ?",
         [*qargs, per, (page - 1) * per],
     ).fetchall()
@@ -190,7 +194,7 @@ def stock_hub(con, mkt="kr", cap="all", sector=None, sort="mcap", q=None, page=1
         out.append({
             "code": r["code"], "name": r["name"] or r["code"], "sector": r["sector"] or "",
             "mcap": r["mcap"], "close": r["close"], "volume": r["volume"], "score": r["score"],
-            "score63": r["score63"],
+            "score63": r["score63"], "rs21": r["rs21"],
             "chg": round((r["close"] / r["prev"] - 1) * 100, 2) if r["prev"] else None,
         })
     sectors = [
