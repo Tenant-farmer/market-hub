@@ -15,7 +15,7 @@ def kr_leaders_page():
     if market not in ("", "kp", "kq"):
         market = ""
     sort = request.args.get("sort", "score")
-    if sort not in ("score", "score63", "mcap", "vol"):
+    if sort not in ("score", "rs21", "score63", "mcap", "vol"):
         sort = "score"
     con = db.connect()
     names = queries.kr_index_names(con)
@@ -57,8 +57,9 @@ def kr_leaders_page():
         parts = [f"sort={s}"] + [p for p in (f"market={market}" if market else "",
                                              f"sector={sector}" if sector else "") if p]
         return "/kr-leaders?" + "&".join(parts)
-    sort_pills = [("주도주순", _surl("score"), sort == "score"),
-                  ("3개월 주도순", _surl("score63"), sort == "score63"),
+    sort_pills = [("복합점수순", _surl("score"), sort == "score"),
+                  ("순수1개월순", _surl("rs21"), sort == "rs21"),
+                  ("순수3개월순", _surl("score63"), sort == "score63"),
                   ("시가총액순", _surl("mcap"), sort == "mcap"),
                   ("거래량순", _surl("vol"), sort == "vol")]
     return render_template(

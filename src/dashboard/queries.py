@@ -366,7 +366,7 @@ def kr_leaders(con, sector: str = "", market: str = "", n: int = 50, sort: str =
     ).fetchone()
     if date_row["d"] is None:
         return []
-    order = {"score": "score DESC", "score63": "rs_mkt63 DESC",
+    order = {"score": "score DESC", "rs21": "rs_mkt DESC", "score63": "rs_mkt63 DESC",
              "mcap": "sm.mcap DESC", "vol": "vol_surge DESC"}.get(sort, "score DESC")
     min_mcap = config.load()["kr"]["leader_min_mcap"]
     where = "a.scope='kr_stock' AND a.date=?"

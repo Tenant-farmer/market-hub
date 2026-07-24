@@ -38,7 +38,7 @@ def leaders_page():
     date = date_row["d"]
 
     sort = request.args.get("sort", "score")
-    ORDER = {"score": "score DESC", "score63": "rs_mkt63 DESC",
+    ORDER = {"score": "score DESC", "rs21": "rs_mkt DESC", "score63": "rs_mkt63 DESC",
              "mcap": "sm.mcap DESC", "vol": "vol_surge DESC"}
     if sort not in ORDER:
         sort = "score"
@@ -84,8 +84,9 @@ def leaders_page():
     def _url(s):
         q = f"sort={s}" + (f"&sector={sector}" if sector else "")
         return f"/leaders?{q}"
-    sort_pills = [("주도주순", _url("score"), sort == "score"),
-                  ("3개월 주도순", _url("score63"), sort == "score63"),
+    sort_pills = [("복합점수순", _url("score"), sort == "score"),
+                  ("순수1개월순", _url("rs21"), sort == "rs21"),
+                  ("순수3개월순", _url("score63"), sort == "score63"),
                   ("시가총액순", _url("mcap"), sort == "mcap"),
                   ("거래량순", _url("vol"), sort == "vol")]
     return render_template(
