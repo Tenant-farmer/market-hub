@@ -9,3 +9,4 @@ data/*.db-wal
 data/*.log
 data/*.txt
 backups/
+us_px_cache.pkl
