@@ -31,6 +31,17 @@ def _ran_today(con, collector: str) -> bool:
     ).fetchone() is not None
 
 
+def _run_virtual(con) -> int:
+    """가상장부 A/B: yfinance 유니버스 갱신 → 종가 기준 하루치 처리. 반환: 총 매매 건수."""
+    from src.trading import virtual
+
+    px, spy = virtual.refresh_prices()
+    vrow = con.execute("SELECT close FROM prices_daily WHERE symbol='^VIX' "
+                       "ORDER BY date DESC LIMIT 1").fetchone()
+    r = virtual.process(con, px, spy, vrow["close"] if vrow else 0, str(px.index[-1].date()))
+    return sum(len(v["opened"]) + len(v["closed"]) for v in r.values())
+
+
 def main():
     now = datetime.now()
     wd, hm = now.weekday(), now.hour * 100 + now.minute
@@ -81,6 +92,9 @@ def main():
             from src.jobs import backup
 
             base.run_collector("backup", backup.run)
+        # 가상장부(모멘텀·단타 A/B) 하루 1회 — US 마감 후 종가 기준 처리
+        if wd < 6 and not _ran_today(con, "virtual"):
+            base.run_collector("virtual", _run_virtual)
         # 전일 마감 확정치 하루 1회 (실패 시 다음 시간에 재시도됨)
         if wd < 6 and not _ran_today(con, "us_stocks"):
             base.run_collector("us_sectors", lambda c: us_sectors.collect(c, days=7))

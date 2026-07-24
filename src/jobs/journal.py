@@ -154,6 +154,33 @@ def write_today(con) -> str:
         L.append("- 없음")
     L.append("")
 
+    # ---- 가상장부 A/B (모멘텀·단타) ----
+    try:
+        vrows = con.execute("SELECT DISTINCT strategy FROM daytrade_ledger").fetchall()
+    except Exception:
+        vrows = []
+    if vrows:
+        L.append("## 가상장부 A/B (실주문 없음, 시드 $100k)")
+        LABV = {"momentum": "모멘텀(공격)", "meanrev": "단타(급락반등)"}
+        for r in vrows:
+            s = r["strategy"]
+            eq = con.execute("SELECT equity, n_open FROM daytrade_equity WHERE strategy=? "
+                             "ORDER BY date DESC LIMIT 1", (s,)).fetchone()
+            if not eq:
+                continue
+            tc = con.execute("SELECT symbol, exit_reason, pnl_pct FROM daytrade_ledger "
+                             "WHERE strategy=? AND status='closed' AND exit_date=?",
+                             (s, t)).fetchall()
+            to = con.execute("SELECT symbol FROM daytrade_ledger WHERE strategy=? "
+                             "AND status='open' AND entry_date=?", (s, t)).fetchall()
+            ret = (eq["equity"] / 100000 - 1) * 100
+            L.append(f"- **{LABV.get(s, s)}**: ${eq['equity']:,.0f} ({ret:+.2f}%) · 보유 {eq['n_open']}종목")
+            if to:
+                L.append(f"  - 진입: {', '.join(x['symbol'] for x in to)}")
+            for c in tc:
+                L.append(f"  - 청산: {c['symbol']} {c['pnl_pct']:+.1f}% ({c['exit_reason']})")
+        L.append("")
+
     # ---- 시장 한 줄 ----
     bits = []
     for sym, nm, f in (("1001", "KOSPI", "{:,.0f}"), ("2001", "KOSDAQ", "{:,.0f}"),

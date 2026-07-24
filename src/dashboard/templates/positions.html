@@ -137,6 +137,35 @@
   {% endif %}
 </div>
 
+{# ---- 가상장부 A/B (모멘텀·단타, 브로커 미전송 시뮬) ---- #}
+{% if virt %}
+<div class="card" style="margin-bottom:16px;overflow-x:auto">
+  <div class="sub" style="margin-bottom:6px">🧪 가상장부 A/B — 검증 전략 실험 (실제 주문 없음, 시드 $100k · 종가 시뮬)</div>
+  <div style="display:flex;gap:24px;flex-wrap:wrap">
+    {% for v in virt %}
+    <div style="flex:1;min-width:280px;border:1px solid var(--grid);border-radius:8px;padding:12px">
+      <div style="display:flex;align-items:baseline;gap:8px">
+        <strong>{{ v.label }}</strong>
+        <span class="{{ 'pos' if v.ret > 0 else 'neg' if v.ret < 0 }}" style="font-size:1.15em;font-weight:700">{{ '%+.2f%%'|format(v.ret) }}</span>
+        <span class="reason" style="margin-left:auto">${{ "{:,.0f}".format(v.equity) }}</span>
+      </div>
+      <div class="reason" style="margin-bottom:6px">보유 {{ v.n_open }}종목 · 현금 ${{ "{:,.0f}".format(v.cash) }}
+        {% if v.win_rate is not none %}· 청산 {{ v.n_closed }}건 승률 {{ '%.0f'|format(v.win_rate) }}% (평균 {{ '%+.1f'|format(v.avg_pnl) }}%){% endif %}</div>
+      <div class="reason" style="color:var(--muted)">
+        보유: {% for h in v.holds %}<span title="진입 {{ h.entry_date[5:] }} @${{ '%.2f'|format(h.entry_px) }}">{{ h.symbol }}</span>{{ ' · ' if not loop.last }}{% endfor %}
+      </div>
+      {% if v.closed %}
+      <div class="reason" style="margin-top:4px;color:var(--muted)">최근 청산:
+        {% for c in v.closed %}<span class="{{ 'pos' if c.pnl_pct > 0 else 'neg' }}">{{ c.symbol }} {{ '%+.1f'|format(c.pnl_pct) }}%</span>({{ c.exit_reason }}){{ ' · ' if not loop.last }}{% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  <div class="reason" style="margin-top:8px;color:var(--muted)">모멘텀=3개월 주도 top10 월재평가·손절-8% / 단타=RSI2 급락반등 5일·손절-5% · VIX≥25 공포장 슬롯 1.5배 · 로테이션과 평단 분리</div>
+</div>
+{% endif %}
+
 {# ---- 최근 주문 ---- #}
 <div class="card" style="overflow-x:auto">
   <div class="sub" style="margin-bottom:6px">최근 주문</div>

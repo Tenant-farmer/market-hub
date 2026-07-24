@@ -115,6 +115,44 @@ def _trend(con):
     }
 
 
+def _virtual_view(con):
+    """가상장부(모멘텀·단타) 성과 — 시드 $100k 대비 수익률 + 보유·최근청산."""
+    try:
+        rows = con.execute("SELECT DISTINCT strategy FROM daytrade_ledger").fetchall()
+    except Exception:
+        return None
+    if not rows:
+        return None
+    LAB = {"momentum": "모멘텀(공격)", "meanrev": "단타(급락반등)"}
+    SEED = 100_000.0
+    out = []
+    for r in rows:
+        s = r["strategy"]
+        eq = con.execute("SELECT equity, cash, n_open FROM daytrade_equity WHERE strategy=? "
+                         "ORDER BY date DESC LIMIT 1", (s,)).fetchone()
+        if not eq:
+            continue
+        holds = con.execute(
+            "SELECT symbol, entry_px, qty, entry_date FROM daytrade_ledger "
+            "WHERE strategy=? AND status='open' ORDER BY id", (s,)).fetchall()
+        closed = con.execute(
+            "SELECT symbol, exit_reason, pnl_pct, exit_date FROM daytrade_ledger "
+            "WHERE strategy=? AND status='closed' ORDER BY id DESC LIMIT 6", (s,)).fetchall()
+        wins = con.execute("SELECT COUNT(*) n, AVG(pnl_pct) a, "
+                           "SUM(CASE WHEN pnl_pct>0 THEN 1 ELSE 0 END) w "
+                           "FROM daytrade_ledger WHERE strategy=? AND status='closed'",
+                           (s,)).fetchone()
+        out.append({
+            "key": s, "label": LAB.get(s, s),
+            "equity": eq["equity"], "cash": eq["cash"], "n_open": eq["n_open"],
+            "ret": (eq["equity"] / SEED - 1) * 100,
+            "holds": [dict(h) for h in holds], "closed": [dict(c) for c in closed],
+            "n_closed": wins["n"] or 0, "avg_pnl": wins["a"] or 0,
+            "win_rate": (wins["w"] / wins["n"] * 100) if wins["n"] else None,
+        })
+    return out or None
+
+
 @bp.get("/positions")
 def positions():
     con = db.connect()
@@ -130,6 +168,7 @@ def positions():
     ).fetchall()
     tag = _tagger(con)
     trend = _trend(con)
+    virt = _virtual_view(con)
     con.close()
 
     gate = {
@@ -160,5 +199,5 @@ def positions():
     return render_template(
         "positions.html", gate=gate, kr=kr, kr_mock=kr_mock, us=us,
         recent_orders=[dict(r) for r in recent_orders],
-        trend=trend, strat=strat,
+        trend=trend, strat=strat, virt=virt,
     )
