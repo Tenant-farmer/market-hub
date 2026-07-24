@@ -12,8 +12,13 @@
 <div class="pills">
   <a href="/leaders" class="{{ 'on' if not sector }}">전체</a>
   {% for s in sectors %}
-    <a href="/leaders?sector={{ s }}" class="{{ 'on' if s == sector }}">{{ names.get(s, s) }}</a>
+    <a href="/leaders?sector={{ s }}{% if sort != 'score' %}&amp;sort={{ sort }}{% endif %}" class="{{ 'on' if s == sector }}">{{ names.get(s, s) }}</a>
   {% endfor %}
+</div>
+
+<div class="pills" style="margin-top:6px">
+  <span class="sub" style="margin:0;align-self:center">정렬:</span>
+  {% for label, u, on in sort_pills %}<a href="{{ u }}" class="{{ 'on' if on }}">{{ label }}</a>{% endfor %}
 </div>
 
 {% if sym %}{% include "_stock_chart.html" %}{% endif %}

@@ -14,12 +14,15 @@ def kr_leaders_page():
     market = request.args.get("market", "")
     if market not in ("", "kp", "kq"):
         market = ""
+    sort = request.args.get("sort", "score")
+    if sort not in ("score", "score63", "mcap", "vol"):
+        sort = "score"
     con = db.connect()
     names = queries.kr_index_names(con)
     date_row = con.execute(
         "SELECT MAX(date) d FROM analytics_daily WHERE scope='kr_stock'"
     ).fetchone()
-    rows = queries.kr_leaders(con, sector=sector, market=market)
+    rows = queries.kr_leaders(con, sector=sector, market=market, sort=sort)
     strength = queries.kr_sector_strength(con)
     top_sectors = [
         r["code"] for r in con.execute(
@@ -49,9 +52,19 @@ def kr_leaders_page():
     if sector:
         qs.append(f"sector={sector}")
     back_url = "/kr-leaders" + ("?" + "&".join(qs) if qs else "")
+
+    def _surl(s):
+        parts = [f"sort={s}"] + [p for p in (f"market={market}" if market else "",
+                                             f"sector={sector}" if sector else "") if p]
+        return "/kr-leaders?" + "&".join(parts)
+    sort_pills = [("주도주순", _surl("score"), sort == "score"),
+                  ("3개월 주도순", _surl("score63"), sort == "score63"),
+                  ("시가총액순", _surl("mcap"), sort == "mcap"),
+                  ("거래량순", _surl("vol"), sort == "vol")]
     return render_template(
         "kr_leaders.html",
         date=date_row["d"], rows=rows, sector=sector, market=market,
+        sort=sort, sort_pills=sort_pills,
         strength=strength, top_sectors=top_sectors, names=names,
         min_mcap_label=f"{cfg['leader_min_mcap'] / 1e8:,.0f}억",
         sym=sym, sym_name=sym_name, sym_prices=sym_prices, tv_symbol=tv_symbol,

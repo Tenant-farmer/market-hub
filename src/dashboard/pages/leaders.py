@@ -37,6 +37,12 @@ def leaders_page():
     ).fetchone()
     date = date_row["d"]
 
+    sort = request.args.get("sort", "score")
+    ORDER = {"score": "score DESC", "score63": "rs_mkt63 DESC",
+             "mcap": "sm.mcap DESC", "vol": "vol_surge DESC"}
+    if sort not in ORDER:
+        sort = "score"
+
     where = "a.scope='us_stock' AND a.date=?"
     params: list = [date]
     if sector:
@@ -56,7 +62,7 @@ def leaders_page():
         JOIN sector_map m ON m.stock_code = a.code
         LEFT JOIN stock_meta sm ON sm.symbol = a.code
         WHERE {where}
-        GROUP BY a.code ORDER BY score DESC LIMIT 50
+        GROUP BY a.code ORDER BY {ORDER[sort]} LIMIT 50
         """,
         params,
     ).fetchall()
@@ -74,9 +80,17 @@ def leaders_page():
         )
     ]
     con.close()
+
+    def _url(s):
+        q = f"sort={s}" + (f"&sector={sector}" if sector else "")
+        return f"/leaders?{q}"
+    sort_pills = [("주도주순", _url("score"), sort == "score"),
+                  ("3개월 주도순", _url("score63"), sort == "score63"),
+                  ("시가총액순", _url("mcap"), sort == "mcap"),
+                  ("거래량순", _url("vol"), sort == "vol")]
     return render_template(
         "leaders.html",
-        date=date, rows=rows, sector=sector,
+        date=date, rows=rows, sector=sector, sort=sort, sort_pills=sort_pills,
         sectors=sectors, top_sectors=top_sectors, names=names,
         sym=sym, sym_name=sym_name, sym_prices=sym_prices, tv_symbol=tv_symbol,
         tv_embed_ok=True,   # 미국 심볼은 위젯 재배포 허용

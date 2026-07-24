@@ -28,6 +28,11 @@
 </div>
 <div class="sub" style="margin-bottom:10px">업종은 코스피·코스닥 통합, 평균 주도점수 순 정렬 (초록 = 60점+ 아웃퍼폼 · 시장 구분은 위 토글)</div>
 
+<div class="pills" style="margin-bottom:10px">
+  <span class="sub" style="align-self:center;min-width:40px">정렬</span>
+  {% for label, u, on in sort_pills %}<a href="{{ u }}" class="{{ 'on' if on }}">{{ label }}</a>{% endfor %}
+</div>
+
 {% if sym %}{% include "_stock_chart.html" %}{% endif %}
 
 <div class="card" style="overflow-x:auto">

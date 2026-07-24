@@ -359,13 +359,15 @@ def sector_flows(con, names: dict):
     return out
 
 
-def kr_leaders(con, sector: str = "", market: str = "", n: int = 50):
+def kr_leaders(con, sector: str = "", market: str = "", n: int = 50, sort: str = "score"):
     """KR 주도주 (시총 하한 필터). sector=업종명(코스피/코스닥 통합), market=kp|kq."""
     date_row = con.execute(
         "SELECT MAX(date) d FROM analytics_daily WHERE scope='kr_stock'"
     ).fetchone()
     if date_row["d"] is None:
         return []
+    order = {"score": "score DESC", "score63": "rs_mkt63 DESC",
+             "mcap": "sm.mcap DESC", "vol": "vol_surge DESC"}.get(sort, "score DESC")
     min_mcap = config.load()["kr"]["leader_min_mcap"]
     where = "a.scope='kr_stock' AND a.date=?"
     params: list = [min_mcap, date_row["d"]]
@@ -391,7 +393,7 @@ def kr_leaders(con, sector: str = "", market: str = "", n: int = 50):
         JOIN sector_map m ON m.stock_code = a.code AND m.market = 'KR'
         JOIN stock_meta sm ON sm.symbol = a.code AND sm.mcap >= ?
         WHERE {where}
-        GROUP BY a.code ORDER BY score DESC LIMIT ?
+        GROUP BY a.code ORDER BY {order} LIMIT ?
         """,
         params,
     ).fetchall()
