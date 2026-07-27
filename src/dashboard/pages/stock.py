@@ -65,6 +65,24 @@ def _monthly_vm(monthly):
     }
 
 
+def _candles(con, symbol):
+    """최근 캔들 패턴 (참고용 — 실측상 예측력 없음, UI에 성적 함께 표시)."""
+    try:
+        import pandas as pd
+
+        from src.analytics.candles import latest
+
+        rows = con.execute(
+            "SELECT date, open, high, low, close FROM prices_daily WHERE symbol=? "
+            "ORDER BY date DESC LIMIT 60", (symbol,)).fetchall()
+        if len(rows) < 10:
+            return []
+        df = pd.DataFrame([dict(r) for r in rows][::-1]).set_index("date")
+        return latest(df, days=5)
+    except Exception:
+        return []
+
+
 def _our_metrics(con, scope: str, symbol: str):
     rows = con.execute(
         """
@@ -92,13 +110,14 @@ def stock_page(symbol):
         tvrow = con.execute("SELECT tv_symbol FROM stock_meta WHERE symbol=?", (symbol,)).fetchone()
         tv_symbol = tvrow["tv_symbol"] if tvrow and tvrow["tv_symbol"] else symbol
         sym_prices = queries.ohlcv(con, symbol)
+        candles = _candles(con, symbol)
         con.close()
         return render_template(
             "stock.html",
             d=d, symbol=symbol, our=our,
             monthly=_monthly_vm(d.get("monthly")) if d else None,
             sym=symbol, sym_name=(d["name"] if d else us["name"]),
-            sym_prices=sym_prices, tv_symbol=tv_symbol, tv_embed_ok=True,
+            sym_prices=sym_prices, tv_symbol=tv_symbol, tv_embed_ok=True, candles=candles,
             back_url="/calendar?tab=earn", iv_ok=True,
         )
 
@@ -110,12 +129,13 @@ def stock_page(symbol):
         d = stock_info.get_detail_kr(con, symbol, kr["sector_code"], force=force)
         our = _our_metrics(con, "kr_stock", symbol)
         sym_prices = queries.ohlcv(con, symbol)
+        candles = _candles(con, symbol)
         con.close()
         return render_template(
             "stock_kr.html",
             d=d, symbol=symbol, name=kr["name"], sector_name=kr["sector_name"], our=our,
             monthly=_monthly_vm(d.get("monthly")) if d else None,
-            sym=symbol, sym_name=kr["name"], sym_prices=sym_prices,
+            sym=symbol, sym_name=kr["name"], sym_prices=sym_prices, candles=candles,
             tv_symbol=f"KRX:{symbol}", tv_embed_ok=False, back_url="/kr-leaders",
             iv_ok=True,
         )

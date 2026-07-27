@@ -75,6 +75,28 @@
 {# ---- 차트 ---- #}
 {% include "_stock_chart.html" %}
 
+{# ---- 캔들 패턴 (참고용 — 실측 예측력 없음, 성적 함께 표시) ---- #}
+{% if candles %}
+<div class="card" style="margin-top:12px">
+  <div class="sub" style="margin-bottom:6px">🕯 최근 캔들 패턴 <span style="color:var(--muted)">(최근 5일)</span></div>
+  {% for p in candles %}
+  <div class="reason" style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;padding:3px 0">
+    <span style="color:var(--muted);min-width:74px">{{ p.date[5:] }}</span>
+    <span>{% if p.dir == 'bull' %}🟢{% elif p.dir == 'bear' %}🔴{% else %}⚪{% endif %} <strong>{{ p.pattern }}</strong></span>
+    <span style="color:var(--muted)">{{ p.desc }}</span>
+    <span style="margin-left:auto;color:var(--muted)" title="실측: 감지 다음날 진입 → 21일 시장초과수익 / 승률">
+      과거 {{ '%+.2f'|format(p.edge21) }}%p · 승률 {{ p.win21 }}% (n={{ '{:,}'.format(p.n) }})
+    </span>
+  </div>
+  {% endfor %}
+  <div class="reason" style="margin-top:8px;color:var(--warn)">
+    ⚠ 검증 결과 <strong>15개 패턴 모두 예측력 없음</strong> (초과수익 0.5%p 미만, 503종목 10년 177,533건).
+    매매 규칙엔 넣지 않았고 <strong>차트 읽기 참고용</strong>입니다.
+  </div>
+</div>
+{% endif %}
+
+
 {# ---- 애널리스트 + EPS ---- #}
 <div class="grid2" style="margin-top:16px">
   <div class="card">
