@@ -88,7 +88,9 @@ def _kiwoom_sync(con) -> list:
         age = _age_sec(r["created_at"])
         if h and h["remain"] == 0 and h["filled"] > 0:
             con.execute("UPDATE orders SET status='filled', message=? WHERE client_order_id=?",
-                        (f"{ord_no} filled {h['filled']:g}@{h['price']:g}", coid))
+                        # 가격은 :g 금지 — 100만원대가 '1.392e+06'으로 찍혀 파싱이 깨졌다
+                        # (2026-07-27 실측: 009150 체결가가 1.392원으로 읽힘)
+                        (f"{ord_no} filled {h['filled']:g}@{h['price']:.4f}", coid))
             updated.append({"coid": coid, "from": "submitted", "to": "filled"})
             continue
         # 취소 실측 시그니처: 원주문이 mdfy '일반'인 채 체결 0·미체결 0으로 소멸

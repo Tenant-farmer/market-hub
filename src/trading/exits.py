@@ -35,7 +35,8 @@ def _held(con) -> list:
             bal = kiwoom.KiwoomBroker().account_balance()
             for h in (bal or {}).get("holdings", []):
                 if h["qty"] > 0:
-                    out.append({"code": h["code"], "qty": h["qty"], "plpc": h["plpc"]})
+                    out.append({"code": h["code"], "qty": h["qty"], "plpc": h["plpc"],
+                                "px": h.get("cur")})
         except Exception:
             pass
     if alpaca.configured():
@@ -45,7 +46,8 @@ def _held(con) -> list:
                 q = float(p.get("qty", 0) or 0)
                 if q > 0:
                     out.append({"code": p.get("symbol"), "qty": q,
-                                "plpc": float(p.get("unrealized_plpc", 0) or 0) * 100})
+                                "plpc": float(p.get("unrealized_plpc", 0) or 0) * 100,
+                                "px": float(p.get("current_price", 0) or 0) or None})
         except Exception:
             pass
     try:
@@ -102,12 +104,17 @@ def _emit_sell(con, pos, reason):
     today = date.today().isoformat()
     key = reason.split()[0]  # 손절/추세이탈/주도이탈 — 사유타입만 멱등 키에
     h = "exit-" + hashlib.sha256(f"{pos['code']}-{key}-{today}".encode()).hexdigest()[:24]
+    # ref_price = 판단 시점의 현재가. 체결가와 비교해야 순수 슬리피지가 나온다
+    # (전일 종가 대비로 재면 갭이 슬리피지로 오인됨 — 2026-07-27 SK이터닉스 -29% 사례)
+    from src.analytics import slippage
+
+    slippage.ensure(con)
     con.execute(
         "INSERT OR IGNORE INTO signals "
-        "(hash, received_at, source, ticker, action, qty, strategy, raw, status) "
-        "VALUES (?,?,?,?,?,?,?,?, 'new')",
+        "(hash, received_at, source, ticker, action, qty, strategy, raw, status, ref_price) "
+        "VALUES (?,?,?,?,?,?,?,?, 'new', ?)",
         (h, datetime.now().isoformat(timespec="seconds"), "exit", pos["code"], "sell",
-         pos["qty"], f"청산:{reason}", "{}"),
+         pos["qty"], f"청산:{reason}", "{}", slippage.emit_ref(con, pos["code"], pos.get("px"))),
     )
     con.commit()
 

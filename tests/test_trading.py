@@ -700,3 +700,29 @@ def test_pead_alert_grading(con, monkeypatch):
     assert event_alerts._pead_alerts(con, ["XYZ"], now) == 1
     assert "실적 미스" in sent[0] and "보유 중" in sent[0]        # 보유 경고
     assert event_alerts._pead_alerts(con, ["XYZ"], now) == 0      # 멱등
+
+
+def test_slippage_parse_and_outlier(con):
+    """슬리피지 측정 — 지수표기 파싱 + 이상치 격리 (2026-07-27 실사고 회귀)."""
+    from src.analytics import slippage
+
+    # 1) :g 포맷이 남긴 지수표기를 원값으로 읽어야 한다 (1.392원이 아니라 1,392,000원)
+    assert slippage._fill("0099609 filled 1@1.392e+06") == (1.0, 1_392_000.0)
+    assert slippage._fill("0126217 filled 26@56800.0000") == (26.0, 56800.0)
+    assert slippage._fill("cancelled") == (None, None)
+
+    # 2) 기준가·체결가 괴리가 비상식적이면 측정에서 제외 (평균 오염 방지)
+    con.execute("CREATE TABLE IF NOT EXISTS prices_daily "
+                "(symbol TEXT, market TEXT, date TEXT, open REAL, high REAL, low REAL, "
+                " close REAL, volume REAL)")
+    con.execute("INSERT INTO prices_daily(symbol,date,close) VALUES ('000001','2026-07-27',1000)")
+    con.execute("INSERT INTO signals(hash,received_at,source,ticker,action,qty,strategy,raw,"
+                "status) VALUES ('h1','2026-07-27T10:00','exit','000001','sell',1,'x','{}','done')")
+    sid = con.execute("SELECT id FROM signals WHERE hash='h1'").fetchone()["id"]
+    con.execute("INSERT INTO orders(client_order_id,signal_id,broker,ticker,action,qty,status,"
+                "message,created_at) VALUES ('c1',?,'paper','000001','sell',1,'filled',"
+                "'1 filled 1@1',?)", (sid, "2026-07-27T10:00"))
+    r = slippage.analyze(con, since="2026-07-01")
+    assert r["trades"] == [] and len(r["excluded"]) == 1
+    assert "이상치" in r["excluded"][0]["why"]
+    assert slippage.verdict(r["summary"]) == "표본 없음"

@@ -23,12 +23,15 @@ def _emit_one(con, sym, qty, label, dry):
     today = date.today().isoformat()
     h = "signal-entry-" + hashlib.sha256(f"{sym}-{today}".encode()).hexdigest()[:20]
     if not dry:
+        from src.analytics import slippage
+
+        slippage.ensure(con)            # ref_price = 결정 근거 종가 (슬리피지 실측용)
         con.execute(
             "INSERT OR IGNORE INTO signals "
-            "(hash, received_at, source, ticker, action, qty, strategy, raw, status) "
-            "VALUES (?,?,?,?,?,?,?,?, 'new')",
+            "(hash, received_at, source, ticker, action, qty, strategy, raw, status, ref_price) "
+            "VALUES (?,?,?,?,?,?,?,?, 'new', ?)",
             (h, datetime.now().isoformat(timespec="seconds"), "signal-entry", sym, "buy",
-             qty, f"신호진입:{label}", "{}"))
+             qty, f"신호진입:{label}", "{}", slippage.emit_ref(con, sym)))
     return {"symbol": sym, "qty": qty}
 
 

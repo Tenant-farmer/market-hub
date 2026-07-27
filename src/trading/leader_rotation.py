@@ -90,12 +90,15 @@ def _slot_qty(market: str, px: float):
 def _emit(con, sym, action, qty, note, wk):
     h = (f"rotation-{action}-{sym}-{wk}-"
          + hashlib.sha256(f"{sym}{action}{wk}".encode()).hexdigest()[:8])
+    from src.analytics import slippage
+
+    slippage.ensure(con)                # ref_price = 결정 근거 종가 (슬리피지 실측용)
     con.execute(
         "INSERT OR IGNORE INTO signals "
-        "(hash, received_at, source, ticker, action, qty, strategy, raw, status) "
-        "VALUES (?,?,?,?,?,?,?,?, 'new')",
+        "(hash, received_at, source, ticker, action, qty, strategy, raw, status, ref_price) "
+        "VALUES (?,?,?,?,?,?,?,?, 'new', ?)",
         (h, datetime.now().isoformat(timespec="seconds"), "rotation", sym, action,
-         qty, note[:60], "{}"))
+         qty, note[:60], "{}", slippage.emit_ref(con, sym)))
 
 
 def evaluate(con=None, dry=False, market: str = "US") -> dict | None:
