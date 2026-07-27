@@ -151,6 +151,15 @@
       </div>
       <div class="reason" style="margin-bottom:6px">보유 {{ v.n_open }}종목 · 현금 ${{ "{:,.0f}".format(v.cash) }}
         {% if v.win_rate is not none %}· 청산 {{ v.n_closed }}건 승률 {{ '%.0f'|format(v.win_rate) }}% (평균 {{ '%+.1f'|format(v.avg_pnl) }}%){% endif %}</div>
+      {% if v.ab %}
+      <div class="reason" style="margin-bottom:6px;padding:4px 8px;border-radius:4px;background:rgba(57,135,229,.10)">
+        <span title="시장으로 설명 안 되는 초과수익(연율)">α <strong class="{{ 'pos' if v.ab.alpha_ann > 0 else 'neg' }}">{{ '%+.1f%%'|format(v.ab.alpha_ann) }}</strong>/년</span> ·
+        <span title="시장 민감도 — 1.0이면 시장과 동일하게 움직임">β {{ v.ab.beta }}</span> ·
+        <span title="수익 중 시장이 설명하는 비율">시장설명 {{ v.ab.market_share }}%</span>
+        <span style="color:var(--muted)">(n={{ v.ab.n }}일{% if v.ab.t_alpha %}, t={{ v.ab.t_alpha }}{% endif %})</span>
+        {% if v.ab.n < 20 %}<span style="color:var(--warn)">— 표본 부족, 참고만</span>{% endif %}
+      </div>
+      {% endif %}
       <div class="reason" style="color:var(--muted)">
         보유: {% for h in v.holds %}<span title="진입 {{ h.entry_date[5:] }} @${{ '%.2f'|format(h.entry_px) }}">{{ h.symbol }}</span>{{ ' · ' if not loop.last }}{% endfor %}
       </div>

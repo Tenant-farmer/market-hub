@@ -142,6 +142,13 @@ def _virtual_view(con):
                            "SUM(CASE WHEN pnl_pct>0 THEN 1 ELSE 0 END) w "
                            "FROM daytrade_ledger WHERE strategy=? AND status='closed'",
                            (s,)).fetchone()
+        try:                                    # 알파/베타 귀속 (표본 6일+ 부터)
+            from src.analytics.attribution import attribute_strategy
+
+            ab = attribute_strategy(con, s)
+            ab = ab if ab and "error" not in ab else None
+        except Exception:
+            ab = None
         out.append({
             "key": s, "label": LAB.get(s, s),
             "equity": eq["equity"], "cash": eq["cash"], "n_open": eq["n_open"],
@@ -149,6 +156,7 @@ def _virtual_view(con):
             "holds": [dict(h) for h in holds], "closed": [dict(c) for c in closed],
             "n_closed": wins["n"] or 0, "avg_pnl": wins["a"] or 0,
             "win_rate": (wins["w"] / wins["n"] * 100) if wins["n"] else None,
+            "ab": ab,
         })
     return out or None
 

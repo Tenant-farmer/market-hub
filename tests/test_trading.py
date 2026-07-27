@@ -629,3 +629,23 @@ def test_event_alerts(con, monkeypatch):
     assert event_alerts.check(con, now2) == 1
     assert "AMD" in sent[-1] and "0.92" in sent[-1]
     assert event_alerts.check(con, now2) == 0            # 멱등
+
+
+def test_attribution_alpha_beta():
+    """CAPM 분해: 순수 베타 포트는 α≈0·R²≈1, 시장무관 초과수익은 β≈0·α>0."""
+    import numpy as np
+
+    from src.analytics.attribution import alpha_beta, brinson
+
+    rng = np.random.RandomState(0)
+    m = rng.normal(0, 0.01, 200)
+    r = alpha_beta(2 * m, m)                       # 베타 2배 레버리지
+    assert abs(r["beta"] - 2.0) < 0.01 and abs(r["alpha_ann"]) < 0.5 and r["r2"] > 0.99
+    r2 = alpha_beta(np.full(200, 0.0005) + rng.normal(0, 0.001, 200), m)
+    assert abs(r2["beta"]) < 0.1 and r2["alpha_ann"] > 8 and r2["t_alpha"] > 2
+    assert "error" in alpha_beta([0.01, 0.02], [0.01, 0.02])   # 표본 부족
+    # Brinson: 오른 섹터를 오버웨이트 → 배분효과 양수
+    b = brinson({"기술": 0.6, "금융": 0.4}, {"기술": 0.10, "금융": 0.02},
+                {"기술": 0.3, "금융": 0.7}, {"기술": 0.08, "금융": 0.02})
+    assert b["allocation"] > 0 and b["selection"] > 0
+    assert abs(b["total"] - (b["allocation"] + b["selection"] + b["interaction"])) < 0.01

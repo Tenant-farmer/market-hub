@@ -174,7 +174,18 @@ def write_today(con) -> str:
             to = con.execute("SELECT symbol FROM daytrade_ledger WHERE strategy=? "
                              "AND status='open' AND entry_date=?", (s, t)).fetchall()
             ret = (eq["equity"] / 100000 - 1) * 100
-            L.append(f"- **{LABV.get(s, s)}**: ${eq['equity']:,.0f} ({ret:+.2f}%) · 보유 {eq['n_open']}종목")
+            ab_txt = ""
+            try:                                   # 알파/베타 (표본 6일+)
+                from src.analytics.attribution import attribute_strategy
+
+                ab = attribute_strategy(con, s)
+                if ab and "error" not in ab:
+                    ab_txt = (f" · α {ab['alpha_ann']:+.1f}%/년 β {ab['beta']} "
+                              f"(시장설명 {ab['market_share']}%, n={ab['n']})")
+            except Exception:
+                pass
+            L.append(f"- **{LABV.get(s, s)}**: ${eq['equity']:,.0f} ({ret:+.2f}%) · "
+                     f"보유 {eq['n_open']}종목{ab_txt}")
             if to:
                 L.append(f"  - 진입: {', '.join(x['symbol'] for x in to)}")
             for c in tc:
