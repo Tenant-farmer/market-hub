@@ -321,6 +321,22 @@ def _pead_alerts(con, watch, now) -> int:
                     L.append("• 💡 미스인데 주가 상승 — 악재 선반영·가이던스 개선 가능성")
             L.append("")
 
+        # ---- 관련 뉴스 (실적 해석의 맥락) ----
+        try:
+            nrows = con.execute(
+                "SELECT title, url, summary, source FROM news WHERE code=? "
+                "ORDER BY dt DESC LIMIT 3", (sym,)).fetchall()
+            if nrows:
+                L.append("<b>📰 관련 뉴스</b>")
+                for nr in nrows:
+                    src = f" <i>({nr['source'][:14]})</i>" if nr["source"] else ""
+                    L.append(f"• <a href=\"{nr['url']}\">{nr['title'][:70]}</a>{src}")
+                    if nr["summary"]:
+                        L.append(f"  <i>{nr['summary'][:110]}</i>")
+                L.append("")
+        except Exception:
+            pass
+
         # ---- 판단 ----
         L.append("<b>🎯 판단</b>")
         L.append(f"• PEAD 기대: {pead}")
