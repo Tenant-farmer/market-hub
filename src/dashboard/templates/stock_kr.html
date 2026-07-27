@@ -100,6 +100,40 @@
 {% endif %}
 
 
+
+{# ---- DART 공시 (수집 중이었으나 종목 상세엔 미노출이었음) ---- #}
+{% if filings %}
+<div class="card" style="margin-top:12px">
+  <div class="sub" style="margin-bottom:8px">📋 최근 공시 (DART)
+    {% if ins_kr %}<span style="float:right;color:var(--warn)">지분 관련 공시 {{ ins_kr.n }}건 · 최근 {{ ins_kr.latest }}</span>{% endif %}</div>
+  {% for f in filings %}
+  <div class="reason" style="padding:3px 0">
+    <span style="color:var(--muted);margin-right:8px">{{ f.date[5:] }}</span>
+    <a href="{{ f.url }}" target="_blank" style="color:var(--ink);text-decoration:none">{{ f.title }}</a>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{# ---- 리스크 프로필 (A3 도구 — 매수 전 '얼마나 흔들리나') ---- #}
+{% if risk %}
+<div class="card" style="margin-top:12px">
+  <div class="sub" style="margin-bottom:8px">⚠ 리스크 프로필 <span style="color:var(--muted)">(최근 {{ risk.n }}일)</span></div>
+  <div style="display:flex;gap:22px;flex-wrap:wrap">
+    <div><div class="sub">일간 VaR95</div><strong class="neg">-{{ risk.var95 }}%</strong>
+      <div class="reason" style="color:var(--muted)">정상장 최악 5%</div></div>
+    <div><div class="sub">CVaR</div><strong class="neg">-{{ risk.cvar95 }}%</strong>
+      <div class="reason" style="color:var(--muted)">그 구간 평균</div></div>
+    <div><div class="sub">연 변동성</div><strong>{{ risk.vol_ann }}%</strong>
+      <div class="reason" style="color:var(--muted)">{% if risk.vol_ann > 40 %}매우 높음{% elif risk.vol_ann > 25 %}높음{% else %}보통{% endif %}</div></div>
+    <div><div class="sub">1년 최대낙폭</div><strong class="neg">{{ risk.mdd_1y }}%</strong></div>
+    {% if risk.beta %}<div><div class="sub">베타 (vs SPY)</div><strong>{{ risk.beta }}</strong>
+      <div class="reason" style="color:var(--muted)">시장 {{ '1%' }} 움직일 때 {{ risk.beta }}%</div></div>{% endif %}
+    <div><div class="sub">최악 하루</div><strong class="neg">-{{ risk.worst }}%</strong></div>
+  </div>
+</div>
+{% endif %}
+
 {# ---- 수급 (KR 핵심) ---- #}
 {% if d.flows %}
 <div class="grid2" style="margin-top:16px">

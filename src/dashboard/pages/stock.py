@@ -111,9 +111,13 @@ def stock_page(symbol):
         tv_symbol = tvrow["tv_symbol"] if tvrow and tvrow["tv_symbol"] else symbol
         sym_prices = queries.ohlcv(con, symbol)
         candles = _candles(con, symbol)
+        from src.dashboard import stock_extras as _ex
+
+        pead = _ex.pead_context(symbol)
+        risk = _ex.risk_profile(con, symbol)
         con.close()
         return render_template(
-            "stock.html",
+            "stock.html", pead=pead, risk=risk,
             d=d, symbol=symbol, our=our,
             monthly=_monthly_vm(d.get("monthly")) if d else None,
             sym=symbol, sym_name=(d["name"] if d else us["name"]),
@@ -130,9 +134,14 @@ def stock_page(symbol):
         our = _our_metrics(con, "kr_stock", symbol)
         sym_prices = queries.ohlcv(con, symbol)
         candles = _candles(con, symbol)
+        from src.dashboard import stock_extras as _ex
+
+        filings = _ex.dart_filings(con, symbol)
+        risk = _ex.risk_profile(con, symbol)
+        ins_kr = _ex.insider_kr_note(con, symbol)
         con.close()
         return render_template(
-            "stock_kr.html",
+            "stock_kr.html", filings=filings, risk=risk, ins_kr=ins_kr,
             d=d, symbol=symbol, name=kr["name"], sector_name=kr["sector_name"], our=our,
             monthly=_monthly_vm(d.get("monthly")) if d else None,
             sym=symbol, sym_name=kr["name"], sym_prices=sym_prices, candles=candles,

@@ -97,6 +97,48 @@
 {% endif %}
 
 
+
+{# ---- PEAD (검증된 유일 팩터 — B1 Q5-Q1 63일 +12.27%p) ---- #}
+{% if pead %}
+<div class="card" style="margin-top:12px">
+  <div class="sub" style="margin-bottom:8px">📈 실적 서프라이즈 · PEAD 해석</div>
+  <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:baseline;margin-bottom:8px">
+    <strong class="{{ pead.cls }}" style="font-size:1.1em">{{ pead.grade }}</strong>
+    <span>실제 {{ '%.2f'|format(pead.act) }} vs 예상 {{ '%.2f'|format(pead.est) }}
+      <strong class="{{ 'pos' if pead.surprise > 0 else 'neg' }}">({{ '%+.1f%%'|format(pead.surprise) }})</strong></span>
+    {% if pead.sue is not none %}<span class="reason">SUE {{ '%+.2f'|format(pead.sue) }}
+      ({% if pead.sue|abs >= 2 %}매우 강함{% elif pead.sue|abs >= 0.5 %}보통{% else %}약함{% endif %})</span>{% endif %}
+    <span class="reason">최근 {{ pead.n_recent }}분기 중 {{ pead.beats }}회 beat</span>
+  </div>
+  <div class="reason">📊 백테스트 기대: <strong>{{ pead.exp }}</strong>
+    <span style="color:var(--muted)">— 1,797 이벤트 실측 (scripts/pead_backtest.py)</span></div>
+  {% if pead.hist %}
+  <div class="reason" style="margin-top:8px;color:var(--muted)">최근 서프라이즈:
+    {% for h in pead.hist %}{% if h.sp is not none %}<span class="{{ 'pos' if h.sp > 0 else 'neg' }}">{{ '%+.0f%%'|format(h.sp*100) }}</span>{{ ' · ' if not loop.last }}{% endif %}{% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{# ---- 리스크 프로필 (A3 도구 — 매수 전 '얼마나 흔들리나') ---- #}
+{% if risk %}
+<div class="card" style="margin-top:12px">
+  <div class="sub" style="margin-bottom:8px">⚠ 리스크 프로필 <span style="color:var(--muted)">(최근 {{ risk.n }}일)</span></div>
+  <div style="display:flex;gap:22px;flex-wrap:wrap">
+    <div><div class="sub">일간 VaR95</div><strong class="neg">-{{ risk.var95 }}%</strong>
+      <div class="reason" style="color:var(--muted)">정상장 최악 5%</div></div>
+    <div><div class="sub">CVaR</div><strong class="neg">-{{ risk.cvar95 }}%</strong>
+      <div class="reason" style="color:var(--muted)">그 구간 평균</div></div>
+    <div><div class="sub">연 변동성</div><strong>{{ risk.vol_ann }}%</strong>
+      <div class="reason" style="color:var(--muted)">{% if risk.vol_ann > 40 %}매우 높음{% elif risk.vol_ann > 25 %}높음{% else %}보통{% endif %}</div></div>
+    <div><div class="sub">1년 최대낙폭</div><strong class="neg">{{ risk.mdd_1y }}%</strong></div>
+    {% if risk.beta %}<div><div class="sub">베타 (vs SPY)</div><strong>{{ risk.beta }}</strong>
+      <div class="reason" style="color:var(--muted)">시장 {{ '1%' }} 움직일 때 {{ risk.beta }}%</div></div>{% endif %}
+    <div><div class="sub">최악 하루</div><strong class="neg">-{{ risk.worst }}%</strong></div>
+  </div>
+</div>
+{% endif %}
+
 {# ---- 애널리스트 + EPS ---- #}
 <div class="grid2" style="margin-top:16px">
   <div class="card">
