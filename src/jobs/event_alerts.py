@@ -157,11 +157,90 @@ def check(con, now: datetime | None = None) -> int:
     return n
 
 
+def _fmt_b(v):
+    """금액 → 조/억 단위 축약 (USD)."""
+    if v is None:
+        return "–"
+    a = abs(v)
+    for div, unit in ((1e12, "T"), (1e9, "B"), (1e6, "M")):
+        if a >= div:
+            return f"${v / div:,.2f}{unit}"
+    return f"${v:,.0f}"
+
+
+def _earnings_detail(sym: str) -> dict | None:
+    """애널리스트가 실제로 보는 항목들을 yfinance에서 수집.
+
+    EPS 서프라이즈만으로는 판단이 안 된다 — 매출(조작 어려움)·마진(가격결정력)·
+    서프라이즈 연속성(SUE 대용)·발표 후 주가반응(시장 해석)을 함께 본다.
+    """
+    import yfinance as yf
+
+    t = yf.Ticker(sym)
+    d = {}
+    try:                                            # ① EPS 서프라이즈 + 과거 8분기 이력
+        h = t.earnings_history
+        if h is None or len(h) == 0:
+            return None
+        h = h.reset_index()
+        last = h.iloc[-1]
+        act, est = last.get("epsActual"), last.get("epsEstimate")
+        if act is None or est is None or not est:
+            return None
+        d["eps_act"], d["eps_est"] = float(act), float(est)
+        d["eps_surprise"] = (float(act) - float(est)) / abs(float(est))
+        # SUE 대용: 과거 서프라이즈의 표준편차로 표준화 (문서 공식)
+        past = h.dropna(subset=["epsActual", "epsEstimate"])
+        errs = (past["epsActual"] - past["epsEstimate"]).astype(float)
+        sd = float(errs.std()) if len(errs) >= 3 else None
+        d["sue"] = (float(act) - float(est)) / sd if sd else None
+        # 연속성: 최근 4분기 중 몇 번 beat 했나 (첫 서프라이즈가 신호 강함)
+        recent = past.tail(4)
+        d["beat_streak"] = int(((recent["epsActual"] - recent["epsEstimate"]) > 0).sum())
+        d["n_hist"] = len(recent)
+    except Exception:
+        return None
+    try:                                            # ② 매출 + 마진 (신호 가중치 High)
+        fin = t.quarterly_financials
+        if fin is not None and not fin.empty:
+            def _row(keys):
+                for k in keys:
+                    if k in fin.index:
+                        v = fin.loc[k].dropna()
+                        if len(v) >= 2:
+                            return float(v.iloc[0]), float(v.iloc[1])
+                return None, None
+            rev, rev_p = _row(["Total Revenue", "Operating Revenue"])
+            op, op_p = _row(["Operating Income", "EBIT"])
+            gp, _ = _row(["Gross Profit"])
+            d["revenue"] = rev
+            d["rev_qoq"] = (rev / rev_p - 1) if (rev and rev_p) else None
+            d["op_margin"] = (op / rev) if (op and rev) else None
+            d["op_margin_prev"] = (op_p / rev_p) if (op_p and rev_p) else None
+            d["gross_margin"] = (gp / rev) if (gp and rev) else None
+    except Exception:
+        pass
+    try:                                            # ③ 발표 후 주가 반응 (시장의 해석)
+        px = t.history(period="5d")["Close"]
+        if len(px) >= 2:
+            d["px_react"] = float(px.iloc[-1] / px.iloc[0] - 1)
+    except Exception:
+        pass
+    try:                                            # ④ 밸류에이션 맥락
+        info = t.info
+        d["fwd_pe"] = info.get("forwardPE")
+        d["name"] = info.get("shortName")
+    except Exception:
+        pass
+    return d
+
+
 def _pead_alerts(con, watch, now) -> int:
-    """발표 1~3일 뒤 실제 EPS를 확인해 서프라이즈 등급 + PEAD 기대치 알림.
+    """발표 후 애널리스트式 실적 리뷰 알림 — EPS·매출·마진·SUE·주가반응 + PEAD 기대치.
 
     근거(scripts/pead_backtest.py, 1,797 이벤트): 서프라이즈 상위20%는 63일 시장초과 +9.4%
     (승률 59%), 하위20%는 -6.2%(승률 32%). **미스 회피가 더 강한 엣지** — 보유 중이면 경고.
+    문서 가중치: 매출>EPS(조작 난이도), 마진=가격결정력, 첫 서프라이즈>연속 서프라이즈.
     """
     sent = 0
     for sym in watch:
@@ -176,33 +255,83 @@ def _pead_alerts(con, watch, now) -> int:
         if con.execute("SELECT 1 FROM collector_runs WHERE collector='event_alert' "
                        "AND message=? LIMIT 1", (key,)).fetchone():
             continue
-        try:                                        # 실제 발표치 조회 (yfinance)
-            import yfinance as yf
-
-            hist = yf.Ticker(sym).earnings_history
-            if hist is None or len(hist) == 0:
-                continue
-            h = hist.reset_index().iloc[-1]
-            act, est = h.get("epsActual"), h.get("epsEstimate")
-            if act is None or est is None or not est:
-                continue
-            surprise = (float(act) - float(est)) / abs(float(est))
-        except Exception:
+        d = _earnings_detail(sym)
+        if not d:
             continue
         if not _once(con, key):
             continue
+        s = d["eps_surprise"]
         held = con.execute("SELECT 1 FROM rotation_slots WHERE symbol=? LIMIT 1",
                            (sym,)).fetchone() is not None
-        if surprise >= 0.25:                        # 상위20% 수준
-            tag, exp = "🟢 대형 서프라이즈", "PEAD: 63일 평균 +9.4% (승률 59%)"
-        elif surprise <= -0.04:                     # 하위20% 수준
-            tag = "🔴 실적 미스"
-            exp = ("PEAD: 63일 평균 -6.2% (승률 32%) — " +
-                   ("<b>보유 중, 하방 주의</b>" if held else "신규 진입 회피 권장"))
+
+        # ---- 헤드라인 (등급) ----
+        # 서프라이즈율(백테스트 분위 기준) 또는 SUE(문서 기준 |2|+)가 강하면 상위 등급.
+        # 서프라이즈율만 쓰면 '예측오차가 작은 기업의 +21%'를 놓친다(SUE 2.2인데 부합 판정 버그).
+        sue = d.get("sue")
+        strong_up = s >= 0.25 or (sue is not None and sue >= 2 and s > 0.02)
+        strong_dn = s <= -0.04 or (sue is not None and sue <= -2)
+        if strong_up:
+            tag, pead = "🟢 대형 서프라이즈", "63일 평균 <b>+9.4%</b> (승률 59%)"
+        elif strong_dn:
+            tag, pead = "🔴 실적 미스", "63일 평균 <b>-6.2%</b> (승률 32%)"
+        elif s > 0.02:
+            tag, pead = "🟡 소폭 beat", "63일 평균 +1% 내외 (약한 양)"
         else:
-            tag, exp = "⚪ 컨센서스 부합", "PEAD 신호 약함"
-        _send(f"{tag} <b>{sym}</b> — 실제 {act} vs 예상 {est} "
-              f"({surprise:+.1%})\n{exp}")
+            tag, pead = "⚪ 컨센서스 부합", "신호 약함 (63일 ~-1%)"
+        L = [f"{tag} <b>{sym}</b>" + (f" · {d['name'][:24]}" if d.get("name") else ""),
+             f"보유: {'예 (로테이션)' if held else '아니오'}", ""]
+
+        # ---- 실적 상세 (애널리스트 순서: 매출 → 마진 → EPS) ----
+        L.append("<b>📊 실적</b>")
+        if d.get("revenue"):
+            qoq = f" ({d['rev_qoq']:+.1%} QoQ)" if d.get("rev_qoq") is not None else ""
+            L.append(f"• 매출 {_fmt_b(d['revenue'])}{qoq}")
+        if d.get("op_margin") is not None:
+            delta = ""
+            if d.get("op_margin_prev") is not None:
+                dm = (d["op_margin"] - d["op_margin_prev"]) * 100
+                delta = f" ({dm:+.1f}%p vs 전분기 — {'개선' if dm > 0 else '악화'})"
+            L.append(f"• 영업이익률 {d['op_margin']:.1%}{delta}")
+        if d.get("gross_margin") is not None:
+            L.append(f"• 매출총이익률 {d['gross_margin']:.1%}")
+        L.append(f"• EPS {d['eps_act']:.2f} vs 예상 {d['eps_est']:.2f} "
+                 f"(<b>{s:+.1%}</b>)")
+        if d.get("sue") is not None:
+            lvl = "매우 강함" if abs(d["sue"]) >= 2 else "보통" if abs(d["sue"]) >= 0.5 else "약함"
+            L.append(f"• SUE {d['sue']:+.2f} ({lvl}) — 과거 예측오차 대비 표준화")
+        if d.get("n_hist"):
+            L.append(f"• 최근 {d['n_hist']}분기 중 {d['beat_streak']}회 beat"
+                     + (" — 첫 서프라이즈(신호 강함)" if d["beat_streak"] <= 1 and s > 0 else ""))
+        L.append("")
+
+        # ---- 시장 반응 + 밸류에이션 ----
+        bits = []
+        if d.get("px_react") is not None:
+            bits.append(f"발표 후 주가 {d['px_react']:+.1%}")
+        if d.get("fwd_pe"):
+            bits.append(f"선행 PER {d['fwd_pe']:.1f}배")
+        if bits:
+            L.append("<b>💹 시장 반응</b>")
+            L.append("• " + " · ".join(bits))
+            # 괴리 해석 (애널리스트가 가장 주목하는 부분)
+            if d.get("px_react") is not None:
+                if s > 0.05 and d["px_react"] < -0.02:
+                    L.append("• ⚠ 호실적인데 주가 하락 — 가이던스 하향·기대치 과열 가능성")
+                elif s < -0.02 and d["px_react"] > 0.02:
+                    L.append("• 💡 미스인데 주가 상승 — 악재 선반영·가이던스 개선 가능성")
+            L.append("")
+
+        # ---- 판단 ----
+        L.append("<b>🎯 판단</b>")
+        L.append(f"• PEAD 기대: {pead}")
+        if s <= -0.04 and held:
+            L.append("• <b>보유 중 + 미스 → 하방 주의</b> (청산규칙 손절-8%·주도이탈 감시)")
+        elif s <= -0.04:
+            L.append("• 신규 진입 회피 권장")
+        elif s >= 0.25:
+            L.append("• 모멘텀 지속 가능성 — 로테이션 다음 평가 시 순위 상승 여지")
+        L.append("<i>근거: pead_backtest.py 1,797 이벤트 (2024-11~2026-06)</i>")
+        _send("\n".join(L))
         sent += 1
     return sent
 
