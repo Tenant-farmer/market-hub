@@ -649,3 +649,21 @@ def test_attribution_alpha_beta():
                 {"기술": 0.3, "금융": 0.7}, {"기술": 0.08, "금융": 0.02})
     assert b["allocation"] > 0 and b["selection"] > 0
     assert abs(b["total"] - (b["allocation"] + b["selection"] + b["interaction"])) < 0.01
+
+
+def test_risk_var_cvar_kelly():
+    """VaR/CVaR/켈리 — 알려진 분포로 수치 검증 + 몬테카를로 일관성."""
+    import numpy as np
+
+    from src.analytics.risk import kelly, monte_carlo, var_cvar
+
+    r = np.random.RandomState(0).normal(0, 0.01, 2000)
+    v = var_cvar(r)                                # 정규분포 VaR95 ≈ 1.645σ
+    assert 1.4 < v["var_pct"] < 1.9 and v["cvar_pct"] > v["var_pct"]
+    assert var_cvar(r, 0.99)["var_pct"] > v["var_pct"]     # 99%가 더 큰 손실
+    assert "error" in var_cvar([0.01] * 5)                 # 표본 부족
+    k = kelly(0.6, 0.10, 0.05)                             # 승률60%·손익비2 → 40%
+    assert abs(k["kelly_pct"] - 40.0) < 0.1 and k["half_kelly_pct"] == 20.0
+    mc = monte_carlo(r, days=252, sims=500)
+    assert mc["mdd_median"] < 0 and 0 <= mc["prob_loss"] <= 100
+    assert mc["ret_p5"] < mc["ret_median"] < mc["ret_p95"]

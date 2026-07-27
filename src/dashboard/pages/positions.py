@@ -149,6 +149,13 @@ def _virtual_view(con):
             ab = ab if ab and "error" not in ab else None
         except Exception:
             ab = None
+        try:                                    # 리스크 (VaR/CVaR, 표본 21일+ 부터)
+            from src.analytics.risk import strategy_risk
+
+            rk = strategy_risk(con, s)
+            rk = rk if rk and "error" not in rk else None
+        except Exception:
+            rk = None
         out.append({
             "key": s, "label": LAB.get(s, s),
             "equity": eq["equity"], "cash": eq["cash"], "n_open": eq["n_open"],
@@ -156,7 +163,7 @@ def _virtual_view(con):
             "holds": [dict(h) for h in holds], "closed": [dict(c) for c in closed],
             "n_closed": wins["n"] or 0, "avg_pnl": wins["a"] or 0,
             "win_rate": (wins["w"] / wins["n"] * 100) if wins["n"] else None,
-            "ab": ab,
+            "ab": ab, "risk": rk,
         })
     return out or None
 

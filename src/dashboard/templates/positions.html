@@ -160,6 +160,16 @@
         {% if v.ab.n < 20 %}<span style="color:var(--warn)">— 표본 부족, 참고만</span>{% endif %}
       </div>
       {% endif %}
+      {% if v.risk %}
+      <div class="reason" style="margin-bottom:6px;padding:4px 8px;border-radius:4px;background:rgba(208,59,59,.08)">
+        <span title="정상장 하루 최악 5% 손실">VaR95 <strong>-{{ v.risk.var_pct }}%</strong></span> ·
+        <span title="그 최악 구간 평균 손실">CVaR -{{ v.risk.cvar_pct }}%</span> ·
+        <span title="연율 변동성">변동성 {{ v.risk.vol_ann }}%</span>
+        {% if v.risk.mc and not v.risk.mc.error %}<br>
+        <span style="color:var(--muted)">몬테카를로 1년 — 낙폭 중앙 {{ v.risk.mc.mdd_median }}% · 최악5% {{ v.risk.mc.mdd_p95 }}% · -20%낙폭 확률 {{ v.risk.mc.prob_dd20 }}%</span>
+        {% endif %}
+      </div>
+      {% endif %}
       <div class="reason" style="color:var(--muted)">
         보유: {% for h in v.holds %}<span title="진입 {{ h.entry_date[5:] }} @${{ '%.2f'|format(h.entry_px) }}">{{ h.symbol }}</span>{{ ' · ' if not loop.last }}{% endfor %}
       </div>
