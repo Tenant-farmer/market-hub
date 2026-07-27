@@ -13,6 +13,8 @@ import os
 import time
 from datetime import date
 
+from src.errlog import swallow
+
 ALLOWED_ACTIONS = {"buy", "sell"}
 MAX_QTY = 100000                    # 명백한 오입력 차단 (팻핑거)
 MAX_ORDER_USD = 10000.0            # 주문당 상한 (미국·크립토)
@@ -48,7 +50,9 @@ def _live_equity(broker: str):
             if alpaca.configured():
                 a = alpaca.AlpacaBroker().get_account()
                 cur = float(a.get("equity") or 0) or None
-    except Exception:
+    except Exception as e:
+        # 에쿼티 조회 실패 = 일손실 한도 게이트가 판정 불가 = **게이트가 조용히 무력화**
+        swallow("risk.equity", e)
         cur = None
     _eq_cache[broker] = (time.monotonic(), cur)
     return cur

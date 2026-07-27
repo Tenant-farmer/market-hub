@@ -16,6 +16,7 @@ import os
 from datetime import date, datetime
 
 from src import db
+from src.errlog import swallow
 from src.trading import ensure_tables
 from src.trading.brokers import alpaca, kiwoom
 
@@ -37,8 +38,9 @@ def _held(con) -> list:
                 if h["qty"] > 0:
                     out.append({"code": h["code"], "qty": h["qty"], "plpc": h["plpc"],
                                 "px": h.get("cur")})
-        except Exception:
-            pass
+        except Exception as e:
+            # 잔고 조회 실패 = KR 보유가 통째로 빠짐 = **손절이 안 돈다**. 반드시 흔적을 남긴다
+            swallow("exits.held.kiwoom", e)
     if alpaca.configured():
         try:
             pos = alpaca.AlpacaBroker().get_positions()
@@ -48,8 +50,8 @@ def _held(con) -> list:
                     out.append({"code": p.get("symbol"), "qty": q,
                                 "plpc": float(p.get("unrealized_plpc", 0) or 0) * 100,
                                 "px": float(p.get("current_price", 0) or 0) or None})
-        except Exception:
-            pass
+        except Exception as e:
+            swallow("exits.held.alpaca", e)
     try:
         # 로테이션 슬롯은 자체 이탈규칙(rank>30, 주1회)이 관리 → 추세·주도이탈 청산에서 제외.
         # **단 손절은 제외하지 않는다** — 주1회 평가 사이의 폭락에 무방비였던 실사고
@@ -58,8 +60,8 @@ def _held(con) -> list:
         stop = _f("EXIT_STOP_PCT", -8.0)
         rot = {r["symbol"] for r in con.execute("SELECT symbol FROM rotation_slots")}
         out = [p for p in out if p["code"] not in rot or p["plpc"] <= stop]
-    except Exception:
-        pass
+    except Exception as e:
+        swallow("exits.rotation_filter", e)
     return out
 
 

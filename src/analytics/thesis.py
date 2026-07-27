@@ -17,6 +17,20 @@ def _pct(a, b):
     return (a / b - 1) * 100 if b else None
 
 
+def _failed(out, strategy, assumption, exc):
+    """점검이 실패하면 **항목을 빼지 말고 warn으로 남긴다**.
+
+    2026-07-27 발견: 세 점검이 `except: pass`라 예외 시 항목이 목록에서 사라졌다.
+    상태 리포트는 '전제 n/n 유효'를 len(결과)로 계산하므로, 손절 점검이 죽으면
+    '4/4 유효 ✅'가 뜬다 — 감시 장치가 조용히 꺼진 채 초록불이 되는 최악의 형태.
+    """
+    from src.errlog import swallow
+
+    swallow(f"thesis.{strategy}", exc)
+    out.append({"strategy": strategy, "assumption": assumption, "status": "warn",
+                "detail": f"점검 실패({type(exc).__name__}: {str(exc)[:40]}) — 판정 불가"})
+
+
 def check_theses(con) -> list[dict]:
     """전략별 가정 점검. 각 항목: {strategy, assumption, status, detail}
 
@@ -51,7 +65,12 @@ def check_theses(con) -> list[dict]:
         from src.dashboard.queries_macro import kr_signal
 
         ks = kr_signal(con)
-        if ks:
+        if not ks:                     # VKOSPI·KOSPI 미수집 → 신호 자체를 못 냄
+            out.append({
+                "strategy": "KR 신호진입",
+                "assumption": "green(VKOSPI≥30 & 낙폭-5%)이면 KODEX200을 매일 분할 매수한다",
+                "status": "warn", "detail": "VKOSPI/KOSPI 데이터 없음 — 신호 판정 불가"})
+        else:
             green = ks["state"] == "buy"
             recent = con.execute(
                 "SELECT COUNT(*) n FROM orders WHERE ticker='069500' AND created_at >= ?",
@@ -64,8 +83,8 @@ def check_theses(con) -> list[dict]:
                            f"{ks['kospi_dd']:+.1f}%) · 최근 7일 매수 {recent}건"
                            + (" — green인데 매수 없음!" if green and recent == 0 else "")),
             })
-    except Exception:
-        pass
+    except Exception as e:
+        _failed(out, "KR 신호진입", "green이면 KODEX200 분할 매수", e)
 
     # ─── 전략 3: 청산 규칙 ─────────────────────────────────────
     # 논거: 손절 -8%가 꼬리위험을 자른다. 전제 = -8% 넘게 물린 보유가 없어야 함
@@ -74,7 +93,14 @@ def check_theses(con) -> list[dict]:
 
         if kiwoom.configured():
             b = kiwoom.KiwoomBroker().account_balance()
-            if b:
+            if not b:
+                # 예외 없이 None이 오는 경로(키움 내부에서 삼킴)도 조용히 넘기면 안 된다 —
+                # 점검이 사라지는 대신 '판정 불가'로 남겨야 리포트가 초록불이 되지 않는다
+                out.append({
+                    "strategy": "청산 규칙",
+                    "assumption": "손절 -8%가 작동해 그보다 크게 물린 보유가 없다",
+                    "status": "warn", "detail": "잔고 조회 실패 — 손절 감시 판정 불가"})
+            else:
                 deep = [h for h in b["holdings"] if h["plpc"] <= -8]
                 names = ", ".join(f"{h['name']}({h['plpc']:.1f}%)" for h in deep[:3])
                 out.append({
@@ -84,8 +110,8 @@ def check_theses(con) -> list[dict]:
                     "detail": (f"보유 {len(b['holdings'])}종목 중 -8% 초과 {len(deep)}종목"
                                + (f": {names}" if deep else "")),
                 })
-    except Exception:
-        pass
+    except Exception as e:
+        _failed(out, "청산 규칙", "손절 -8%가 작동해 크게 물린 보유가 없다", e)
 
     # ─── 전략 4: 가상장부 A/B ──────────────────────────────────
     # 논거: 모멘텀이 단타보다 낫다(백테스트). 전제 = 실제로도 그 방향이어야 함(반증 가능)
@@ -107,8 +133,8 @@ def check_theses(con) -> list[dict]:
                            + (" — 표본 부족, 판정 보류" if n < 20 else
                               "" if m >= v else " — 백테스트와 반대 방향(관찰 계속)")),
             })
-    except Exception:
-        pass
+    except Exception as e:
+        _failed(out, "가상장부 A/B", "모멘텀이 단타보다 우수하다", e)
 
     # ─── 전략 5: 시스템 가정 ───────────────────────────────────
     # 논거: 자동화가 조용히 실패하지 않는다. 전제 = 워커가 살아있고 알림이 나감
@@ -123,8 +149,8 @@ def check_theses(con) -> list[dict]:
             "detail": f"엔진 마지막 기록 {last[:16] if last else '없음'}"
                       + (" — 오늘 기록 없음!" if stale else ""),
         })
-    except Exception:
-        pass
+    except Exception as e:
+        _failed(out, "시스템", "엔진 워커가 살아있고 알림이 발송된다", e)
     return out
 
 

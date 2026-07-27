@@ -6,6 +6,7 @@ hourly가 매 실행마다 upsert → 하루 마지막 실행 값이 EOD 근사�
 from datetime import date
 
 from src.trading.brokers import alpaca, kiwoom
+from src.errlog import swallow
 
 
 def ensure(con):
@@ -35,8 +36,8 @@ def snapshot(con) -> int:
                 con.execute("INSERT OR REPLACE INTO portfolio_snapshots VALUES (?,?,?,?,?)",
                             (today, "alpaca", eq, float(a.get("cash") or 0), pl))
                 n += 1
-        except Exception:
-            pass
+        except Exception as e:
+            swallow("portfolio.snapshot", e)
     return n
 
 

@@ -133,3 +133,42 @@ def test_status_report_send_uses_notify(con, monkeypatch):
                 "VALUES ('2026-07-27','kiwoom',1000,0)")
     assert status_report.send_report(con) == 1
     assert len(sent) == 1 and "상태 리포트" in sent[0]
+
+
+# ------------------------------------------------------------------ 전제 점검 (thesis)
+def test_thesis_failed_check_stays_visible(con, monkeypatch):
+    """실사고 회귀: 점검이 예외로 죽으면 **항목이 사라져** '전제 n/n 유효 ✅'가 됐다.
+
+    상태 리포트는 len(결과)로 n을 계산하므로, 손절 감시가 꺼져도 초록불이 뜬다 —
+    감시 장치가 조용히 무력화되는 최악의 형태. 실패는 warn으로 남아야 한다.
+    """
+    from src.analytics import thesis
+
+    monkeypatch.setattr("src.errlog.swallow", lambda *a, **k: None)   # 로그 I/O 차단
+    monkeypatch.setattr("src.dashboard.queries_macro.kr_signal",
+                        lambda c: (_ for _ in ()).throw(RuntimeError("VKOSPI 조회 실패")))
+    monkeypatch.setattr("src.trading.brokers.kiwoom.configured", lambda: True)
+    monkeypatch.setattr("src.trading.brokers.kiwoom.KiwoomBroker",
+                        lambda: (_ for _ in ()).throw(RuntimeError("토큰 만료")))
+
+    out = thesis.check_theses(con)
+    by = {t["strategy"]: t for t in out}
+    assert "KR 신호진입" in by and by["KR 신호진입"]["status"] == "warn"
+    assert "청산 규칙" in by and by["청산 규칙"]["status"] == "warn"
+    assert "판정 불가" in by["청산 규칙"]["detail"]
+    assert all(t["status"] != "ok" or t["strategy"] not in ("KR 신호진입", "청산 규칙")
+               for t in out)                       # 실패가 ok로 둔갑하지 않는다
+
+
+def test_thesis_balance_none_is_not_silent(con, monkeypatch):
+    """예외가 아니라 None이 오는 경로(키움 내부에서 삼킴)도 항목을 남겨야 한다."""
+    from src.analytics import thesis
+
+    class _B:
+        def account_balance(self):
+            return None
+    monkeypatch.setattr("src.trading.brokers.kiwoom.configured", lambda: True)
+    monkeypatch.setattr("src.trading.brokers.kiwoom.KiwoomBroker", _B)
+
+    by = {t["strategy"]: t for t in thesis.check_theses(con)}
+    assert by["청산 규칙"]["status"] == "warn" and "잔고 조회 실패" in by["청산 규칙"]["detail"]

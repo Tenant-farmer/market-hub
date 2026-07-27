@@ -20,6 +20,7 @@ from flask import Blueprint, current_app, jsonify, request
 
 from src import db
 from src.trading import ensure_tables
+from src.errlog import swallow
 
 bp = Blueprint("hook", __name__)
 
@@ -34,8 +35,8 @@ def _process_now():
         from src.trading import engine
 
         engine.process_once()
-    except Exception:
-        pass
+    except Exception as e:
+        swallow("receiver.immediate", e)   # 워커가 15초 내 재시도하지만 원인은 남긴다
     finally:
         _proc_lock.release()
 
