@@ -17,7 +17,10 @@ UA = {
 COLS = ["symbol", "date", "when_time", "name", "eps_forecast"]
 
 
-def collect(con, days: int = 14) -> int:
+KEEP_PAST_DAYS = 30         # 주간·월간 뷰의 '지난주/지난달' 이동을 위해 과거분 보존
+
+
+def collect(con, days: int = 45) -> int:
     con.execute(
         "CREATE TABLE IF NOT EXISTS earnings_calendar (symbol TEXT NOT NULL, date TEXT NOT NULL, "
         "when_time TEXT, name TEXT, eps_forecast TEXT, PRIMARY KEY (symbol, date))"
@@ -27,7 +30,8 @@ def collect(con, days: int = 14) -> int:
         for r in con.execute("SELECT stock_code FROM sector_map WHERE market='US_STOCK'")
     }
     today = date.today()
-    con.execute("DELETE FROM earnings_calendar WHERE date < ?", (today.isoformat(),))
+    con.execute("DELETE FROM earnings_calendar WHERE date < ?",
+                ((today - timedelta(days=KEEP_PAST_DAYS)).isoformat(),))
     con.commit()
 
     rows = []

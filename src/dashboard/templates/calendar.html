@@ -3,7 +3,7 @@
 {% block title %}일정 — market-hub{% endblock %}
 {% block body %}
 <h1>일정</h1>
-<div class="sub">경제지표(US·KR) · 실적(S&P500) 향후 14일 · 시간은 KST
+<div class="sub">경제지표(US·KR) 향후 14일 · 실적(S&P500) 향후 45일 · 시간은 현지 기준
   {% if fed_next %} · <a href="/fed" style="color:var(--accent);text-decoration:none">다음 FOMC {{ fed_next.date[5:] }} (D-{{ fed_next.dday }})</a>{% endif %}</div>
 
 <div class="pills" style="margin-bottom:12px">
@@ -14,8 +14,33 @@
   <span style="margin-left:auto"></span>
   <a href="/calendar?tab=econ" class="{{ 'on' if not major_only }}">전체</a>
   <a href="/calendar?tab=econ&major=1" class="{{ 'on' if major_only }}">★ 주요만</a>
+  {% else %}
+  <span style="margin-left:auto"></span>
+  <a href="/calendar?tab=earn&view=week" class="{{ 'on' if view == 'week' }}">주간</a>
+  <a href="/calendar?tab=earn&view=month" class="{{ 'on' if view == 'month' }}">월간</a>
+  <a href="/calendar?tab=earn&view=list" class="{{ 'on' if view == 'list' }}">목록</a>
   {% endif %}
 </div>
+
+{% macro navbar(param, cur, prev_lo, next_hi, label, total) %}
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+  <a class="chip" style="text-decoration:none{{ ';opacity:.3;pointer-events:none' if cur <= prev_lo }}"
+     href="/calendar?tab=earn&view={{ view }}&{{ param }}={{ cur - 1 }}">◀ 이전</a>
+  <strong style="font-size:15px">{{ label }}</strong>
+  <a class="chip" style="text-decoration:none{{ ';opacity:.3;pointer-events:none' if cur >= next_hi }}"
+     href="/calendar?tab=earn&view={{ view }}&{{ param }}={{ cur + 1 }}">다음 ▶</a>
+  <span style="color:var(--muted);font-size:12px">{{ total }}건</span>
+  {% if cur != 0 %}<a href="/calendar?tab=earn&view={{ view }}" style="color:var(--accent);font-size:12px;text-decoration:none">오늘로</a>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro tick(e) %}
+<a href="/stock/{{ e.symbol }}" title="{{ e.name }} · EPS 예상 {{ e.eps }}{{ ' · ' ~ e.mcap_fmt if e.mcap_fmt }}"
+   style="display:inline-block;margin:1px 3px 1px 0;padding:1px 5px;border-radius:4px;text-decoration:none;
+          font-size:{{ '12px' if e.big else '11px' }};font-weight:{{ 700 if e.big else 400 }};
+          background:{{ 'var(--accent)' if e.big else 'var(--surface)' }};
+          color:{{ '#fff' if e.big else 'var(--ink-2)' }};{{ 'opacity:.45' if e.past }}">{{ e.symbol }}</a>
+{% endmacro %}
 
 {% if tab == 'econ' %}
 <div class="card" style="overflow-x:auto">
@@ -42,6 +67,61 @@
   <div style="color:var(--muted);padding:20px;text-align:center">예정된 일정이 없습니다 (캘린더는 임박해야 채워집니다)</div>
   {% endif %}
 </div>
+{% elif view == 'week' %}
+{{ navbar('w', grid.offset, -4, 6, grid.label, grid.total) }}
+<div class="card" style="overflow-x:auto">
+  <table style="table-layout:fixed;width:100%;min-width:900px">
+    <thead><tr>
+      <th style="width:96px"></th>
+      {% for d in grid.days %}
+      <th style="text-align:center;{{ 'color:var(--accent)' if d.today }}">
+        {{ d.dow }}<br><span style="font-weight:400;font-size:11px;color:var(--muted)">{{ d.md }}</span>
+      </th>
+      {% endfor %}
+    </tr></thead>
+    <tbody>
+    {% for s in grid.slots %}
+      <tr>
+        <td style="text-align:left;color:var(--muted);font-size:12px;vertical-align:top;padding-top:8px">{{ s.label }}</td>
+        {% for cell in s.cells %}
+        <td style="text-align:left;vertical-align:top;padding:6px 4px;border-left:1px solid var(--border)">
+          {% for e in cell.syms %}{{ tick(e) }}{% endfor %}
+          {% if cell.more %}<div style="font-size:10px;color:var(--muted);margin-top:3px">+{{ cell.more }}개 더</div>{% endif %}
+          {% if not cell.syms %}<span style="color:var(--border)">–</span>{% endif %}
+        </td>
+        {% endfor %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+<div class="sub" style="margin-top:8px">굵은 파란 칩 = 시총 2,000억 달러 이상 · 티커 클릭 시 종목 상세 · 흐린 칩은 발표 완료</div>
+{% elif view == 'month' %}
+{{ navbar('m', grid.offset, -1, 1, grid.label, grid.total) }}
+<div class="card" style="overflow-x:auto">
+  <table style="table-layout:fixed;width:100%;min-width:860px">
+    <thead><tr>{% for d in grid.dows %}<th style="text-align:center">{{ d }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for week in grid.weeks %}
+      <tr>
+      {% for d in week %}
+        <td style="text-align:left;vertical-align:top;height:82px;padding:5px;border:1px solid var(--border);
+                   {{ 'opacity:.35' if not d.in_month }}{{ 'background:var(--surface)' if d.today }}">
+          <div style="font-size:11px;color:{{ 'var(--accent)' if d.today else 'var(--muted)' }};margin-bottom:3px">
+            {{ d.day }}{% if d.n %} <span style="float:right">{{ d.n }}건</span>{% endif %}
+          </div>
+          {% for e in d.syms %}{{ tick(e) }}{% endfor %}
+          {% if d.n > d.syms|length %}
+          <div style="font-size:10px;color:var(--muted);margin-top:2px">+{{ d.n - d.syms|length }}개 더</div>
+          {% endif %}
+        </td>
+      {% endfor %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+<div class="sub" style="margin-top:8px">셀마다 시총 상위 4개만 표시 · 주간 뷰에서 전체 확인</div>
 {% else %}
 <div class="card" style="overflow-x:auto">
   {% if earnings %}

@@ -127,3 +127,94 @@ def earnings_upcoming(con, days: int = 7, limit: int = 14) -> list[dict]:
             "mcap_fmt": fmt_usd(r["mcap"]) if r["mcap"] else "–",
         })
     return out
+
+
+# ---------------------------------------------------------------- 실적 캘린더 그리드
+# Earnings Whispers 스타일: 주간은 요일×발표시점 격자, 월간은 달력 격자.
+# 리스트 뷰는 "다음에 뭐가 오나"를, 격자 뷰는 "이번 주 어느 날이 무거운가"를 보여준다.
+SLOTS = [("time-pre-market", "🌅 장전"), ("time-after-hours", "🌙 장마감 후"),
+         ("time-not-supplied", "· 미정")]
+WEEK_CELL_MAX = 20          # 셀당 표시 상한 (성수기엔 하루 90건까지 나온다)
+
+
+def _earn_rows(con, start, end) -> list:
+    """[start, end] 구간 실적 일정 — 시총 큰 순."""
+    try:
+        return con.execute(
+            "SELECT e.symbol, e.date, e.when_time, e.name, e.eps_forecast, sm.mcap "
+            "FROM earnings_calendar e LEFT JOIN stock_meta sm ON sm.symbol = e.symbol "
+            "WHERE e.date BETWEEN ? AND ? ORDER BY sm.mcap DESC",
+            (start.isoformat(), end.isoformat())).fetchall()
+    except Exception:
+        return []
+
+
+def _cell(r, today):
+    return {"symbol": r["symbol"], "name": (r["name"] or "")[:28],
+            "eps": r["eps_forecast"] or "–",
+            "mcap": r["mcap"] or 0, "mcap_fmt": fmt_usd(r["mcap"]) if r["mcap"] else "",
+            "big": bool(r["mcap"] and r["mcap"] >= 2e11),      # 2000억 달러↑ = 대형
+            "past": r["date"] < today.isoformat()}
+
+
+def earnings_week(con, offset: int = 0) -> dict:
+    """주간 격자 — 월~금 × (장전·장마감후·미정). offset: 0=이번주, -1=지난주."""
+    from datetime import date, timedelta
+
+    today = date.today()
+    mon = today - timedelta(days=today.weekday()) + timedelta(weeks=offset)
+    days = [mon + timedelta(days=i) for i in range(5)]
+    rows = _earn_rows(con, days[0], days[-1])
+
+    grid = {s: {d.isoformat(): [] for d in days} for s, _ in SLOTS}
+    for r in rows:
+        slot = r["when_time"] if r["when_time"] in grid else "time-not-supplied"
+        if r["date"] in grid[slot]:
+            grid[slot][r["date"]].append(_cell(r, today))
+    return {
+        "kind": "week", "offset": offset,
+        "label": f"{mon.month}/{mon.day} ~ {days[-1].month}/{days[-1].day}"
+                 + (" (이번 주)" if offset == 0 else ""),
+        "days": [{"date": d.isoformat(), "md": f"{d.month}/{d.day}",
+                  "dow": "월화수목금"[i], "today": d == today} for i, d in enumerate(days)],
+        # 셀당 상위 시총 WEEK_CELL_MAX개만 — 하루 90개가 찍히면 격자가 아니라 벽이 된다
+        "slots": [{"key": k, "label": lab,
+                   "cells": [{"syms": grid[k][d.isoformat()][:WEEK_CELL_MAX],
+                              "more": max(0, len(grid[k][d.isoformat()]) - WEEK_CELL_MAX)}
+                             for d in days]}
+                  for k, lab in SLOTS],
+        "total": len(rows),
+    }
+
+
+def earnings_month(con, offset: int = 0) -> dict:
+    """월간 격자 — 주×월~금. 셀마다 시총 상위 몇 개 + 총 건수."""
+    from calendar import monthrange
+    from datetime import date, timedelta
+
+    today = date.today()
+    y, m = today.year, today.month + offset
+    y, m = y + (m - 1) // 12, (m - 1) % 12 + 1
+    first, last = date(y, m, 1), date(y, m, monthrange(y, m)[1])
+    rows = _earn_rows(con, first - timedelta(days=7), last + timedelta(days=7))
+
+    by_day: dict[str, list] = {}
+    for r in rows:
+        by_day.setdefault(r["date"], []).append(_cell(r, today))
+
+    weeks, cur = [], first - timedelta(days=first.weekday())   # 그 달 첫 주의 월요일
+    while cur <= last:
+        week = []
+        for i in range(5):
+            d = cur + timedelta(days=i)
+            items = by_day.get(d.isoformat(), [])
+            week.append({"date": d.isoformat(), "day": d.day, "in_month": d.month == m,
+                         "today": d == today, "n": len(items), "syms": items[:4]})
+        weeks.append(week)
+        cur += timedelta(days=7)
+    return {
+        "kind": "month", "offset": offset,
+        "label": f"{y}년 {m}월" + (" (이번 달)" if offset == 0 else ""),
+        "dows": list("월화수목금"), "weeks": weeks,
+        "total": sum(len(v) for k, v in by_day.items() if k[:7] == f"{y}-{m:02d}"),
+    }

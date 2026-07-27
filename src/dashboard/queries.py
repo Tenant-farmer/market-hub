@@ -8,7 +8,7 @@ from src.analytics import store
 from src.dashboard.fmt import INV_KO, QUAD_DESC, fmt_krw
 
 from src.dashboard.queries_calendar import (  # noqa: F401  (re-export)
-    earnings_upcoming, econ_upcoming, fed_watch,
+    earnings_month, earnings_upcoming, earnings_week, econ_upcoming, fed_watch,
 )
 from src.dashboard.queries_kr import (  # noqa: F401  (re-export — KR 수급/주도주)
     investor_trend, kr_index_names, kr_leaders, kr_sector_strength,
