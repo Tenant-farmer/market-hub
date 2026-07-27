@@ -62,7 +62,7 @@ def _headline(con, quotes: dict) -> str:
     if kw:
         r = con.execute(
             "SELECT title FROM news WHERE title LIKE ? AND source != 'DART' "
-            "AND dt >= datetime('now','localtime','-2 days') ORDER BY dt DESC LIMIT 1",
+            "AND dt >= replace(datetime('now','localtime','-2 days'),' ','T') ORDER BY dt DESC LIMIT 1",
             (f"%{kw}%",)).fetchone()
         if r:
             news = _cut(r["title"], 64)
@@ -139,7 +139,7 @@ def _issues(con) -> list[str]:
     try:                                        # ③ 최신 헤드라인
         for r in con.execute(
                 "SELECT title FROM news WHERE source != 'DART' "
-                "AND dt >= datetime('now','localtime','-1 day') ORDER BY dt DESC LIMIT 2"):
+                "AND dt >= replace(datetime('now','localtime','-1 day'),' ','T') ORDER BY dt DESC LIMIT 2"):
             out.append(f"📰 {_cut(r['title'], 62)}")
     except Exception:
         pass

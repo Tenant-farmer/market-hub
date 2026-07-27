@@ -250,7 +250,7 @@ def build_text(con) -> str:
                          f"{_html.escape(r['title'][:60])}</a>")
         # 공시 보장 슬롯 — 뉴스에 밀리지 않게 최근 2건 별도 (보유·로테이션 종목)
         drows = con.execute("SELECT keyword, title, url FROM news WHERE source='DART' "
-                            "AND dt >= datetime('now','localtime','-2 days') "
+                            "AND dt >= replace(datetime('now','localtime','-2 days'),' ','T') "
                             "ORDER BY dt DESC LIMIT 2").fetchall()
         for r in drows:
             L.append(f"• [{r['keyword']}] <a href=\"{_html.escape(r['url'])}\">"
@@ -264,13 +264,13 @@ def build_text(con) -> str:
 
         c24 = lambda q: con.execute(q).fetchone()["c"]                     # noqa: E731
         ok = c24("SELECT COUNT(*) c FROM collector_runs WHERE status='ok' "
-                 "AND run_at >= datetime('now','localtime','-1 day')")
+                 "AND run_at >= replace(datetime('now','localtime','-1 day'),' ','T')")
         err = c24("SELECT COUNT(*) c FROM collector_runs WHERE status='error' "
-                  "AND run_at >= datetime('now','localtime','-1 day')")
+                  "AND run_at >= replace(datetime('now','localtime','-1 day'),' ','T')")
         ords = c24("SELECT COUNT(*) c FROM orders "
-                   "WHERE created_at >= datetime('now','localtime','-1 day')")
+                   "WHERE created_at >= replace(datetime('now','localtime','-1 day'),' ','T')")
         wd = c24("SELECT COUNT(*) c FROM collector_runs WHERE collector='watchdog' "
-                 "AND run_at >= datetime('now','localtime','-1 day')")
+                 "AND run_at >= replace(datetime('now','localtime','-1 day'),' ','T')")
         gates = (f"청산 {'ON' if _os.getenv('EXIT_ENABLED') == '1' else 'off'}"
                  f"·진입 {'ON' if _os.getenv('SIGNAL_ENTRY_ENABLED') == '1' else 'off'}")
         L.append("")

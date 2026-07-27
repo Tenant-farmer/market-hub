@@ -74,7 +74,7 @@ def _kiwoom_sync(con) -> list:
     rows = con.execute(
         "SELECT client_order_id, ticker, action, qty, status, message, created_at FROM orders "
         "WHERE broker LIKE 'kiwoom%' AND status='submitted' "
-        "AND created_at >= datetime('now','localtime','-1 day')").fetchall()
+        "AND created_at >= replace(datetime('now','localtime','-1 day'),' ','T')").fetchall()
     if not rows:
         return []
     b = kiwoom.KiwoomBroker()

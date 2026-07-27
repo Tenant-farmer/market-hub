@@ -60,7 +60,7 @@ def recent(con, hours: int = 24) -> list[dict]:
     try:
         rows = con.execute(
             "SELECT run_at, message FROM collector_runs WHERE collector='swallowed' "
-            "AND run_at >= datetime('now','localtime',?) ORDER BY run_at DESC LIMIT 20",
+            "AND run_at >= replace(datetime('now','localtime',?),' ','T') ORDER BY run_at DESC LIMIT 20",
             (f"-{hours} hours",)).fetchall()
         return [{"at": r["run_at"][5:16], "msg": r["message"]} for r in rows]
     except Exception:

@@ -131,7 +131,7 @@ def main():
         for cname, mod in (("us_capex", us_capex), ("kr_capex", kr_capex)):
             fresh_row = con.execute(
                 "SELECT 1 FROM collector_runs WHERE collector=? AND status='ok' "
-                "AND run_at >= datetime('now', 'localtime', '-25 days') LIMIT 1",
+                "AND run_at >= replace(datetime('now','localtime','-25 days'),' ','T') LIMIT 1",
                 (cname,),
             ).fetchone()
             if wd < 6 and not fresh_row:

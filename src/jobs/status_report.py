@@ -111,17 +111,17 @@ def build_text(con) -> str:
     # 24h 창에 남아 경보처럼 보이는 문제. 2026-07-27 토큰버그 사례)
     er = con.execute(
         "SELECT COUNT(*) n, MAX(run_at) last FROM collector_runs WHERE status='error' "
-        "AND run_at >= datetime('now','localtime','-1 day')").fetchone()
+        "AND run_at >= replace(datetime('now','localtime','-1 day'),' ','T')").fetchone()
     if er["n"] > 5:
         recent_n = con.execute(
             "SELECT COUNT(*) n FROM collector_runs WHERE status='error' "
-            "AND run_at >= datetime('now','localtime','-3 hours')").fetchone()["n"]
+            "AND run_at >= replace(datetime('now','localtime','-3 hours'),' ','T')").fetchone()["n"]
         tail = (f"최근 3h {recent_n}건 — 진행 중" if recent_n
                 else f"마지막 {er['last'][11:16]} — 이후 없음(해소 추정)")
         warn.append(f"수집 에러 24h {er['n']}건 · {tail}")
     alert = con.execute(
         "SELECT COUNT(*) n FROM collector_runs WHERE collector IN ('watchdog','risk') "
-        "AND status='alert' AND run_at >= datetime('now','localtime','-1 day')").fetchone()["n"]
+        "AND status='alert' AND run_at >= replace(datetime('now','localtime','-1 day'),' ','T')").fetchone()["n"]
     if alert:
         warn.append(f"워치독·리스크 경보 {alert}건")
     if warn:

@@ -41,7 +41,7 @@ def system_verdict(con, since: str) -> list[dict]:
     #    (실측: 07-27 토큰버그 294건이 수정 후에도 21.8%로 잡힘).
     row = con.execute(
         "SELECT SUM(CASE WHEN status='error' THEN 1 ELSE 0 END) e, COUNT(*) n "
-        "FROM collector_runs WHERE run_at >= datetime('now','localtime','-1 day') "
+        "FROM collector_runs WHERE run_at >= replace(datetime('now','localtime','-1 day'),' ','T') "
         "AND collector NOT IN ('watchdog','risk')").fetchone()
     rate = (row["e"] or 0) / row["n"] * 100 if row["n"] else 0
     cum = con.execute(

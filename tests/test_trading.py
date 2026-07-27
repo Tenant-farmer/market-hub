@@ -403,8 +403,9 @@ def test_watchdog_alert_once(con, monkeypatch):
     assert watchdog.check_engine(con) == 0          # 쿨다운 내 재호출 → 무경보
     assert len(sent) == 1 and "엔진" in sent[0]
 
-    con.execute("INSERT INTO collector_runs VALUES "
-                "('sentiment', datetime('now','localtime'), 'ok', 1, NULL)")
+    # 운영과 같은 'T' 구분자로 기록 — 공백 형식으로 넣으면 비교가 어긋난다(2026-07-27 실사고)
+    con.execute("INSERT INTO collector_runs VALUES ('sentiment', "
+                "replace(datetime('now','localtime'),' ','T'), 'ok', 1, NULL)")
     con.commit()
     assert watchdog.check_hourly(con) == 0          # 수집 정상 → 무경보
     assert len(sent) == 1

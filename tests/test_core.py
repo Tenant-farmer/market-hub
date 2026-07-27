@@ -145,3 +145,43 @@ def test_db_path_override(tmp_path, monkeypatch):
     monkeypatch.delenv("MARKET_HUB_DB")
     assert db_mod.connect().execute(
         "SELECT name FROM sqlite_master WHERE name='t'").fetchone() is None   # 운영 DB 무영향
+
+
+def test_timestamp_window_uses_matching_format():
+    """시각 비교 형식 회귀 — 저장은 'T' 구분자, SQLite datetime()은 공백.
+
+    2026-07-27 발견: `run_at >= datetime('now','localtime','-1 day')`가 문자열 비교라
+    'T'(0x54) > ' '(0x20) 때문에 **같은 날짜면 시각과 무관하게 참**이 됐다. 실측 오차:
+    '최근 24h' 창에 442건이 잡혔으나 실제는 249건(77% 과다). 워치독이 이 창으로 엔진
+    생존을 보므로, 과다 포함은 **죽은 엔진을 살아있다고 판단**할 수 있었다.
+    """
+    con = sqlite3.connect(":memory:")
+    con.row_factory = sqlite3.Row
+    con.execute("CREATE TABLE collector_runs (collector TEXT, run_at TEXT, status TEXT)")
+    con.execute("INSERT INTO collector_runs VALUES ('x', "
+                "replace(datetime('now','localtime','-5 hours'),' ','T'), 'ok')")   # 5시간 전
+    con.execute("INSERT INTO collector_runs VALUES ('x', "
+                "replace(datetime('now','localtime','-30 hours'),' ','T'), 'ok')")  # 30시간 전
+
+    q = ("SELECT COUNT(*) n FROM collector_runs WHERE run_at >= "
+         "replace(datetime('now','localtime','-1 day'),' ','T')")
+    assert con.execute(q).fetchone()["n"] == 1          # 24h 창엔 5시간 전 1건만
+
+    buggy = ("SELECT COUNT(*) n FROM collector_runs WHERE run_at >= "
+             "datetime('now','localtime','-1 day')")
+    assert con.execute(buggy).fetchone()["n"] >= 1      # 옛 방식은 30시간 전까지 끌어옴
+    con.close()
+
+
+def test_no_bare_datetime_comparison_in_source():
+    """소스 전체에 맨 datetime('now',...) 비교가 남아있지 않은지 — 같은 함정 재발 방지."""
+    import pathlib
+    import re
+
+    root = pathlib.Path(__file__).resolve().parents[1]
+    bad = []
+    for f in list((root / "src").rglob("*.py")) + list((root / "scripts").rglob("*.py")):
+        for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+            if "datetime('now'" in line and "replace(datetime" not in line:
+                bad.append(f"{f.relative_to(root)}:{i}")
+    assert not bad, f"형식 불일치 위험: {bad}"

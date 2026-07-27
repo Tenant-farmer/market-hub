@@ -13,7 +13,7 @@ from datetime import datetime
 def _stalled(con, collector: str, minutes: float) -> bool:
     return con.execute(
         "SELECT 1 FROM collector_runs WHERE collector=? AND status='ok' "
-        "AND run_at >= datetime('now','localtime',?) LIMIT 1",
+        "AND run_at >= replace(datetime('now','localtime',?),' ','T') LIMIT 1",
         (collector, f"-{int(minutes)} minutes"),
     ).fetchone() is None
 
@@ -22,7 +22,7 @@ def _alert_once(con, kind: str, text: str) -> bool:
     cool_min = float(os.getenv("ALERT_COOLDOWN_H", "6")) * 60
     dup = con.execute(
         "SELECT 1 FROM collector_runs WHERE collector='watchdog' AND message=? "
-        "AND run_at >= datetime('now','localtime',?) LIMIT 1",
+        "AND run_at >= replace(datetime('now','localtime',?),' ','T') LIMIT 1",
         (kind, f"-{int(cool_min)} minutes"),
     ).fetchone()
     if dup:

@@ -83,7 +83,7 @@ def notify_new_orders(con) -> int:
         "COALESCE(s.source, '') src FROM orders o "
         "LEFT JOIN signals s ON s.id = o.signal_id "
         "WHERE o.notified IS NULL "
-        "AND o.created_at >= datetime('now','localtime','-1 day') ORDER BY o.id").fetchall()
+        "AND o.created_at >= replace(datetime('now','localtime','-1 day'),' ','T') ORDER BY o.id").fetchall()
     if not rows:
         return 0
     ids = [r["id"] for r in rows]

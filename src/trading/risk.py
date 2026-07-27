@@ -93,12 +93,13 @@ def _alert_daily(con, kind: str, text: str):
     try:
         dup = con.execute(
             "SELECT 1 FROM collector_runs WHERE collector='risk' AND message=? "
-            "AND run_at >= datetime('now','localtime','-720 minutes') LIMIT 1",
+            "AND run_at >= replace(datetime('now','localtime','-720 minutes'),' ','T') LIMIT 1",
             (kind,)).fetchone()
         if dup:
             return
         con.execute("INSERT INTO collector_runs (collector, run_at, status, rows, message) "
-                    "VALUES ('risk', datetime('now','localtime'), 'alert', 0, ?)", (kind,))
+                    "VALUES ('risk', replace(datetime('now','localtime'),' ','T'), 'alert', 0, ?)",
+                    (kind,))   # 저장 형식도 'T' — 읽기와 어긋나면 중복 억제가 깨진다
         con.commit()
         from src import notify
 
