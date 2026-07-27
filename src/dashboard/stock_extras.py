@@ -105,6 +105,82 @@ def dart_filings(con, code: str, limit: int = 6) -> list[dict]:
         return []
 
 
+def financials_trend(sym: str, kr: bool = False) -> dict | None:
+    """재무 3표 분기 추세 — 매출·영업이익·순이익·영업현금흐름 (참고용).
+
+    ⚠ 검증 결과 펀더멘털은 매매 신호로 무효(B2 발생액 IC 0.002, A 퀄리티 기각).
+    '추세를 눈으로 본다'는 참고 목적으로만 표시하며 UI에 그 사실을 명시한다.
+    발생액(순이익-영업현금흐름)은 이익의 질 참고치로 함께 계산.
+    """
+    try:
+        import yfinance as yf
+
+        t = yf.Ticker(sym + (".KS" if kr else ""))
+        fin, cf = t.quarterly_financials, t.quarterly_cashflow
+        if fin is None or fin.empty:
+            return None
+
+        def _series(df, keys, n=6):
+            for k in keys:
+                if df is not None and not df.empty and k in df.index:
+                    s = df.loc[k].dropna()
+                    if len(s):
+                        return [(str(d)[:7], float(v)) for d, v in list(s.items())[:n]][::-1]
+            return []
+        rev = _series(fin, ["Total Revenue", "Operating Revenue"])
+        op = _series(fin, ["Operating Income", "EBIT"])
+        ni = _series(fin, ["Net Income", "Net Income Common Stockholders"])
+        cfo = _series(cf, ["Operating Cash Flow", "Total Cash From Operating Activities"])
+        if not rev:
+            return None
+        # 이익의 질: 순이익 대비 영업현금흐름 (1.0 이상이면 현금이 실함)
+        quality = None
+        if ni and cfo and ni[-1][1]:
+            quality = cfo[-1][1] / ni[-1][1]
+        # YoY (4분기 전 대비)
+        def _yoy(s):
+            return (s[-1][1] / s[0][1] - 1) * 100 if len(s) >= 5 and s[0][1] else None
+        return {"rev": rev, "op": op, "ni": ni, "cfo": cfo, "quality": quality,
+                "rev_yoy": _yoy(rev), "op_yoy": _yoy(op), "ni_yoy": _yoy(ni),
+                "cur": "원" if kr else "$"}
+    except Exception:
+        return None
+
+
+def valuation_band(con, sym: str, kr: bool = False) -> dict | None:
+    """밸류 밴드 — PER/PBR의 과거 범위 내 현재 위치 (참고용).
+
+    ⚠ 검증 결과 밸류 팩터는 **역방향**(B3: 저PBR IC -0.095 — 싼 종목이 덜 오름).
+    '지금 역사적으로 비싼가/싼가'의 맥락 참고용이며, 싸다고 사라는 신호가 아니다.
+    데이터: yfinance 현재 PER/PBR + 주가 밴드로 과거 위치 근사(과거 PER 시계열은 무료 미제공).
+    """
+    try:
+        import numpy as np
+        import yfinance as yf
+
+        info = yf.Ticker(sym + (".KS" if kr else "")).info
+        pe, pb = info.get("trailingPE"), info.get("priceToBook")
+        rows = con.execute(
+            "SELECT close FROM prices_daily WHERE symbol=? ORDER BY date DESC LIMIT 1260",
+            (sym,)).fetchall()
+        if len(rows) < 252:
+            return None
+        px = np.array([r["close"] for r in rows][::-1], dtype=float)
+        cur = px[-1]
+        out = {"pe": pe, "pb": pb, "n_years": round(len(px) / 252, 1)}
+        # 주가 밴드 내 위치 (PER 시계열 대용 — 이익 변화는 반영 못 하나 방향 참고)
+        lo, hi = float(px.min()), float(px.max())
+        out["px_pos"] = round((cur - lo) / (hi - lo) * 100, 1) if hi > lo else 50.0
+        out["px_lo"], out["px_hi"], out["px_cur"] = lo, hi, float(cur)
+        # 52주 기준 위치도 함께
+        y = px[-252:]
+        out["y_pos"] = round((cur - y.min()) / (y.max() - y.min()) * 100, 1) \
+            if y.max() > y.min() else 50.0
+        return out
+    except Exception:
+        return None
+
+
 def insider_kr_note(con, code: str) -> dict | None:
     """KR은 Form 4가 없으므로 DART 지분공시로 대용 (제목 키워드 매칭)."""
     try:

@@ -139,6 +139,56 @@
 </div>
 {% endif %}
 
+
+{# ---- 재무 3표 추세 + 밸류 밴드 (참고용 — 검증상 매매신호 아님) ---- #}
+{% if fin_trend or val_band %}
+<div class="card" style="margin-top:12px">
+  <div class="sub" style="margin-bottom:8px">📑 재무 추세 · 밸류 밴드
+    <span style="color:var(--muted)">— 참고용</span></div>
+  {% if fin_trend %}
+  <div style="overflow-x:auto">
+    <table style="font-size:12px">
+      <thead><tr><th style="text-align:left">분기</th>
+        {% for d, v in fin_trend.rev %}<th>{{ d }}</th>{% endfor %}</tr></thead>
+      <tbody>
+        <tr><td style="text-align:left">매출</td>
+          {% for d, v in fin_trend.rev %}<td>{{ '%.1f'|format(v/1e9) }}B</td>{% endfor %}</tr>
+        {% if fin_trend.op %}<tr><td style="text-align:left">영업이익</td>
+          {% for d, v in fin_trend.op %}<td class="{{ 'pos' if v > 0 else 'neg' }}">{{ '%.1f'|format(v/1e9) }}B</td>{% endfor %}</tr>{% endif %}
+        {% if fin_trend.ni %}<tr><td style="text-align:left">순이익</td>
+          {% for d, v in fin_trend.ni %}<td class="{{ 'pos' if v > 0 else 'neg' }}">{{ '%.1f'|format(v/1e9) }}B</td>{% endfor %}</tr>{% endif %}
+        {% if fin_trend.cfo %}<tr><td style="text-align:left">영업현금흐름</td>
+          {% for d, v in fin_trend.cfo %}<td class="{{ 'pos' if v > 0 else 'neg' }}">{{ '%.1f'|format(v/1e9) }}B</td>{% endfor %}</tr>{% endif %}
+      </tbody>
+    </table>
+  </div>
+  <div class="reason" style="margin-top:6px">
+    {% if fin_trend.rev_yoy is not none %}매출 YoY <span class="{{ 'pos' if fin_trend.rev_yoy > 0 else 'neg' }}">{{ '%+.1f%%'|format(fin_trend.rev_yoy) }}</span> · {% endif %}
+    {% if fin_trend.op_yoy is not none %}영업이익 YoY <span class="{{ 'pos' if fin_trend.op_yoy > 0 else 'neg' }}">{{ '%+.1f%%'|format(fin_trend.op_yoy) }}</span> · {% endif %}
+    {% if fin_trend.quality %}이익의 질(현금흐름/순이익) <strong>{{ '%.2f'|format(fin_trend.quality) }}</strong>
+      <span style="color:var(--muted)">({% if fin_trend.quality >= 1 %}현금이 실함{% elif fin_trend.quality >= 0.7 %}보통{% else %}회계이익 비중 높음{% endif %})</span>{% endif %}
+  </div>
+  {% endif %}
+  {% if val_band %}
+  <div style="display:flex;gap:22px;flex-wrap:wrap;margin-top:10px;padding-top:8px;border-top:1px solid var(--grid)">
+    {% if val_band.pe %}<div><div class="sub">PER</div><strong>{{ '%.1f'|format(val_band.pe) }}배</strong></div>{% endif %}
+    {% if val_band.pb %}<div><div class="sub">PBR</div><strong>{{ '%.2f'|format(val_band.pb) }}배</strong></div>{% endif %}
+    <div style="flex:1;min-width:220px">
+      <div class="sub">{{ val_band.n_years }}년 주가밴드 내 위치 <strong>{{ val_band.px_pos }}%</strong>
+        <span style="color:var(--muted)">(52주 {{ val_band.y_pos }}%)</span></div>
+      <div class="rangebar"><div class="mark" style="left:{{ val_band.px_pos }}%"></div></div>
+      <div class="reason" style="display:flex;justify-content:space-between;color:var(--muted)">
+        <span>{{ '%.0f'|format(val_band.px_lo) }}</span><span>{{ '%.0f'|format(val_band.px_hi) }}</span></div>
+    </div>
+  </div>
+  {% endif %}
+  <div class="reason" style="margin-top:8px;color:var(--warn)">
+    ⚠ <strong>매매 신호 아님</strong> — 검증 결과 밸류는 <strong>역방향</strong>(저PBR IC -0.095, 싼 종목이 덜 오름),
+    펀더멘털도 무효(발생액 IC 0.002). 기업 상태를 눈으로 보는 <strong>맥락 참고용</strong>입니다.
+  </div>
+</div>
+{% endif %}
+
 {# ---- 애널리스트 + EPS ---- #}
 <div class="grid2" style="margin-top:16px">
   <div class="card">

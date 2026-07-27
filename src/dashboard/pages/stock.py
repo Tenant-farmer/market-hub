@@ -115,9 +115,11 @@ def stock_page(symbol):
 
         pead = _ex.pead_context(symbol)
         risk = _ex.risk_profile(con, symbol)
+        fin_trend = _ex.financials_trend(symbol)
+        val_band = _ex.valuation_band(con, symbol)
         con.close()
         return render_template(
-            "stock.html", pead=pead, risk=risk,
+            "stock.html", pead=pead, risk=risk, fin_trend=fin_trend, val_band=val_band,
             d=d, symbol=symbol, our=our,
             monthly=_monthly_vm(d.get("monthly")) if d else None,
             sym=symbol, sym_name=(d["name"] if d else us["name"]),
@@ -139,9 +141,12 @@ def stock_page(symbol):
         filings = _ex.dart_filings(con, symbol)
         risk = _ex.risk_profile(con, symbol)
         ins_kr = _ex.insider_kr_note(con, symbol)
+        fin_trend = _ex.financials_trend(symbol, kr=True)
+        val_band = _ex.valuation_band(con, symbol, kr=True)
         con.close()
         return render_template(
             "stock_kr.html", filings=filings, risk=risk, ins_kr=ins_kr,
+            fin_trend=fin_trend, val_band=val_band,
             d=d, symbol=symbol, name=kr["name"], sector_name=kr["sector_name"], our=our,
             monthly=_monthly_vm(d.get("monthly")) if d else None,
             sym=symbol, sym_name=kr["name"], sym_prices=sym_prices, candles=candles,
