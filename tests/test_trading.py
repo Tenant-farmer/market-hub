@@ -301,7 +301,7 @@ def test_kiwoom_ratelimit_verify_then_retry(con, monkeypatch):
     from src.trading.brokers import kiwoom
     from src.trading.brokers.base import OrderRequest
 
-    monkeypatch.setattr(kiwoom, "_token", lambda: "tok")
+    monkeypatch.setattr(kiwoom, "_token", lambda force=False: "tok")
     monkeypatch.setattr(kiwoom.time, "sleep", lambda s: None)   # 테스트에선 대기 생략
 
     class R:

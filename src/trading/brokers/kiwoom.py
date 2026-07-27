@@ -11,7 +11,7 @@
 """
 import os
 import time
-from datetime import datetime, time as dtime
+from datetime import datetime, time as dtime, timedelta
 
 import requests
 
@@ -55,10 +55,27 @@ def _base() -> str:
     return "https://mockapi.kiwoom.com" if is_mock() else "https://api.kiwoom.com"
 
 
-def _token() -> str | None:
-    now = datetime.now()
-    if _TOKEN["val"] and _TOKEN["exp"] and now < _TOKEN["exp"]:
-        return _TOKEN["val"]
+def _token(force: bool = False) -> str | None:
+    """접근토큰 — **DB 공유 캐시**(kiwoom_token 테이블). 여러 프로세스(워커·대시보드·hourly)가
+    각자 발급하면 키움이 이전 토큰을 무효화(8005)하므로, 한 곳에서 발급해 DB로 공유한다.
+    force=True면 캐시 무시 강제 재발급(8005 응답 시 호출). 만료 2분 전 선제 갱신.
+    """
+    from src import db
+
+    con = db.connect()
+    con.execute("CREATE TABLE IF NOT EXISTS kiwoom_token "
+                "(id INTEGER PRIMARY KEY, mock INTEGER, token TEXT, exp TEXT)")
+    mk = 1 if is_mock() else 0
+    if not force:
+        row = con.execute("SELECT token, exp FROM kiwoom_token WHERE id=1 AND mock=?",
+                          (mk,)).fetchone()
+        if row and row["token"] and row["exp"]:
+            try:
+                if datetime.now() < datetime.fromisoformat(row["exp"]):
+                    con.close()
+                    return row["token"]
+            except ValueError:
+                pass
     r = requests.post(
         f"{_base()}/oauth2/token",
         json={"grant_type": "client_credentials",
@@ -67,11 +84,16 @@ def _token() -> str | None:
     )
     d = r.json() if r.content else {}
     tok = d.get("token") or d.get("access_token")
-    _TOKEN["val"] = tok
-    try:
-        _TOKEN["exp"] = datetime.strptime(d.get("expires_dt", ""), "%Y%m%d%H%M%S")
+    try:                                    # 실제 만료보다 2분 일찍 → 서버 무효화 타이밍 방어
+        exp = datetime.strptime(d.get("expires_dt", ""), "%Y%m%d%H%M%S")
+        exp_iso = (exp.replace(second=0) - timedelta(minutes=2)).isoformat()
     except (ValueError, TypeError):
-        _TOKEN["exp"] = None
+        exp_iso = (datetime.now() + timedelta(hours=6)).isoformat()
+    if tok:
+        con.execute("INSERT OR REPLACE INTO kiwoom_token (id, mock, token, exp) "
+                    "VALUES (1,?,?,?)", (mk, tok, exp_iso))
+        con.commit()
+    con.close()
     return tok
 
 
@@ -99,11 +121,12 @@ class KiwoomBroker(BrokerAdapter):
         ok, status, msg = False, "error", ""
         try:
             _throttle()
-            for _ in range(2):        # 1700이면 '유령접수 확인 후' 1회만 재시도 (블라인드 재시도 금지)
+            tok_retry = False
+            for _ in range(3):        # 1700=유령접수 확인 후 재시도 / 8005=토큰 강제재발급 후 재시도
                 r = requests.post(
                     f"{_base()}/api/dostk/ordr",
                     headers={"Content-Type": "application/json;charset=UTF-8",
-                             "authorization": f"Bearer {_token()}", "api-id": api_id},
+                             "authorization": f"Bearer {_token(force=tok_retry)}", "api-id": api_id},
                     json=body, timeout=15,
                 )
                 d = r.json() if r.content else {}
@@ -111,6 +134,10 @@ class KiwoomBroker(BrokerAdapter):
                 ok = rc == 0
                 status = "submitted" if ok else f"rejected(rc={rc})"
                 msg = ((d.get("ord_no") or "") + " " + (d.get("return_msg") or "")).strip()[:150]
+                if not ok and ("8005" in msg or "유효하지 않" in msg) and not tok_retry:
+                    tok_retry = True      # 토큰 무효 → 다음 루프에서 강제 재발급 후 재시도
+                    _throttle()
+                    continue
                 if ok or "1700" not in msg:
                     break
                 # 레이트리밋 거부 응답이어도 접수됐을 수 있음(실측: NAVER 이중매수) → 확인 후 재시도
