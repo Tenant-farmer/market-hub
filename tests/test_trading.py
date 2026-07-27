@@ -208,6 +208,7 @@ def test_exit_rules(con, monkeypatch):
         con.execute("INSERT INTO prices_daily (symbol, date, close) VALUES (?,?,?)",
                     ("DOWN", f"2026-06-{i + 1:02d}", 100 - i))
     con.commit()
+    monkeypatch.setenv("EXIT_STOP_PCT", "-8")            # 기본값에 의존하지 않도록 고정
     assert "손절" in exits._eval(con, {"code": "UP", "qty": 1, "plpc": -10})     # 손절 우선
     # 추세이탈(20MA)은 기본 off (백테스트상 휩쏘로 해로움)
     assert exits._eval(con, {"code": "DOWN", "qty": 1, "plpc": -1}) is None
@@ -726,3 +727,29 @@ def test_slippage_parse_and_outlier(con):
     assert r["trades"] == [] and len(r["excluded"]) == 1
     assert "이상치" in r["excluded"][0]["why"]
     assert slippage.verdict(r["summary"]) == "표본 없음"
+
+
+def test_stop_pct_per_market(monkeypatch):
+    """손절폭은 시장별로 다르다 — KR 변동성이 US의 2.2배(연율 64.3% vs 29.5%)."""
+    from src.trading import exits
+
+    monkeypatch.delenv("EXIT_STOP_PCT", raising=False)
+    monkeypatch.delenv("EXIT_STOP_PCT_KR", raising=False)
+    assert exits._stop_pct("AAPL") == -15.0          # US 기본 (496종목·11.6년 검증)
+    assert exits._stop_pct("005930") == -25.0        # KR 기본 (변동성 스케일 추정)
+
+    monkeypatch.setenv("EXIT_STOP_PCT", "-12")
+    monkeypatch.setenv("EXIT_STOP_PCT_KR", "-20")
+    assert exits._stop_pct("AAPL") == -12.0 and exits._stop_pct("069500") == -20.0
+
+
+def test_stop_applies_per_market_in_eval(con, monkeypatch):
+    """평가에도 시장별 값이 실제로 쓰이는지 — 같은 -18%가 US는 손절, KR은 유지."""
+    from src.trading import exits
+
+    monkeypatch.setenv("EXIT_STOP_PCT", "-15")
+    monkeypatch.setenv("EXIT_STOP_PCT_KR", "-25")
+    monkeypatch.setattr(exits, "_rs_mkt", lambda c, code: 10.0)      # 주도이탈 비활성
+    assert "손절" in exits._eval(con, {"code": "AAPL", "plpc": -18.0, "qty": 1})
+    assert exits._eval(con, {"code": "005930", "plpc": -18.0, "qty": 1}) is None
+    assert "손절" in exits._eval(con, {"code": "005930", "plpc": -26.0, "qty": 1})

@@ -57,9 +57,8 @@ def _held(con) -> list:
         # **단 손절은 제외하지 않는다** — 주1회 평가 사이의 폭락에 무방비였던 실사고
         # (2026-07-27: SK이터닉스 -25.2%·티에스이 -11.2%가 손절 없이 방치, thesis 점검이 발견).
         # 로테이션 백테스트에도 손절이 없었으므로 이는 백테스트 대비 '더 보수적'인 안전장치.
-        stop = _f("EXIT_STOP_PCT", -8.0)
         rot = {r["symbol"] for r in con.execute("SELECT symbol FROM rotation_slots")}
-        out = [p for p in out if p["code"] not in rot or p["plpc"] <= stop]
+        out = [p for p in out if p["code"] not in rot or p["plpc"] <= _stop_pct(p["code"])]
     except Exception as e:
         swallow("exits.rotation_filter", e)
     return out
@@ -87,9 +86,24 @@ def _rs_mkt(con, code):
         return None
 
 
+def _stop_pct(code) -> float:
+    """시장별 손절폭 — KR은 변동성이 US의 2.2배라 같은 숫자를 쓰면 안 된다.
+
+    실측(2024~, 2026-07-27): 연율변동성 중앙 KR 64.3% vs US 29.5%.
+    하루 -8% 이상 하락 빈도도 KR 2.41% vs US 0.45%로 **5.4배** — 같은 -8%가 KR에선
+    41거래일에 한 번, US에선 222거래일에 한 번 걸린다. 전혀 다른 규칙이 되는 셈.
+
+    US 값(-15%)은 496종목·11.6년 + 소멸종목 주입 스트레스로 검증됐다(scripts/stop_loss_sweep.py).
+    **KR 값은 변동성 비율로 스케일한 추정치이며 검증되지 않았다** — KR 로테이션 백테스트는
+    기저 전략 자체가 손실(CAGR -3~-5%)이라 손절폭을 최적화할 근거를 주지 못했다.
+    """
+    kr = str(code).isdigit()
+    return _f("EXIT_STOP_PCT_KR", -25.0) if kr else _f("EXIT_STOP_PCT", -15.0)
+
+
 def _eval(con, pos):
     """(사유 or None). 우선순위: 손절 → 추세이탈 → 주도이탈."""
-    if pos["plpc"] is not None and pos["plpc"] <= _f("EXIT_STOP_PCT", -8.0):
+    if pos["plpc"] is not None and pos["plpc"] <= _stop_pct(pos["code"]):
         return f"손절 {pos['plpc']:+.1f}%"
     if os.getenv("EXIT_MA_ENABLED") == "1":            # 백테스트상 해로워 기본 off
         ma = int(_f("EXIT_MA", 20))

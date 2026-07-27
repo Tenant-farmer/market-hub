@@ -202,3 +202,53 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# 생존편향 스트레스 — "얼마나 많이 망해야 좁은 손절이 이기나" (2026-07-27 사용자 제기)
+#
+# US 유니버스엔 사라진 종목이 0개라 손절의 존재 이유(파산 회피)가 표본에 없다.
+# 그래서 **인위적으로 소멸 종목을 주입**하고 주입률을 올려가며 손절폭 우열이 뒤집히는
+# 지점을 찾는다. 실제 S&P500 편출 중 '파산·소멸'은 연 0.1~0.5% 수준이므로, 뒤집히는
+# 지점이 그보다 훨씬 높다면 생존편향은 결론을 바꾸지 못한다는 뜻이다.
+#
+# 주입 방식: 매년 유니버스의 rate%를 골라 임의 시점부터 60거래일에 걸쳐 -90% 붕괴시킨다.
+CRASH_DAYS, CRASH_DEPTH = 60, -0.90
+
+
+def inject_failures(P, rate_per_year, n_days, seed=7):
+    """P 사본에 소멸 종목 주입. rate_per_year: 연간 소멸 비율(%)."""
+    rng = np.random.default_rng(seed)
+    P2 = P.copy()
+    n_sym = P.shape[1]
+    yrs = n_days / 252
+    n_fail = int(n_sym * rate_per_year / 100 * yrs)
+    for j in rng.choice(n_sym, size=min(n_fail, n_sym), replace=False):
+        start = int(rng.integers(WARM, max(WARM + 1, n_days - CRASH_DAYS)))
+        base = P2[start, j]
+        if not np.isfinite(base) or base <= 0:
+            continue
+        path = base * (1 + CRASH_DEPTH) ** (np.arange(1, CRASH_DAYS + 1) / CRASH_DAYS)
+        end = min(start + CRASH_DAYS, n_days)
+        P2[start + 1:end + 1, j] = path[:end - start]
+        P2[end:, j] = np.nan                       # 상장폐지 — 이후 거래 불가
+    return P2
+
+
+def stress_main():
+    px, idx, P, S, cols = prep()
+    n_days, n_sym = P.shape
+    print("=== 생존편향 스트레스 — 소멸 종목을 넣으면 최적 손절폭이 바뀌는가 ===")
+    print(f"  주입: 연 rate% 종목이 {CRASH_DAYS}거래일에 걸쳐 {CRASH_DEPTH*100:.0f}% 붕괴 후 상장폐지")
+    print(f"  참고: 실제 S&P500 파산·소멸은 연 0.1~0.5% 수준\n")
+    print(f"  {'소멸률/년':>9} {'-8% Calmar':>11} {'-15%':>8} {'-20%':>8} {'없음':>8} {'최적':>8}")
+    print("  " + "-" * 58)
+    for rate in (0.0, 0.5, 1.0, 2.0, 5.0, 10.0):
+        Pf = P if rate == 0 else inject_failures(P, rate, n_days)
+        cal = {}
+        for stop in (-8.0, -15.0, -20.0, None):
+            cal[stop] = stats(run(Pf, S, n_days, n_sym, stop)[0], idx)["calmar"]
+        best = max(cal, key=cal.get)
+        lab = "없음" if best is None else f"{best:.0f}%"
+        print(f"  {rate:>8.1f}% {cal[-8.0]:>11.2f} {cal[-15.0]:>8.2f} {cal[-20.0]:>8.2f} "
+              f"{cal[None]:>8.2f} {lab:>8}")
