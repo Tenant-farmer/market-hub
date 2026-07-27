@@ -820,3 +820,35 @@ def test_watchdog_alerts_are_countable_and_restart(con, monkeypatch):
     n = con.execute("SELECT COUNT(*) n FROM collector_runs WHERE collector='watchdog' "
                     "AND status='alert'").fetchone()[0]
     assert n == 1
+
+
+def test_trade_alert_pnl_block_is_collapsible(con, monkeypatch):
+    """손익 블록은 **접이식**이어야 한다 — 매 체결마다 펼쳐지면 체결 내용이 묻힌다."""
+    from src.jobs import trade_alerts
+    from src.trading import portfolio
+
+    con.execute("CREATE TABLE IF NOT EXISTS prices_daily (symbol TEXT, date TEXT, close REAL)")
+    con.execute("INSERT INTO prices_daily VALUES ('KRW=X','2026-07-28',1385)")
+    portfolio.ensure(con)
+    con.executemany("INSERT INTO portfolio_snapshots VALUES (?,?,?,?,?)", [
+        ("2026-07-23", "kiwoom", 500_000_000, 0, 100_000),
+        ("2026-07-27", "kiwoom", 499_000_000, 0, -50_000),
+        ("2026-07-28", "kiwoom", 498_000_000, 0, -80_000)])
+    con.commit()
+
+    blk = trade_alerts._pnl_block(con)
+    assert blk.startswith("<blockquote expandable>") and blk.endswith("</blockquote>")
+    assert "오늘 -1,000,000원" in blk                   # 전일 대비
+    assert "누적 -2,000,000원" in blk                   # 개시일 대비
+    assert "07-23~ 3일차" in blk
+
+
+def test_trade_alert_pnl_block_needs_two_days(con):
+    """스냅샷이 하루뿐이면 비교 대상이 없으므로 블록을 붙이지 않는다."""
+    from src.jobs import trade_alerts
+    from src.trading import portfolio
+
+    portfolio.ensure(con)
+    con.execute("INSERT INTO portfolio_snapshots VALUES ('2026-07-28','kiwoom',1000,0,0)")
+    con.commit()
+    assert trade_alerts._pnl_block(con) == ""

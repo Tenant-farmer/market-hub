@@ -73,6 +73,35 @@ def _sell_pnl(con, r) -> str:
     return ""
 
 
+def _pnl_block(con) -> str:
+    """손익 현황 — **접이식 인용문**으로 붙인다(텔레그램 blockquote expandable).
+
+    체결 알림의 본문은 '무엇을 얼마에 샀나'다. 계좌 손익은 유용하지만 매 체결마다 펼쳐져
+    있으면 정작 체결 내용이 묻힌다 → 기본은 접힌 채로 두고 궁금할 때만 펼치게 한다
+    (2026-07-29 사용자 제안, StockHub 알림 방식 참고).
+    """
+    try:
+        from src.trading.portfolio import pnl_summary
+
+        s = pnl_summary(con)
+    except Exception as e:
+        from src.errlog import swallow
+
+        swallow("trade_alerts.pnl", e)
+        return ""
+    if not s:
+        return ""                       # 스냅샷 2일 미만 — 비교 대상이 없다
+    return "\n".join([
+        "<blockquote expandable>📊 <b>손익 현황</b>",
+        f"• 오늘 {s['day_amt']:+,.0f}원 ({s['day_pct']:+.2f}%)",
+        f"• 누적 {s['total_amt']:+,.0f}원 ({s['total_pct']:+.2f}%) "
+        f"· {s['since'][5:]}~ {s['days']}일차",
+        f"• 미실현 {s['unrealized']:+,.0f}원",
+        f"• 총자산 {s['equity']:,.0f}원",
+        "<i>에쿼티 기준 — 입출금이 있으면 손익과 다름</i></blockquote>",
+    ])
+
+
 def notify_new_orders(con) -> int:
     """미알림 주문을 묶어 발송, 발송 수 반환. 항상 notified 마킹(재전송 방지)."""
     _ensure(con)
@@ -128,6 +157,9 @@ def notify_new_orders(con) -> int:
                     L.append(f"   ⚠ {r['status']}: {str(r['message'] or '')[:60]}")
             if total:
                 L += ["", f"합계 {_cur(total, str(items[0]['ticker']).isdigit())}"]
+            pnl = _pnl_block(con)
+            if pnl:
+                L += ["", pnl]
             notify.send("\n".join(L))
             sent += 1
     except Exception as e:
