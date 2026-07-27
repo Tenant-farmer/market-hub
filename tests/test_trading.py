@@ -822,8 +822,12 @@ def test_watchdog_alerts_are_countable_and_restart(con, monkeypatch):
     assert n == 1
 
 
-def test_trade_alert_pnl_block_is_collapsible(con, monkeypatch):
-    """손익 블록은 **접이식**이어야 한다 — 매 체결마다 펼쳐지면 체결 내용이 묻힌다."""
+def test_trade_alert_layout_pnl_open_trades_collapsed(con, monkeypatch):
+    """손익은 펼친 채로, 거래 종목은 접는다 — 로테이션은 한 번에 8종목까지 나온다.
+
+    단 **실패 건은 접지 않는다**(즉시 봐야 하는 정보). 접힌 상태에서도 규모를 알 수 있게
+    헤드라인에 건수·합계를 싣는다.
+    """
     from src.jobs import trade_alerts
     from src.trading import portfolio
 
@@ -834,17 +838,33 @@ def test_trade_alert_pnl_block_is_collapsible(con, monkeypatch):
         ("2026-07-23", "kiwoom", 500_000_000, 0, 100_000),
         ("2026-07-27", "kiwoom", 499_000_000, 0, -50_000),
         ("2026-07-28", "kiwoom", 498_000_000, 0, -80_000)])
+    con.executemany(
+        "INSERT INTO orders (client_order_id, broker, ticker, action, qty, price, status, "
+        "message, created_at) VALUES (?,?,?,?,?,?,?,?,?)", [
+            ("o1", "kiwoom", "005930", "buy", 10, 70000, "filled", "1 filled 10@70000",
+             "2026-07-28T10:00"),
+            ("o2", "kiwoom", "000660", "buy", 5, 200000, "rejected", "잔고부족",
+             "2026-07-28T10:01")])
     con.commit()
 
-    blk = trade_alerts._pnl_block(con)
-    assert blk.startswith("<blockquote expandable>") and blk.endswith("</blockquote>")
-    assert "오늘 -1,000,000원" in blk                   # 전일 대비
-    assert "누적 -2,000,000원" in blk                   # 개시일 대비
-    assert "07-23~ 3일차" in blk
+    sent = []
+    monkeypatch.setattr("src.notify.send", lambda t, **k: sent.append(t) or True)
+    assert trade_alerts.notify_new_orders(con) == 1
+    msg = sent[0]
+
+    head, _, rest = msg.split("\n", 1)[0], None, msg.split("\n", 1)[1]
+    assert "1건" in head and "700,000원" in head          # 성공 건수·합계
+    assert "실패 1" in head                                # 실패는 따로 표기
+    # 손익이 접이식 블록보다 **앞**에 = 펼쳐진 본문에 있다
+    assert rest.index("📊 <b>손익 현황</b>") < rest.index("<blockquote expandable>")
+    assert "오늘 -1,000,000원" in rest                    # 손익은 펼쳐진 본문
+    body, _, folded = rest.partition("<blockquote expandable>")
+    assert "잔고부족" in body and "000660" in body        # 실패는 접힌 블록 **밖**
+    assert "005930" in folded and folded.endswith("</blockquote>")   # 성공만 접힘
+    assert "거래 종목 1건" in folded
 
 
-def test_trade_alert_pnl_block_needs_two_days(con):
-    """스냅샷이 하루뿐이면 비교 대상이 없으므로 블록을 붙이지 않는다."""
+def test_trade_alert_pnl_needs_two_days(con):
     from src.jobs import trade_alerts
     from src.trading import portfolio
 

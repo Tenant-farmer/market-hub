@@ -74,11 +74,11 @@ def _sell_pnl(con, r) -> str:
 
 
 def _pnl_block(con) -> str:
-    """손익 현황 — **접이식 인용문**으로 붙인다(텔레그램 blockquote expandable).
+    """손익 현황 — **펼친 채로** 본문에 둔다.
 
-    체결 알림의 본문은 '무엇을 얼마에 샀나'다. 계좌 손익은 유용하지만 매 체결마다 펼쳐져
-    있으면 정작 체결 내용이 묻힌다 → 기본은 접힌 채로 두고 궁금할 때만 펼치게 한다
-    (2026-07-29 사용자 제안, StockHub 알림 방식 참고).
+    처음엔 이걸 접고 종목 목록을 펼쳤는데, 사용자 판단으로 뒤집었다: 로테이션은 한 번에
+    8종목까지 나와 목록이 길고, 정작 한눈에 보고 싶은 건 '얼마 벌었나'다.
+    → 손익은 항상 보이고, 종목 목록을 접는다(2026-07-29).
     """
     try:
         from src.trading.portfolio import pnl_summary
@@ -92,13 +92,13 @@ def _pnl_block(con) -> str:
     if not s:
         return ""                       # 스냅샷 2일 미만 — 비교 대상이 없다
     return "\n".join([
-        "<blockquote expandable>📊 <b>손익 현황</b>",
+        "📊 <b>손익 현황</b>",
         f"• 오늘 {s['day_amt']:+,.0f}원 ({s['day_pct']:+.2f}%)",
         f"• 누적 {s['total_amt']:+,.0f}원 ({s['total_pct']:+.2f}%) "
         f"· {s['since'][5:]}~ {s['days']}일차",
         f"• 미실현 {s['unrealized']:+,.0f}원",
         f"• 총자산 {s['equity']:,.0f}원",
-        "<i>에쿼티 기준 — 입출금이 있으면 손익과 다름</i></blockquote>",
+        "<i>에쿼티 기준(입출금 미보정)</i>",
     ])
 
 
@@ -127,19 +127,19 @@ def notify_new_orders(con) -> int:
         for (src, action), items in groups.items():
             head = STRAT.get(src, f"📌 {src}")
             verb = "매수" if action == "buy" else "매도"
-            L = [f"<b>{head} {verb} {len(items)}건</b>", ""]
-            total = 0.0
+            is_kr = str(items[0]["ticker"]).isdigit()
+            ok_lines, bad_lines, total = [], [], 0.0
             for r in items:
-                mark = "✅" if r["status"] in OK else "❌"
                 kr = str(r["ticker"]).isdigit()
                 name = _name(con, r["ticker"]) if kr else r["ticker"]
                 fq, fp = _fill(r["message"])                 # 실제 체결 수량·단가
                 qty = fq if fq is not None else r["qty"]
                 price = fp if fp is not None else r["price"]
                 amt = (qty * price) if (qty and price) else None
-                if amt and r["status"] in OK:
+                good = r["status"] in OK
+                if amt and good:
                     total += amt
-                line = f"{mark} <b>{name}</b>"
+                line = f"{'✅' if good else '❌'} <b>{name}</b>"
                 if kr and name != r["ticker"]:
                     line += f" ({r['ticker']})"
                 if qty:
@@ -148,18 +148,32 @@ def notify_new_orders(con) -> int:
                     line += f" @ {_cur(price, kr)}"
                 if amt:
                     line += f" = <b>{_cur(amt, kr)}</b>"
-                L.append(line)
                 # 매도면 손익, 매수면 전략 근거를 한 줄 덧붙임
                 extra = _sell_pnl(con, r) if action == "sell" else _buy_reason(con, r)
                 if extra:
-                    L.append(f"   ↳ {extra}")
-                if r["status"] not in OK:
-                    L.append(f"   ⚠ {r['status']}: {str(r['message'] or '')[:60]}")
+                    line += f"\n   ↳ {extra}"
+                if good:
+                    ok_lines.append(line)
+                else:                                        # 실패는 접지 않는다 — 즉시 봐야 함
+                    bad_lines.append(line + f"\n   ⚠ {r['status']}: "
+                                            f"{str(r['message'] or '')[:60]}")
+
+            # 헤드라인에 건수·합계를 실어 **접힌 상태에서도** 규모를 알 수 있게 한다.
+            # 합계는 성공분만 더하므로 건수도 성공분 기준 — 실패는 따로 표기해야 안 헷갈린다
+            title = f"<b>{head} {verb} {len(ok_lines)}건</b>"
             if total:
-                L += ["", f"합계 {_cur(total, str(items[0]['ticker']).isdigit())}"]
+                title += f" · {_cur(total, is_kr)}"
+            if bad_lines:
+                title += f" · <b>실패 {len(bad_lines)}</b>"
+            L = [title, ""]
             pnl = _pnl_block(con)
             if pnl:
-                L += ["", pnl]
+                L += [pnl, ""]
+            if bad_lines:                                    # 실패 건은 펼친 채로 앞에
+                L += bad_lines + [""]
+            if ok_lines:
+                L.append(f"<blockquote expandable>📋 <b>거래 종목 {len(ok_lines)}건</b>\n"
+                         + "\n".join(ok_lines) + "</blockquote>")
             notify.send("\n".join(L))
             sent += 1
     except Exception as e:
