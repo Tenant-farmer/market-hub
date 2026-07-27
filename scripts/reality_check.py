@@ -20,12 +20,14 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _bt_cache import load_cache  # noqa: E402  (짧은 캐시 가드)
 CACHE = Path(__file__).resolve().parents[1] / "data" / "us_px_cache.pkl"
 TOPK = 20
 
 
 def load():
-    px, spy = pickle.loads(CACHE.read_bytes())
+    px, spy = load_cache()
     return px.loc[:, px.notna().sum() >= 300], spy
 
 

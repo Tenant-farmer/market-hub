@@ -18,6 +18,8 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _bt_cache import load_cache  # noqa: E402  (짧은 캐시 가드)
 ROOT = Path(__file__).resolve().parents[1]
 CACHE = ROOT / "data" / "us_px_cache.pkl"
 QCACHE = ROOT / "data" / "us_quality.pkl"
@@ -25,7 +27,7 @@ TOPK, COST = 20, 0.0005
 
 
 def load_px():
-    px, spy = pickle.loads(CACHE.read_bytes())
+    px, spy = load_cache()
     return px.loc[:, px.notna().sum() >= 300], spy
 
 

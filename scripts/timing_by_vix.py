@@ -16,6 +16,8 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _bt_cache import load_cache  # noqa: E402  (짧은 캐시 가드)
 from src import db  # noqa: E402
 
 CACHE = Path(__file__).resolve().parents[1] / "data" / "us_px_cache.pkl"
@@ -30,7 +32,7 @@ def _rsi(s, n):
 
 
 def load():
-    px, spy = pickle.loads(CACHE.read_bytes())
+    px, spy = load_cache()
     px = px.loc[:, px.notna().sum() >= 300]
     con = db.connect()
     vix = pd.Series({r["date"]: r["close"] for r in con.execute(
