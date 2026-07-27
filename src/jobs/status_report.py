@@ -66,14 +66,20 @@ def build_text(con) -> str:
         L.append(f"• 가상 {lab}: {ret:+.2f}% · {r['n_open']}종목{wr}")
     L.append("")
 
-    # ---------- 어제 매매 ----------
-    y = (today - timedelta(days=1)).isoformat()
-    rows = con.execute(
-        "SELECT o.ticker, o.action, o.status, o.message, COALESCE(s.source,'') src "
-        "FROM orders o LEFT JOIN signals s ON s.id=o.signal_id "
-        "WHERE substr(o.created_at,1,10)=? ORDER BY o.id", (y,)).fetchall()
+    # ---------- 매매 (오늘 있으면 오늘, 없으면 어제) ----------
+    # 발송 시각이 16시(KR 마감 후)로 옮겨져 **당일 결산**이 본래 목적이다. 다만 아침에
+    # 보충 발송되는 경우엔 오늘 거래가 없으므로 전날을 보여준다 — 라벨로 구분한다.
+    def _trades(d):
+        return con.execute(
+            "SELECT o.ticker, o.action, o.status, o.message, COALESCE(s.source,'') src "
+            "FROM orders o LEFT JOIN signals s ON s.id=o.signal_id "
+            "WHERE substr(o.created_at,1,10)=? ORDER BY o.id", (d,)).fetchall()
+
+    rows, label = _trades(today.isoformat()), "오늘"
+    if not rows:
+        rows, label = _trades((today - timedelta(days=1)).isoformat()), "어제"
     if rows:
-        L.append(f"<b>🔄 어제 매매 {len(rows)}건</b>")
+        L.append(f"<b>🔄 {label} 매매 {len(rows)}건</b>")
         for r in rows[:8]:
             mark = "✅" if r["status"] in ("filled", "submitted", "accepted") else "❌"
             verb = "매수" if r["action"] == "buy" else "매도"

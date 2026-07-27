@@ -190,8 +190,8 @@ def test_kr_signal_reports_staleness(con):
     assert by["KR 신호진입"]["status"] == "warn" and "묵음" in by["KR 신호진입"]["detail"]
 
 
-def test_morning_reports_are_staggered(con, monkeypatch):
-    """아침 리포트 3종은 시각을 벌려 보낸다 — 한꺼번에 오면 구분이 안 된다(사용자 지적)."""
+def test_daily_reports_are_staggered(con, monkeypatch):
+    """정기 리포트 3종은 시각을 벌려 보낸다 — 한꺼번에 오면 구분이 안 된다(사용자 지적)."""
     from src.collectors import base
     from src.jobs import hourly
 
@@ -199,18 +199,22 @@ def test_morning_reports_are_staggered(con, monkeypatch):
     monkeypatch.setattr(base, "run_collector", lambda name, fn: sent.append(name))
     monkeypatch.setattr(hourly, "_ran_today", lambda c, n: n in sent)
 
-    hourly._send_morning_reports(con, 6)
-    assert sent == ["market_brief"]                    # 06시엔 시황만
-    hourly._send_morning_reports(con, 7)
-    assert sent == ["market_brief", "telegram_brief"]  # 07시엔 브리핑만
-    hourly._send_morning_reports(con, 8)
-    assert sent == ["market_brief", "telegram_brief", "status_report"]
-    hourly._send_morning_reports(con, 8)               # 재실행해도 중복 없음
-    assert len(sent) == 3
+    hourly._send_daily_reports(con, 6)
+    assert sent == []                                   # 06시엔 아직 아무것도
+    hourly._send_daily_reports(con, 7)
+    assert sent == ["market_brief"]                     # 07시 시황
+    hourly._send_daily_reports(con, 8)
+    assert sent == ["market_brief", "telegram_brief"]   # 08시 브리핑
+    hourly._send_daily_reports(con, 12)
+    assert len(sent) == 2                               # 낮엔 추가 발송 없음
+    hourly._send_daily_reports(con, 16)
+    assert sent[-1] == "status_report"                  # 16시 상태(KR 마감 후)
+    hourly._send_daily_reports(con, 17)
+    assert len(sent) == 3                               # 재실행해도 중복 없음
 
 
-def test_morning_reports_catch_up_on_missed_slot(con, monkeypatch):
-    """PC가 꺼져 06·07시를 놓쳤으면 마지막 슬롯(08시)에서 몰아서 — 조용한 누락 방지."""
+def test_daily_reports_catch_up_on_missed_slot(con, monkeypatch):
+    """PC가 꺼져 슬롯을 놓쳤으면 다음 실행에서 보충 — 조용한 누락 방지."""
     from src.collectors import base
     from src.jobs import hourly
 
@@ -218,5 +222,23 @@ def test_morning_reports_catch_up_on_missed_slot(con, monkeypatch):
     monkeypatch.setattr(base, "run_collector", lambda name, fn: sent.append(name))
     monkeypatch.setattr(hourly, "_ran_today", lambda c, n: n in sent)
 
-    hourly._send_morning_reports(con, 8)
+    hourly._send_daily_reports(con, 18)                 # 하루 종일 꺼져 있다가 18시에 첫 실행
     assert sent == ["market_brief", "telegram_brief", "status_report"]
+
+
+def test_status_report_prefers_today_trades(con, monkeypatch):
+    """16시 발송이 기본이므로 **당일** 매매를 보여준다(없으면 전날, 라벨로 구분)."""
+    from datetime import date as _d
+
+    con.execute("INSERT INTO portfolio_snapshots(date,broker,equity,pl) "
+                "VALUES ('2026-07-28','kiwoom',1000,0)")
+    y = (_d.today() - timedelta(days=1)).isoformat()
+    con.execute("INSERT INTO orders(client_order_id,broker,ticker,action,qty,status,created_at) "
+                "VALUES ('a','kiwoom','005930','buy',1,'filled',?)", (f"{y}T10:00",))
+    assert "어제 매매 1건" in status_report.build_text(con)
+
+    con.execute("INSERT INTO orders(client_order_id,broker,ticker,action,qty,status,created_at) "
+                "VALUES ('b','kiwoom','AAPL','sell',1,'filled',?)",
+                (f"{_d.today().isoformat()}T14:00",))
+    txt = status_report.build_text(con)
+    assert "오늘 매매 1건" in txt and "어제" not in txt.split("🔄")[1][:30]
