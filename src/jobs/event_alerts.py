@@ -151,7 +151,60 @@ def check(con, now: datetime | None = None) -> int:
                 pass
             _send(msg)
             n += 1
+
+    # ---- 실적 발표 '후' 서프라이즈 해석 (PEAD) ----
+    n += _pead_alerts(con, watch, now)
     return n
+
+
+def _pead_alerts(con, watch, now) -> int:
+    """발표 1~3일 뒤 실제 EPS를 확인해 서프라이즈 등급 + PEAD 기대치 알림.
+
+    근거(scripts/pead_backtest.py, 1,797 이벤트): 서프라이즈 상위20%는 63일 시장초과 +9.4%
+    (승률 59%), 하위20%는 -6.2%(승률 32%). **미스 회피가 더 강한 엣지** — 보유 중이면 경고.
+    """
+    sent = 0
+    for sym in watch:
+        row = con.execute(
+            "SELECT symbol, date FROM earnings_calendar WHERE symbol=? AND date <= ? "
+            "AND date >= ? ORDER BY date DESC LIMIT 1",
+            (sym, now.date().isoformat(),
+             (now - timedelta(days=3)).date().isoformat())).fetchone()
+        if not row:
+            continue
+        key = f"pead_{row['date']}_{sym}"
+        if con.execute("SELECT 1 FROM collector_runs WHERE collector='event_alert' "
+                       "AND message=? LIMIT 1", (key,)).fetchone():
+            continue
+        try:                                        # 실제 발표치 조회 (yfinance)
+            import yfinance as yf
+
+            hist = yf.Ticker(sym).earnings_history
+            if hist is None or len(hist) == 0:
+                continue
+            h = hist.reset_index().iloc[-1]
+            act, est = h.get("epsActual"), h.get("epsEstimate")
+            if act is None or est is None or not est:
+                continue
+            surprise = (float(act) - float(est)) / abs(float(est))
+        except Exception:
+            continue
+        if not _once(con, key):
+            continue
+        held = con.execute("SELECT 1 FROM rotation_slots WHERE symbol=? LIMIT 1",
+                           (sym,)).fetchone() is not None
+        if surprise >= 0.25:                        # 상위20% 수준
+            tag, exp = "🟢 대형 서프라이즈", "PEAD: 63일 평균 +9.4% (승률 59%)"
+        elif surprise <= -0.04:                     # 하위20% 수준
+            tag = "🔴 실적 미스"
+            exp = ("PEAD: 63일 평균 -6.2% (승률 32%) — " +
+                   ("<b>보유 중, 하방 주의</b>" if held else "신규 진입 회피 권장"))
+        else:
+            tag, exp = "⚪ 컨센서스 부합", "PEAD 신호 약함"
+        _send(f"{tag} <b>{sym}</b> — 실제 {act} vs 예상 {est} "
+              f"({surprise:+.1%})\n{exp}")
+        sent += 1
+    return sent
 
 
 if __name__ == "__main__":

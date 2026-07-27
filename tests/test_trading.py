@@ -626,6 +626,7 @@ def test_event_alerts(con, monkeypatch):
     con.execute("CREATE TABLE IF NOT EXISTS rotation_slots (symbol TEXT)")
     con.execute("INSERT INTO rotation_slots VALUES ('AMD')")
     con.commit()
+    monkeypatch.setattr(event_alerts, "_pead_alerts", lambda *a: 0)   # PEAD는 별도 테스트
     assert event_alerts.check(con, now2) == 1
     assert "AMD" in sent[-1] and "0.92" in sent[-1]
     assert event_alerts.check(con, now2) == 0            # 멱등
@@ -667,3 +668,35 @@ def test_risk_var_cvar_kelly():
     mc = monte_carlo(r, days=252, sims=500)
     assert mc["mdd_median"] < 0 and 0 <= mc["prob_loss"] <= 100
     assert mc["ret_p5"] < mc["ret_median"] < mc["ret_p95"]
+
+
+def test_pead_alert_grading(con, monkeypatch):
+    """PEAD 알림: 서프라이즈 등급별 문구 + 보유 시 하방 경고 + 멱등."""
+    from datetime import datetime
+
+    from src.jobs import event_alerts
+
+    con.execute("CREATE TABLE IF NOT EXISTS collector_runs "
+                "(collector TEXT, run_at TEXT, status TEXT, rows INT, message TEXT)")
+    con.execute("CREATE TABLE IF NOT EXISTS earnings_calendar "
+                "(symbol TEXT, date TEXT, when_time TEXT, name TEXT, eps_forecast TEXT)")
+    con.execute("CREATE TABLE IF NOT EXISTS rotation_slots (symbol TEXT)")
+    con.execute("INSERT INTO earnings_calendar VALUES ('XYZ','2026-07-26','','X Corp','1.00')")
+    con.execute("INSERT INTO rotation_slots VALUES ('XYZ')")     # 보유 중
+    con.commit()
+    sent = []
+    monkeypatch.setattr(event_alerts, "_send", lambda t: sent.append(t))
+    now = datetime.fromisoformat("2026-07-27T06:00:00")
+
+    class _FakeTicker:
+        def __init__(self, s): pass
+        @property
+        def earnings_history(self):
+            import pandas as pd
+            return pd.DataFrame([{"epsActual": 0.90, "epsEstimate": 1.00}])   # -10% 미스
+
+    import yfinance
+    monkeypatch.setattr(yfinance, "Ticker", _FakeTicker)
+    assert event_alerts._pead_alerts(con, ["XYZ"], now) == 1
+    assert "실적 미스" in sent[0] and "보유 중" in sent[0]        # 보유 경고
+    assert event_alerts._pead_alerts(con, ["XYZ"], now) == 0      # 멱등
