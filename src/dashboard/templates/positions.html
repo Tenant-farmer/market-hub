@@ -114,12 +114,18 @@
   </div>
   {% if us and us.holdings %}
   <table>
-    <thead><tr><th style="text-align:left">종목</th><th style="text-align:left">전략</th><th>수량</th><th>매입가</th><th>현재가</th><th>평가금액</th><th>평가손익</th><th>수익률</th></tr></thead>
+    <thead><tr><th style="text-align:left">종목</th><th style="text-align:left">전략</th><th style="text-align:left" title="최근 90일 내부자(임원·주요주주) 순매수. 매수는 강한 신호, 매도는 약한 신호(분산·세금·옵션행사)">내부자</th><th>수량</th><th>매입가</th><th>현재가</th><th>평가금액</th><th>평가손익</th><th>수익률</th></tr></thead>
     <tbody>
     {% for h in us.holdings %}
       <tr>
         <td style="text-align:left"><strong>{{ h.code }}</strong></td>
         <td style="text-align:left"><span class="reason">{{ h.tag }}</span></td>
+        <td style="text-align:left">
+          {% if h.insider %}
+            {% if h.insider.net > 0 %}<span class="pos" title="매수 {{ h.insider.n_buyers }}명">🟢 +${{ "{:,.0f}".format(h.insider.net/1000) }}K</span>
+            {% else %}<span class="neg" title="매도 {{ h.insider.n_sellers }}명">🔴 -${{ "{:,.0f}".format(-h.insider.net/1000) }}K</span>{% endif %}
+          {% else %}<span style="color:var(--muted)">–</span>{% endif %}
+        </td>
         <td>{{ '%g'|format(h.qty) }}</td>
         <td>${{ "{:,.2f}".format(h.avg) }}</td>
         <td>${{ "{:,.2f}".format(h.cur) }}</td>

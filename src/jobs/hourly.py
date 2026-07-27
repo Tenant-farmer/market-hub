@@ -95,6 +95,11 @@ def main():
         # 가상장부(모멘텀·단타 A/B) 하루 1회 — US 마감 후 종가 기준 처리
         if wd < 6 and not _ran_today(con, "virtual"):
             base.run_collector("virtual", _run_virtual)
+        # 내부자 매매(Form 4) 하루 1회 — 감시 종목 임원·주요주주 지분변동
+        if wd < 6 and not _ran_today(con, "insider"):
+            from src.collectors import insider
+
+            base.run_collector("insider", lambda c: insider.collect(c, days=30))
         # 전일 마감 확정치 하루 1회 (실패 시 다음 시간에 재시도됨)
         if wd < 6 and not _ran_today(con, "us_stocks"):
             base.run_collector("us_sectors", lambda c: us_sectors.collect(c, days=7))

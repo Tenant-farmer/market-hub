@@ -184,6 +184,12 @@ def positions():
     tag = _tagger(con)
     trend = _trend(con)
     virt = _virtual_view(con)
+    try:                                    # 보유 종목 내부자 흐름 (Form 4)
+        from src.collectors.insider import net_flow
+
+        insider = {r["symbol"]: r for r in net_flow(con, days=90)}
+    except Exception:
+        insider = {}
     con.close()
 
     gate = {
@@ -200,6 +206,7 @@ def positions():
     us = _alpaca_view()
     for h in (kr or {}).get("holdings", []) + (us or {}).get("holdings", []):
         h["tag"] = tag(h["code"])
+        h["insider"] = insider.get(h["code"])         # 내부자 순매수/매도 (US만 있음)
     # 전략별 합계 (원화 환산 — 환율 없으면 US분 생략)
     rate = (trend or {}).get("rate")
     strat = {}
