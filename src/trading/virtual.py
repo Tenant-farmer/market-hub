@@ -22,7 +22,10 @@ import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[2]
-CACHE = ROOT / "data" / "us_px_cache.pkl"
+# 라이브 운영용 캐시 (최근 400일). **백테스트용 장기 캐시(us_px_cache.pkl)와 분리** —
+# 예전엔 같은 파일을 써서 refresh_prices가 11년 검증 캐시를 400일로 덮어쓰는 사고가 있었음.
+CACHE = ROOT / "data" / "us_px_live.pkl"
+BT_CACHE = ROOT / "data" / "us_px_cache.pkl"        # 검증 전용 (스크립트가 읽음, 여기선 안 씀)
 SEED = 100_000.0
 SLOTS = 10
 STRATS = ("momentum", "meanrev")
