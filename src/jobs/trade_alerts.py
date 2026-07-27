@@ -130,8 +130,10 @@ def notify_new_orders(con) -> int:
                 L += ["", f"합계 {_cur(total, str(items[0]['ticker']).isdigit())}"]
             notify.send("\n".join(L))
             sent += 1
-    except Exception:
-        pass                                           # 발송 실패해도 마킹은 진행(무한 재시도 방지)
+    except Exception as e:
+        from src.errlog import swallow
+
+        swallow("trade_alerts.notify", e)                                           # 발송 실패해도 마킹은 진행(무한 재시도 방지)
     con.executemany("UPDATE orders SET notified=1 WHERE id=?", [(i,) for i in ids])
     con.commit()
     return sent

@@ -23,4 +23,17 @@
     </tbody>
   </table>
 </div>
+
+{# ---- 삼킨 예외 (조용한 실패 감지 — 2026-07-27 알림 0건 사고 대응) ---- #}
+{% if swallowed %}
+<div class="card" style="margin-top:16px;border-color:var(--warn)">
+  <div class="sub" style="margin-bottom:6px;color:var(--warn)">⚠ 조용한 실패 {{ swallowed|length }}건 (48시간)
+    <span style="color:var(--muted)">— 예외를 삼켜 흐름은 유지됐지만 기능이 죽었을 수 있음</span></div>
+  {% for s in swallowed %}
+  <div class="reason" style="padding:2px 0">
+    <span style="color:var(--muted);margin-right:8px">{{ s.at }}</span>{{ s.msg }}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
 {% endblock %}

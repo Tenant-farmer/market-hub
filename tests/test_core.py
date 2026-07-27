@@ -101,3 +101,26 @@ def test_guru_normalize_units():
     # 달러 단위 제출은 그대로
     h2, tot2 = _normalize_units([("C1", "N1", 5e10, 10)])
     assert tot2 == 5e10 and h2[0][2] == 5e10
+
+
+def test_all_routes_smoke(monkeypatch):
+    """전 라우트 200 + 최소 크기 — 리팩토링 안전망.
+
+    2026-07-27 실사고: queries.py 모듈 분리 시 config import 누락으로 /kr-leaders만 500.
+    단위 테스트는 통과했으나 라우트 스모크가 잡았다. 페이지 추가 시 여기에도 추가할 것.
+    """
+    import os
+
+    monkeypatch.delenv("DASH_PASS", raising=False)
+    from src.dashboard import create_app
+
+    cl = create_app().test_client()
+    routes = ["/", "/us", "/kr", "/leaders", "/kr-leaders", "/stocks",
+              "/signals?mkt=kr", "/signals?mkt=us", "/gurus", "/calendar",
+              "/fed", "/positions", "/health"]
+    failed = []
+    for r in routes:
+        resp = cl.get(r)
+        if resp.status_code != 200 or len(resp.data) < 500:
+            failed.append(f"{r}({resp.status_code})")
+    assert not failed, f"라우트 실패: {failed}"

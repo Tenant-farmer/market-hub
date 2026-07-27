@@ -63,8 +63,10 @@ def _alert(text: str):
         from src import notify
 
         notify.send(text)
-    except Exception:
-        pass
+    except Exception as e:
+        from src.errlog import swallow
+
+        swallow("reconcile.alert", e)
 
 
 def _kiwoom_sync(con) -> list:
