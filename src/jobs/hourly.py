@@ -150,6 +150,11 @@ def main():
             from src.jobs import briefing
 
             base.run_collector("telegram_brief", briefing.send_briefing)
+        # 상태 리포트 — 시장(브리핑)과 별개로 '내 시스템·계좌' 요약 (브리핑 직후)
+        if not _ran_today(con2, "status_report"):
+            from src.jobs import status_report
+
+            base.run_collector("status_report", status_report.send_report)
         con2.close()
 
 
