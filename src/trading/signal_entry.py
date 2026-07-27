@@ -19,6 +19,16 @@ from src.dashboard.queries_macro import kr_signal, vix_signal
 from src.trading import ensure_tables
 
 
+def symbols() -> set[str]:
+    """신호진입 대상 심볼 — **여기가 단일 정의처**.
+
+    exits가 이 집합을 보고 손절·주도이탈을 건너뛴다(역발상 진입엔 손절이 해로움).
+    각자 os.getenv 기본값을 따로 쓰면 조용히 어긋난다 — 실제로 어긋났었다(2026-07-27).
+    """
+    return {s for s in (os.getenv("SIGNAL_ENTRY_SYMBOL", "SPY"),
+                        os.getenv("SIGNAL_ENTRY_SYMBOL_KR", "069500")) if s}
+
+
 def _emit_one(con, sym, qty, label, dry):
     today = date.today().isoformat()
     h = "signal-entry-" + hashlib.sha256(f"{sym}-{today}".encode()).hexdigest()[:20]

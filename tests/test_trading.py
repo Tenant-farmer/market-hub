@@ -753,3 +753,43 @@ def test_stop_applies_per_market_in_eval(con, monkeypatch):
     assert "손절" in exits._eval(con, {"code": "AAPL", "plpc": -18.0, "qty": 1})
     assert exits._eval(con, {"code": "005930", "plpc": -18.0, "qty": 1}) is None
     assert "손절" in exits._eval(con, {"code": "005930", "plpc": -26.0, "qty": 1})
+
+
+def test_signal_entry_no_stop_uses_time_exit(con, monkeypatch):
+    """역발상 진입엔 손절을 걸지 않는다 — 대신 63거래일 시간청산.
+
+    실측(scripts/signal_entry_stop.py, KOSPI 2010~26 green 215일): 손절 없음 승률 81.8% vs
+    -8% 66.4% vs -5% 50.9%. '공포에 산다'는 논거에 손절을 걸면 전략과 정면 충돌한다.
+    """
+    from src.trading import exits
+
+    monkeypatch.setenv("SIGNAL_ENTRY_SYMBOL_KR", "069500")
+    monkeypatch.setenv("EXIT_STOP_PCT_KR", "-25")
+    con.execute("CREATE TABLE IF NOT EXISTS prices_daily (symbol TEXT, market TEXT, date TEXT, "
+                "open REAL, high REAL, low REAL, close REAL, volume REAL, value REAL, "
+                "PRIMARY KEY(symbol, date))")
+
+    pos = {"code": "069500", "qty": 1, "plpc": -30.0}      # -25% 손절선을 한참 넘긴 상태
+    assert exits._eval(con, pos) is None                    # 그래도 손절하지 않는다
+
+    con.execute("INSERT INTO signals(hash,received_at,source,ticker,action,qty,strategy,raw,"
+                "status) VALUES ('h','2026-01-05T09:00','signal-entry','069500','buy',1,'x',"
+                "'{}','done')")
+    sid = con.execute("SELECT id FROM signals").fetchone()["id"]
+    con.execute("INSERT INTO orders(client_order_id,signal_id,broker,ticker,action,qty,status,"
+                "created_at) VALUES ('c',?,'kiwoom','069500','buy',1,'filled','2026-01-05T09:10')",
+                (sid,))
+    for i in range(40):                                     # 매수 후 40거래일 → 아직 미만료
+        con.execute("INSERT INTO prices_daily(symbol,date,close) VALUES ('069500',?,300)",
+                    (f"2026-02-{i + 1:02d}" if i < 28 else f"2026-03-{i - 27:02d}",))
+    assert exits._eval(con, pos) is None
+    assert exits._signal_matured(con, "069500") == (False, 40)
+
+    for i in range(30):                                     # 총 70거래일 → 만료
+        con.execute("INSERT INTO prices_daily(symbol,date,close) VALUES ('069500',?,300)",
+                    (f"2026-04-{i + 1:02d}",))
+    assert "보유만료" in exits._eval(con, pos)
+
+    # 일반 종목은 영향 없음 — 손절 그대로 작동
+    monkeypatch.setattr(exits, "_rs_mkt", lambda c, code: 10.0)
+    assert "손절" in exits._eval(con, {"code": "005930", "qty": 1, "plpc": -30.0})
