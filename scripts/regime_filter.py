@@ -19,6 +19,18 @@
 판정 기준: **MDD가 유의미하게 줄고 CAGR 감소가 그보다 작아야** 채택(Calmar 개선).
 단순히 CAGR이 낮아지면 기각 — 낙폭 회피를 명분으로 수익을 버리는 건 흔한 자기기만.
 
+**결론: 전부 기각 (2026-07-27).** C(전량현금)가 phase=0에서 Calmar 1.04→1.19로 좋아 보였으나,
+**리밸런스 위상 21가지를 돌리자 10/21 승 — 동전던지기**였다. 평균 Calmar는 무필터 0.92 vs
+필터 0.89로 오히려 열세. phase=0이 21개 중 가장 운 좋은 케이스였다.
+
+원인은 사용자 지적("이평선을 살짝 걸치고 왔다갔다") 그대로다: 200MA 하락구간 31회 중
+**24회(77%)가 20거래일 이하**, 중앙값 4일, 1일짜리가 5번. 21일 간격 평가는 이 깜빡임을
+대부분 못 보고 지나치므로, 이득처럼 보인 것은 '긴 하락구간에 우연히 걸렸다'는 샘플링 운이다.
+
+**교훈: 리밸런스 기반 전략을 검증할 땐 위상(phase)을 반드시 흔들 것.** 구간 분할과 파라미터
+민감도만으로는 이 착시를 못 잡는다(둘 다 통과했었다). 부수 발견: 무필터 기준선조차 위상에 따라
+CAGR 30.5~44.6% · Calmar 0.63~1.42로 흔들린다 — 우리 백테스트 점추정은 그만큼 노이즈를 품고 있다.
+
 실행: python scripts/regime_filter.py
 """
 import sys
@@ -59,7 +71,7 @@ def regime_flags(spy, px_index):
     return above.fillna(True), confirmed.fillna(True)
 
 
-def run(px, score, trend, mode, above, confirmed):
+def run(px, score, trend, mode, above, confirmed, phase: int = 0):
     """mode: none / no_entry / to_cash / no_entry_confirm. 자본곡선 반환."""
     dates = px.index
     daily = px.pct_change().fillna(0)
@@ -67,7 +79,7 @@ def run(px, score, trend, mode, above, confirmed):
     for i in range(len(dates)):
         if i > 0 and held:
             equity *= (1 + daily.iloc[i][held].mean())
-        if i >= WARM and i % REBAL == 0:
+        if i >= WARM and (i - phase) % REBAL == 0:
             ok = True
             if mode == "no_entry":
                 ok = bool(above.iloc[i])
@@ -170,6 +182,24 @@ def main():
     print(f"  → {wins}/{len(spans)} 구간에서 우세"
           + ("  (과반 미달 = 특정 사건 의존 의심)" if wins <= len(spans) / 2 else ""))
 
+    # ── 강건성 3: 리밸런스 위상 (결정적) ──────────────────────────────────
+    # 이 테스트가 결론을 뒤집었다. 사용자 지적("이평선을 살짝 걸치고 왔다갔다")이 맞았다:
+    # 200MA 하락구간 31회 중 24회(77%)가 20거래일 이하고 중앙값이 4일이다. 21일마다만
+    # 평가하는 로테이션은 그 깜빡임을 **대부분 못 보고 지나친다** — 즉 필터의 이득은
+    # '긴 하락구간에 우연히 걸린' 샘플링 운이다. 평가일을 하루씩 밀면 그게 드러난다.
+    print("\n  === 강건성 ③ 리밸런스 위상 (언제 평가하느냐에 좌우되는가) ===")
+    ph_base, ph_filt, wins_ph = [], [], 0
+    for ph in range(REBAL):
+        a = stats(run(px, score, trend, "none", above, confirmed, phase=ph))
+        b = stats(run(px, score, trend, best_mode, above, confirmed, phase=ph))
+        ph_base.append(a["calmar"]); ph_filt.append(b["calmar"])
+        wins_ph += b["calmar"] > a["calmar"]
+    print(f"  Calmar 평균 — 무필터 {np.mean(ph_base):.2f}"
+          f" (범위 {min(ph_base):.2f}~{max(ph_base):.2f})"
+          f" · 후보 {np.mean(ph_filt):.2f} (범위 {min(ph_filt):.2f}~{max(ph_filt):.2f})")
+    print(f"  후보가 이긴 위상: {wins_ph}/{REBAL}"
+          + ("  ← 동전던지기. 개선처럼 보인 건 샘플링 운" if wins_ph <= REBAL * 0.6 else ""))
+
     # ── 강건성 2: 파라미터 민감도 (200이라는 숫자에 맞춘 건가) ────────────
     print("\n  === 강건성 ② MA 기간 민감도 ===")
     print(f"  {'MA':>5} {'CAGR':>8} {'MDD':>8} {'Calmar':>7}")
@@ -196,8 +226,10 @@ def main():
     strict = min(cal) > base["calmar"]
     print("\n  === 판정 ===")
     print(f"  구간 우세 {wins}/{len(spans)} · Calmar 편차 {spread:.2f} · "
-          f"MA150~300 전부 우위 {plateau} · MA100 포함 전부 우위 {strict}")
-    robust = wins > len(spans) / 2 and spread <= 0.3 and plateau
+          f"MA150~300 전부 우위 {plateau} · MA100 포함 {strict} · "
+          f"위상 우세 {wins_ph}/{REBAL}")
+    robust = (wins > len(spans) / 2 and spread <= 0.3 and plateau
+              and wins_ph > REBAL * 0.6)      # 위상 조건이 결정적
     if robust:
         print(f"  {best_label}: 조건부 채택 — 단, **MA≥150에서만** 유효(100은 휩쏘로 열세)")
         print("  주의: 전량현금은 보유를 통째로 비우는 큰 행동 변화 →  사람 승인 후 적용")

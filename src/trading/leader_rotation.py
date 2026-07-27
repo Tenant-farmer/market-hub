@@ -101,29 +101,6 @@ def _emit(con, sym, action, qty, note, wk):
          qty, note[:60], "{}", slippage.emit_ref(con, sym)))
 
 
-def _bear_market(con, market: str) -> bool:
-    """레짐 필터 — 벤치마크가 200MA 아래면 '하락장'. **기본 off**(REGIME_FILTER_MA 미설정).
-
-    검증(scripts/regime_filter.py, 496종목·11.6년): 200MA 이탈 시 전량현금이
-    CAGR -0.5%p로 MDD -34.8%→-30.1%, Sharpe 1.21→1.27, 최악의 해 -26.1%→-5.5%.
-    구간 3/4 우세 · MA 150~300 전 구간 기준선 우위(고원) — 단 **MA=100은 휩쏘로 열세**라
-    150 미만은 쓰지 말 것. '진입중단(보유유지)'은 오히려 MDD 악화(-43%) — 직전 승자를
-    끌어안고 내려가기 때문. 그래서 반쪽 조치가 아니라 전량현금이어야 한다.
-
-    켜기: .env 에 REGIME_FILTER_MA=200 (0 또는 미설정이면 비활성)
-    """
-    try:
-        ma = int(os.getenv("REGIME_FILTER_MA", "0"))
-    except (TypeError, ValueError):
-        return False
-    if ma < 150:                     # 100은 검증에서 열세 — 실수로 낮게 넣는 것을 막는다
-        return False
-    from src.dashboard.queries_macro import regime
-
-    r = regime(con, "1001" if market == "KR" else "SPY", ma_days=ma)
-    return bool(r and not r["above"])
-
-
 def evaluate(con=None, dry=False, market: str = "US") -> dict | None:
     """시장별 주 1회 로테이션 평가 → 진입/이탈 신호 emit. dry면 무엇을 할지만."""
     own = con is None
@@ -158,23 +135,20 @@ def evaluate(con=None, dry=False, market: str = "US") -> dict | None:
                     con.execute("DELETE FROM rotation_slots WHERE symbol=?", (sym,))
                     del slots[sym]
 
-        bear = _bear_market(con, market)               # 레짐 필터 (기본 off)
-        out["regime"] = "bear" if bear else "bull"
-
         for sym, s in list(slots.items()):             # 이탈: rank > EXIT_K 또는 순위 소멸
             rk = ranks.get(sym)
-            if bear or rk is None or pd.isna(rk) or rk > EXIT_K:
+            if rk is None or pd.isna(rk) or rk > EXIT_K:
                 out["exits"].append({"symbol": sym, "qty": s["qty"],
                                      "rank": None if rk is None or pd.isna(rk) else int(rk)})
                 if not dry:
-                    why = ("레짐 이탈(200MA 아래) 전량현금" if bear else
-                           f"로테이션 이탈 rank {int(rk) if rk == rk and rk is not None else '소멸'}")
-                    _emit(con, sym, "sell", s["qty"], why, wk)
+                    _emit(con, sym, "sell", s["qty"],
+                          f"로테이션 이탈 rank {int(rk) if rk == rk and rk is not None else '소멸'}",
+                          wk)
                     con.execute("DELETE FROM rotation_slots WHERE symbol=?", (sym,))
                 del slots[sym]
 
         for sym in ranks.sort_values().index:          # 진입: 빈 슬롯을 top ENTER_K로
-            if bear or len(slots) >= N_SLOTS or ranks[sym] > ENTER_K:
+            if len(slots) >= N_SLOTS or ranks[sym] > ENTER_K:
                 break
             if sym in slots:
                 continue
