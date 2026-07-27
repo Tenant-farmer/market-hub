@@ -726,3 +726,46 @@ def test_slippage_parse_and_outlier(con):
     assert r["trades"] == [] and len(r["excluded"]) == 1
     assert "이상치" in r["excluded"][0]["why"]
     assert slippage.verdict(r["summary"]) == "표본 없음"
+
+
+def test_regime_filter_default_off_and_guard(con, monkeypatch):
+    """레짐 필터는 기본 off이고, 검증에서 열세였던 MA<150은 실수로도 켜지지 않아야 한다."""
+    from src.trading import leader_rotation as lr
+
+    calls = []
+    monkeypatch.setattr("src.dashboard.queries_macro.regime",
+                        lambda c, s, ma_days=200: calls.append(ma_days) or {"above": False})
+
+    monkeypatch.delenv("REGIME_FILTER_MA", raising=False)
+    assert lr._bear_market(con, "US") is False and not calls    # 미설정 = 조회조차 안 함
+
+    monkeypatch.setenv("REGIME_FILTER_MA", "100")               # 휩쏘로 열세였던 설정
+    assert lr._bear_market(con, "US") is False and not calls
+
+    monkeypatch.setenv("REGIME_FILTER_MA", "200")
+    assert lr._bear_market(con, "US") is True and calls == [200]
+
+    monkeypatch.setenv("REGIME_FILTER_MA", "이상한값")
+    assert lr._bear_market(con, "US") is False
+
+
+def test_regime_filter_liquidates_all(con, monkeypatch):
+    """켜졌을 때: 순위와 무관하게 전량 청산 + 신규 진입 없음(반쪽 조치는 MDD를 악화시킨다)."""
+    import pandas as pd
+
+    from src.trading import leader_rotation as lr
+
+    lr._ensure(con)
+    con.execute("INSERT INTO rotation_slots (symbol, qty, entered_at, entry_rank, entry_px) "
+                "VALUES ('AAA', 3, '2026-07-01', 1, 100)")     # rank 1 = 원래는 계속 보유
+    monkeypatch.setattr(lr, "_ranks", lambda c, m: (
+        pd.Series({"AAA": 1.0, "BBB": 2.0}), pd.Series({"AAA": 100.0, "BBB": 50.0})))
+    monkeypatch.setattr(lr, "_live_symbols", lambda m: {"AAA"})
+    monkeypatch.setattr(lr, "_bear_market", lambda c, m: True)
+
+    out = lr.evaluate(con, dry=False, market="US")
+    assert out["regime"] == "bear"
+    assert [e["symbol"] for e in out["exits"]] == ["AAA"]       # rank 1인데도 청산
+    assert out["enters"] == []                                  # 신규 진입 차단
+    row = con.execute("SELECT strategy FROM signals WHERE ticker='AAA'").fetchone()
+    assert "레짐 이탈" in row["strategy"]
