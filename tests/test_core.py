@@ -127,3 +127,21 @@ def test_all_routes_smoke(monkeypatch):
         if resp.status_code != 200 or len(resp.data) < 500:
             failed.append(f"{r}({resp.status_code})")
     assert not failed, f"라우트 실패: {failed}"
+
+
+def test_db_path_override(tmp_path, monkeypatch):
+    """MARKET_HUB_DB로 DB 경로를 갈아끼울 수 있어야 한다 (복구 리허설·VPS 이관용)."""
+    from src import db as db_mod
+
+    target = tmp_path / "sub" / "restored.db"
+    monkeypatch.setenv("MARKET_HUB_DB", str(target))
+    con = db_mod.connect()
+    con.execute("CREATE TABLE t (x INT)")
+    con.execute("INSERT INTO t VALUES (1)")
+    con.commit()
+    con.close()
+    assert target.exists()                       # 상위 폴더까지 생성
+
+    monkeypatch.delenv("MARKET_HUB_DB")
+    assert db_mod.connect().execute(
+        "SELECT name FROM sqlite_master WHERE name='t'").fetchone() is None   # 운영 DB 무영향
