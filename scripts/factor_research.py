@@ -119,12 +119,18 @@ def main():
             ir = m / s if s else 0
             t = ir * np.sqrt(len(ic))
             sp, _ = quantile_spread(fac, fwd)
-            # 업계 통념: |IC|>0.02 유의미, IR>0.3 안정, |t|>2 통계적 유의
-            verdict = ("강함" if abs(m) >= 0.03 and abs(t) >= 2 else
-                       "유효" if abs(m) >= 0.02 and abs(t) >= 2 else
+            # 업계 표준(Vibe-Trading factor-research 스킬 기준):
+            #   IC>0.03 기본 예측력 / >0.05 강함 / >0.10 look-ahead 의심
+            #   IR>0.5 안정적 / IC>0비율 55%+ 방향 안정 (50% 미만은 사용 불가)
+            #   ※ 음수 IC도 역방향 팩터로 유효 — 절댓값으로 판정
+            pos = (ic > 0).mean()
+            stable = pos >= 0.55 or pos <= 0.45          # 방향 일관성(역방향 포함)
+            verdict = ("의심" if abs(m) >= 0.10 else
+                       "강함" if abs(m) >= 0.05 and abs(ir) >= 0.5 and stable else
+                       "유효" if abs(m) >= 0.03 and stable else
                        "약함" if abs(t) >= 2 else "무의미")
             print(f"{name:26}{m:>+9.4f}{s:>8.3f}{ir:>+7.2f}{t:>+8.1f}"
-                  f"{(ic > 0).mean():>9.0%}{(sp or 0) * 100:>+11.2f}%{verdict:>8}")
+                  f"{pos:>9.0%}{(sp or 0) * 100:>+11.2f}%{verdict:>8}")
 
     # 최고 팩터의 분위 단조성 (63일)
     print(f"\n{'='*78}\n분위별 평균 forward 63일 수익 (단조 증가면 팩터가 건강)\n{'='*78}")
@@ -135,8 +141,12 @@ def main():
         _, qm = quantile_spread(factors[name], fwd63)
         if qm is not None:
             print(f"  {name:26}" + "  ".join(f"Q{i+1} {v*100:+5.1f}%" for i, v in enumerate(qm)))
-    print("\n판정 기준: IC평균 |0.03|+ & t>2 = 강함 / |0.02|+ = 유효 / t<2 = 통계적 무의미")
+    print("\n판정(업계 표준): |IC|≥0.05 & |IR|≥0.5 & 방향안정 = 강함 / |IC|≥0.03 = 유효")
+    print("                |IC|≥0.10 = look-ahead 의심 / IC>0비율 45~55% = 방향 불안정")
+    print("※ 음수 IC도 역방향 팩터로 유효 — 절댓값 판정")
     print("※ 정적 퀄리티는 look-ahead 편향 있어 IC가 과대 — 참고용")
+    print("⚠ IC는 단조 관계만 측정 — 모멘텀처럼 U자(양극단 우수) 팩터는 IC가 0에 가깝게 나온다.")
+    print("  반드시 위 '분위별 수익' 단조성과 함께 판단할 것 (2026-07-27 실제 함정)")
 
 
 if __name__ == "__main__":
