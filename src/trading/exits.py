@@ -48,9 +48,14 @@ def _held(con) -> list:
                                 "plpc": float(p.get("unrealized_plpc", 0) or 0) * 100})
         except Exception:
             pass
-    try:                                # 로테이션 슬롯은 자체 이탈규칙(rank>30)이 관리 → 청산 제외
+    try:
+        # 로테이션 슬롯은 자체 이탈규칙(rank>30, 주1회)이 관리 → 추세·주도이탈 청산에서 제외.
+        # **단 손절은 제외하지 않는다** — 주1회 평가 사이의 폭락에 무방비였던 실사고
+        # (2026-07-27: SK이터닉스 -25.2%·티에스이 -11.2%가 손절 없이 방치, thesis 점검이 발견).
+        # 로테이션 백테스트에도 손절이 없었으므로 이는 백테스트 대비 '더 보수적'인 안전장치.
+        stop = _f("EXIT_STOP_PCT", -8.0)
         rot = {r["symbol"] for r in con.execute("SELECT symbol FROM rotation_slots")}
-        out = [p for p in out if p["code"] not in rot]
+        out = [p for p in out if p["code"] not in rot or p["plpc"] <= stop]
     except Exception:
         pass
     return out

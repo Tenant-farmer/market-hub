@@ -192,6 +192,23 @@ def write_today(con) -> str:
                 L.append(f"  - 청산: {c['symbol']} {c['pnl_pct']:+.1f}% ({c['exit_reason']})")
         L.append("")
 
+    # ---- 전략 논거 점검 (전제가 아직 유효한가) ----
+    try:
+        from src.analytics.thesis import check_theses
+
+        th = check_theses(con)
+        if th:
+            icon = {"ok": "✅", "warn": "⚠️", "broken": "🔴"}
+            n_bad = sum(1 for x in th if x["status"] != "ok")
+            L.append(f"## 전략 논거 점검 ({len(th) - n_bad}/{len(th)} 유효)")
+            for x in th:                       # 변수명 t 금지 — 상단 날짜 변수와 충돌
+                L.append(f"- {icon.get(x['status'], '?')} **{x['strategy']}**: {x['detail']}")
+                if x["status"] == "broken":
+                    L.append(f"  - 위반된 전제: {x['assumption']}")
+            L.append("")
+    except Exception:
+        pass
+
     # ---- 시장 한 줄 ----
     bits = []
     for sym, nm, f in (("1001", "KOSPI", "{:,.0f}"), ("2001", "KOSDAQ", "{:,.0f}"),
