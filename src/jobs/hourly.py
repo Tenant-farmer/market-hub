@@ -48,6 +48,9 @@ def main():
     print(f"--- hourly {now.isoformat(timespec='seconds')} ---")
 
     kr_session = wd < 5 and 900 <= hm <= 1615
+    # KRX 파생지수 게시는 장 마감 후 — 아침 06시 수집만으론 당일치를 못 받아 VKOSPI가
+    # 1거래일 밀린 채 KR 매수신호가 돌았다(2026-07-27 실측). 저녁에 한 번 더 받는다.
+    kr_evening = wd < 5 and 1800 <= hm <= 2059
     # US 정규장: KST 22:30~다음날 05:00 (서머타임 아닐 땐 23:30~06:00 — 여유 있게 잡음)
     us_session = (wd < 5 and hm >= 2230) or (wd in (1, 2, 3, 4, 5) and hm <= 615)
     morning = 600 <= hm <= 859
@@ -81,6 +84,9 @@ def main():
         base.run_collector("kr_stocks", lambda c: kr_stocks.collect(c, days=3))
         base.run_collector("kr_flows", lambda c: kr_flows.collect(c, days=90))
         ran_kr = True
+
+    if kr_evening and not _ran_today(con, "vkospi_pm"):
+        base.run_collector("vkospi_pm", lambda c: vkospi.collect(c, days=3))
 
     if us_session:
         base.run_collector("us_sectors", lambda c: us_sectors.collect(c, days=5))
@@ -116,7 +122,7 @@ def main():
         # 한은 거시 (기준금리·국고금리·CPI) 하루 1회 — 키 없으면 0건 통과
         if wd < 6 and not _ran_today(con, "ecos"):
             base.run_collector("ecos", ecos.collect)
-        # VKOSPI (KRX Open API) 하루 1회 — 키 없으면 0건 통과
+        # VKOSPI (KRX Open API) — 아침 1회는 '지난 며칠 보정'용. 당일치는 저녁 슬롯에서
         if wd < 6 and not _ran_today(con, "vkospi"):
             base.run_collector("vkospi", vkospi.collect)
         if wd == 0 and not _ran_today(con, "kr_map"):

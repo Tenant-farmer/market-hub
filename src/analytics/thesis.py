@@ -75,12 +75,17 @@ def check_theses(con) -> list[dict]:
             recent = con.execute(
                 "SELECT COUNT(*) n FROM orders WHERE ticker='069500' AND created_at >= ?",
                 ((date.today() - timedelta(days=7)).isoformat(),)).fetchone()["n"]
+            # VKOSPI가 밀리면 값은 맞아도 '지금'의 신호가 아니다 (2026-07-27: KRX 게시가
+            # 아침 수집보다 늦어 1거래일 묵은 값으로 buy가 계속 떴다). 4일 = 주말+공휴일 여유
+            stale = ks.get("stale_days")
+            outdated = stale is not None and stale > 4
             out.append({
                 "strategy": "KR 신호진입",
                 "assumption": "green(VKOSPI≥30 & 낙폭-5%)이면 KODEX200을 매일 분할 매수한다",
-                "status": "ok" if (not green or recent > 0) else "broken",
+                "status": "warn" if outdated else ("ok" if (not green or recent > 0) else "broken"),
                 "detail": (f"신호 {ks['state']} (VKOSPI {ks['vkospi']:.1f}, 낙폭 "
                            f"{ks['kospi_dd']:+.1f}%) · 최근 7일 매수 {recent}건"
+                           + (f" — VKOSPI {stale}일 전 값(묵음)" if outdated else "")
                            + (" — green인데 매수 없음!" if green and recent == 0 else "")),
             })
     except Exception as e:

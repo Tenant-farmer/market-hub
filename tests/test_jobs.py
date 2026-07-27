@@ -172,3 +172,19 @@ def test_thesis_balance_none_is_not_silent(con, monkeypatch):
 
     by = {t["strategy"]: t for t in thesis.check_theses(con)}
     assert by["청산 규칙"]["status"] == "warn" and "잔고 조회 실패" in by["청산 규칙"]["detail"]
+
+
+def test_kr_signal_reports_staleness(con):
+    """묵은 VKOSPI로 신호가 도는 걸 드러내야 한다 (2026-07-27: 게시 지연으로 1거래일 밀림)."""
+    from src.dashboard.queries_macro import kr_signal
+
+    today = date.today()
+    _px(con, "VKOSPI", [((today - timedelta(days=9)).isoformat(), 35.0)])
+    _px(con, "1001", [((today - timedelta(days=i)).isoformat(), 3000.0 - i)
+                      for i in range(260, 0, -1)])
+    sig = kr_signal(con)
+    assert sig["stale_days"] == 9                       # 신호에 신선도가 실려 나온다
+
+    from src.analytics import thesis
+    by = {t["strategy"]: t for t in thesis.check_theses(con)}
+    assert by["KR 신호진입"]["status"] == "warn" and "묵음" in by["KR 신호진입"]["detail"]

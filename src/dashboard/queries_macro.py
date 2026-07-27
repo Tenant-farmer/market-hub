@@ -215,8 +215,25 @@ def kr_signal(con):
         sig = {"state": "neutral", "emoji": "⚪", "cls": "",
                "label": "KR 평시 — 신호 없음",
                "desc": "VKOSPI 30 미만"}
-    sig.update({"vkospi": v, "kospi_dd": dd})
+    sig.update({"vkospi": v, "kospi_dd": dd, "stale_days": _stale_days(con, "VKOSPI")})
     return sig
+
+
+def _stale_days(con, sym: str) -> int | None:
+    """마지막 수집일이 며칠 전인가 — 묵은 값으로 신호가 도는 걸 드러내기 위함.
+
+    2026-07-27 실측: KRX가 당일 지수를 아침 수집 시각(06:07) 이후에 게시해 VKOSPI가
+    1거래일 밀린 채 KR 매수신호가 계속 'buy'를 냈다. 값 자체는 맞지만 **최신이 아니었다**.
+    """
+    try:
+        r = con.execute("SELECT MAX(date) d FROM prices_daily WHERE symbol=? AND close IS NOT NULL",
+                        (sym,)).fetchone()
+        if not r or not r["d"]:
+            return None
+        from datetime import date
+        return (date.today() - date.fromisoformat(r["d"])).days
+    except Exception:
+        return None
 
 
 def regime(con, sym: str, ma_days: int = 200):
