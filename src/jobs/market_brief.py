@@ -29,11 +29,22 @@ ROWS = [
 GROUP_TITLE = {"bond": "<b>미 국채</b>", "oil": "<b>유가</b>"}
 
 
+CRYPTO = {"BTC-USD", "ETH-USD"}          # 24/7 거래 — 주말도 정상 종가
+
+
 def _quote(con, sym):
-    """최근 2거래일 종가 → (현재, 변화, 변화율%). 없으면 None."""
+    """최근 2거래일 종가 → (현재, 변화, 변화율%). 없으면 None.
+
+    **주말 행을 배제한다**(크립토 제외). yfinance가 일부 선물·환율에 일요일 부분장 행을
+    주는데, 심볼마다 있고 없고가 달라 같은 표 안에서 비교 기준이 어긋난다 —
+    2026-07-28 실측: WTI만 일요일(07-26) 행이 있어 -4.03%로 표시됐으나 금요일 대비
+    실제는 -8.06%였고, 같은 날 브렌트는 -9.32%로 나와 표가 자기모순이었다.
+    """
     rows = con.execute(
         "SELECT date, close FROM prices_daily WHERE symbol=? AND close IS NOT NULL "
-        "ORDER BY date DESC LIMIT 2", (sym,)).fetchall()
+        "ORDER BY date DESC LIMIT 8", (sym,)).fetchall()
+    if sym not in CRYPTO:
+        rows = [r for r in rows if date.fromisoformat(r["date"]).weekday() < 5]
     if len(rows) < 2:
         return None
     cur, prev = rows[0]["close"], rows[1]["close"]

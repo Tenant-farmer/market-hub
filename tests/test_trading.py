@@ -794,3 +794,29 @@ def test_signal_entry_no_stop_uses_time_exit(con, monkeypatch):
     # 일반 종목은 영향 없음 — 손절 그대로 작동
     monkeypatch.setattr(exits, "_rs_mkt", lambda c, code: 10.0)
     assert "손절" in exits._eval(con, {"code": "005930", "qty": 1, "plpc": -30.0})
+
+
+def test_watchdog_alerts_are_countable_and_restart(con, monkeypatch):
+    """실사고 회귀(2026-07-28): 엔진이 2시간 38분 정지했는데 판정은 '경보 0건 ✅'였다.
+
+    원인 ①워치독이 status='ok'로 기록해 verdict/status_report의 status='alert' 집계에서
+    빠졌다 ②감지만 하고 재시작하지 않아 정지가 그대로 누적됐다.
+    """
+    from src import notify
+    from src.jobs import watchdog
+
+    con.execute("CREATE TABLE collector_runs "
+                "(collector TEXT, run_at TEXT, status TEXT, rows INT, message TEXT)")
+    con.commit()
+    sent, restarted = [], []
+    monkeypatch.setattr(notify, "send", lambda t: sent.append(t) or True)
+    monkeypatch.setattr(watchdog, "_restart_task", lambda n: restarted.append(n) or "재시작 성공")
+
+    assert watchdog.check_engine(con) == 1
+    assert restarted == ["market-hub-engine"]          # 감지에서 끝나지 않고 되살린다
+    assert "자동 재시작 성공" in sent[0]
+
+    # 판정·리포트가 세는 조건(status='alert')으로 실제로 잡히는가
+    n = con.execute("SELECT COUNT(*) n FROM collector_runs WHERE collector='watchdog' "
+                    "AND status='alert'").fetchone()[0]
+    assert n == 1

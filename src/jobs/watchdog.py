@@ -34,22 +34,43 @@ def _alert_once(con, kind: str, text: str) -> bool:
     except Exception:
         pass                                    # 텔레그램 실패해도 기록은 남김
     con.execute(
+        # status='alert' — 판정·리포트가 경보를 셀 수 있게 한다. 이전엔 'ok'로 기록해
+        # verdict가 "경보 0건 ✅"로 보고했다(2026-07-28 실사고: 엔진 2시간 38분 정지를 놓침)
         "INSERT INTO collector_runs (collector, run_at, status, rows, message) "
-        "VALUES ('watchdog', ?, 'ok', 0, ?)",
+        "VALUES ('watchdog', ?, 'alert', 0, ?)",
         (datetime.now().isoformat(timespec="seconds"), kind),
     )
     con.commit()
     return True
 
 
+def _restart_task(name: str) -> str:
+    """Windows 작업 스케줄러 작업을 재기동. 반환: 결과 요약 문자열.
+
+    감지만 하고 되살리지 않으면 무인 가동에서 정지가 그대로 누적된다 —
+    2026-07-28 실사고: 엔진이 05:51에 죽고 07:05에 경보가 갔지만 아무도 재시작하지 않아
+    **2시간 38분간 자동매매가 멈춰 있었다**(사용자가 아침에 발견).
+    """
+    import subprocess
+
+    try:
+        subprocess.run(["schtasks", "/End", "/TN", name], capture_output=True, timeout=20)
+        r = subprocess.run(["schtasks", "/Run", "/TN", name], capture_output=True, timeout=20)
+        return "재시작 성공" if r.returncode == 0 else f"재시작 실패(rc={r.returncode})"
+    except Exception as e:
+        return f"재시작 시도 실패({type(e).__name__})"
+
+
 def check_engine(con) -> int:
-    """hourly에서 호출 — 엔진 워커 생존 확인. 경보 발송 시 1."""
+    """hourly에서 호출 — 엔진 워커 생존 확인 → **자동 재시작 후** 경보. 경보 발송 시 1."""
     m = float(os.getenv("ENGINE_STALL_MIN", "45"))
-    if _stalled(con, "engine", m):
-        return int(_alert_once(
-            con, "engine_stall",
-            f"🚨 워치독: 엔진 워커 하트비트가 {int(m)}분째 없음 — market-hub-engine 확인 필요"))
-    return 0
+    if not _stalled(con, "engine", m):
+        return 0
+    res = _restart_task(os.getenv("ENGINE_TASK_NAME", "market-hub-engine"))
+    return int(_alert_once(
+        con, "engine_stall",
+        f"🚨 워치독: 엔진 워커 하트비트가 {int(m)}분째 없음 → 자동 {res}\n"
+        f"다음 hourly(1시간 뒤)에도 경보가 오면 수동 확인 필요"))
 
 
 def check_hourly(con) -> int:
