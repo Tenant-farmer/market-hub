@@ -132,8 +132,8 @@ def earnings_upcoming(con, days: int = 7, limit: int = 14) -> list[dict]:
 # ---------------------------------------------------------------- 실적 캘린더 그리드
 # Earnings Whispers 스타일: 주간은 요일×발표시점 격자, 월간은 달력 격자.
 # 리스트 뷰는 "다음에 뭐가 오나"를, 격자 뷰는 "이번 주 어느 날이 무거운가"를 보여준다.
-SLOTS = [("time-pre-market", "🌅 장전"), ("time-after-hours", "🌙 장마감 후"),
-         ("time-not-supplied", "· 미정")]
+SLOTS = [("time-pre-market", "🌅", "장전"), ("time-after-hours", "🌙", "장마감 후"),
+         ("time-not-supplied", "🕐", "미정")]
 WEEK_CELL_MAX = 20          # 셀당 표시 상한 (성수기엔 하루 90건까지 나온다)
 
 
@@ -166,7 +166,7 @@ def earnings_week(con, offset: int = 0) -> dict:
     days = [mon + timedelta(days=i) for i in range(5)]
     rows = _earn_rows(con, days[0], days[-1])
 
-    grid = {s: {d.isoformat(): [] for d in days} for s, _ in SLOTS}
+    grid = {s: {d.isoformat(): [] for d in days} for s, _, _ in SLOTS}
     for r in rows:
         slot = r["when_time"] if r["when_time"] in grid else "time-not-supplied"
         if r["date"] in grid[slot]:
@@ -178,11 +178,11 @@ def earnings_week(con, offset: int = 0) -> dict:
         "days": [{"date": d.isoformat(), "md": f"{d.month}/{d.day}",
                   "dow": "월화수목금"[i], "today": d == today} for i, d in enumerate(days)],
         # 셀당 상위 시총 WEEK_CELL_MAX개만 — 하루 90개가 찍히면 격자가 아니라 벽이 된다
-        "slots": [{"key": k, "label": lab,
+        "slots": [{"key": k, "icon": ic, "label": lab,
                    "cells": [{"syms": grid[k][d.isoformat()][:WEEK_CELL_MAX],
                               "more": max(0, len(grid[k][d.isoformat()]) - WEEK_CELL_MAX)}
                              for d in days]}
-                  for k, lab in SLOTS],
+                  for k, ic, lab in SLOTS],
         "total": len(rows),
     }
 
