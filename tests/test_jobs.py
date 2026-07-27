@@ -188,3 +188,35 @@ def test_kr_signal_reports_staleness(con):
     from src.analytics import thesis
     by = {t["strategy"]: t for t in thesis.check_theses(con)}
     assert by["KR 신호진입"]["status"] == "warn" and "묵음" in by["KR 신호진입"]["detail"]
+
+
+def test_morning_reports_are_staggered(con, monkeypatch):
+    """아침 리포트 3종은 시각을 벌려 보낸다 — 한꺼번에 오면 구분이 안 된다(사용자 지적)."""
+    from src.collectors import base
+    from src.jobs import hourly
+
+    sent = []
+    monkeypatch.setattr(base, "run_collector", lambda name, fn: sent.append(name))
+    monkeypatch.setattr(hourly, "_ran_today", lambda c, n: n in sent)
+
+    hourly._send_morning_reports(con, 6)
+    assert sent == ["market_brief"]                    # 06시엔 시황만
+    hourly._send_morning_reports(con, 7)
+    assert sent == ["market_brief", "telegram_brief"]  # 07시엔 브리핑만
+    hourly._send_morning_reports(con, 8)
+    assert sent == ["market_brief", "telegram_brief", "status_report"]
+    hourly._send_morning_reports(con, 8)               # 재실행해도 중복 없음
+    assert len(sent) == 3
+
+
+def test_morning_reports_catch_up_on_missed_slot(con, monkeypatch):
+    """PC가 꺼져 06·07시를 놓쳤으면 마지막 슬롯(08시)에서 몰아서 — 조용한 누락 방지."""
+    from src.collectors import base
+    from src.jobs import hourly
+
+    sent = []
+    monkeypatch.setattr(base, "run_collector", lambda name, fn: sent.append(name))
+    monkeypatch.setattr(hourly, "_ran_today", lambda c, n: n in sent)
+
+    hourly._send_morning_reports(con, 8)
+    assert sent == ["market_brief", "telegram_brief", "status_report"]

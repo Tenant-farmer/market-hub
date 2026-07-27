@@ -42,6 +42,38 @@ def _run_virtual(con) -> int:
     return sum(len(v["opened"]) + len(v["closed"]) for v in r.values())
 
 
+# 아침 리포트 3종 — **시간을 벌려서** 보낸다. 셋 다 한 번에 오면 어느 게 뭔지 구분이
+# 안 된다(2026-07-28 사용자 지적: 실측 06:09에 3건 동시 도착).
+# 순서는 이야기 흐름대로: 밤사이 시장 → 우리 분석 → 내 계좌·시스템 (KR 개장 09:00 직전 마무리)
+MORNING_REPORTS = [
+    (6, "market_brief", "시황 브리핑 (지수·유가·금리 — 미국장 마감 직후)"),
+    (7, "telegram_brief", "아침 브리핑 (주도주·섹터·수급 — 우리 관점)"),
+    (8, "status_report", "상태 리포트 (계좌·전제·검증 — 개장 1시간 전)"),
+]
+LAST_MORNING_HOUR = 8       # 이 시각엔 아직 안 나간 것을 몰아서 보낸다(누락 방지)
+
+
+def _send_morning_reports(con, hour: int) -> None:
+    """정해진 시각에 하나씩. 슬롯을 놓쳤으면 마지막 슬롯에서 보충한다."""
+    for h, name, _desc in MORNING_REPORTS:
+        if _ran_today(con, name):
+            continue
+        if hour != h and hour < LAST_MORNING_HOUR:
+            continue                            # 아직 이 리포트의 시각이 아님
+        if name == "market_brief":
+            from src.jobs import market_brief
+
+            base.run_collector(name, market_brief.send_brief)
+        elif name == "telegram_brief":
+            from src.jobs import briefing
+
+            base.run_collector(name, briefing.send_briefing)
+        else:
+            from src.jobs import status_report
+
+            base.run_collector(name, status_report.send_report)
+
+
 def main():
     now = datetime.now()
     wd, hm = now.weekday(), now.hour * 100 + now.minute
@@ -152,20 +184,7 @@ def main():
 
     if morning and os.getenv("TELEGRAM_BOT_TOKEN") and os.getenv("TELEGRAM_CHAT_ID"):
         con2 = db.connect()
-        if not _ran_today(con2, "telegram_brief"):
-            from src.jobs import briefing
-
-            base.run_collector("telegram_brief", briefing.send_briefing)
-        # 시황 브리핑 — 표준 포맷(3대지수·크립토·환율·금리·금·유가 + 주요 이슈)
-        if not _ran_today(con2, "market_brief"):
-            from src.jobs import market_brief
-
-            base.run_collector("market_brief", market_brief.send_brief)
-        # 상태 리포트 — 시장과 별개로 '내 시스템·계좌' 요약
-        if not _ran_today(con2, "status_report"):
-            from src.jobs import status_report
-
-            base.run_collector("status_report", status_report.send_report)
+        _send_morning_reports(con2, now.hour)
         con2.close()
 
 
