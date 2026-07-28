@@ -37,15 +37,17 @@
 → 판정 전 `python -m src.analytics.attribution` · `risk` · `thesis` 실행해 수치 확보
 
 ## 운영 절차
-- **재시작(코드 반영 시)** — `schtasks /End`는 pythonw 자식을 못 죽여 **고아 워커**가 남을 수 있음
-  (실측: 이중 워커 발생). 반드시 명령줄 매칭 kill 후 재기동:
+- **재시작(코드 반영 시)** — `schtasks /End`는 pythonw 자식을 못 죽여 **고아**가 남는다.
+  손으로 패턴을 치지 말 것. 작업 정의에서 스크립트 경로를 읽어 잡는 스크립트를 쓴다:
   ```powershell
-  Get-CimInstance Win32_Process -Filter "Name like 'pythonw%'" |
-    Where-Object { $_.CommandLine -match 'src\.trading\.worker' } |
-    ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
-  schtasks /End /TN market-hub-engine; schtasks /Run /TN market-hub-engine
+  .\.venv\Scripts\python.exe scripts\restart.py dashboard   # engine|tunnel|hourly|all
   ```
-  (대시보드도 동일 요령 — `app\.py` 매칭)
+  기존 프로세스 PID·기동 확인·포트 바인드까지 출력하므로 **"재시작했다"를 눈으로 확인**할 것.
+
+  > 왜 스크립트인가 (2026-07-28): 문서에 `app\.py` 매칭이라고 적혀 있었는데도 즉흥으로
+  > `-match 'dashboard'`를 쳤고, 대시보드 명령줄엔 그 문자열이 없어 **한 번도 안 죽었다**.
+  > 옛 프로세스가 포트 5000을 쥔 채 새 인스턴스는 바인드 실패로 즉사 →
+  > 코드를 고치고 재시작했다고 믿는 동안 **옛 코드가 계속 돌았다**. 손매칭은 또 어긋난다.
 - **긴급 정지**: `.env`에 `KILL_SWITCH=1` + 워커 재시작 (paper·미무장이라 이미 실돈 안전)
 - 게이트 해제: `.env`에서 `EXIT_ENABLED`/`SIGNAL_ENTRY_ENABLED` 제거 후 워커 재시작
 
