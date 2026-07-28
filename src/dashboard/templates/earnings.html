@@ -9,7 +9,6 @@
 <div class="pills" style="margin-bottom:12px">
   <a href="/earnings?view=week" class="{{ 'on' if view == 'week' }}">주간</a>
   <a href="/earnings?view=month" class="{{ 'on' if view == 'month' }}">월간</a>
-  <a href="/earnings?view=list" class="{{ 'on' if view == 'list' }}">목록</a>
 </div>
 
 {% macro navbar(param, cur, prev_lo, next_hi, label, total) %}
@@ -110,20 +109,26 @@
   </div>
 </div>
 <div class="sub" style="margin-top:8px">셀마다 시총 상위 4개만 표시 · 주간 뷰에서 전체 확인</div>
-{% else %}
+{% endif %}
+
+<h2 style="font-size:15px;margin:22px 0 8px">📋 {{ grid.label }} 전체 {{ grid.list|length }}건</h2>
 <div class="card" style="overflow-x:auto">
-  {% if earnings %}
+  {% if grid.list %}
   <table>
     <thead><tr>
-      <th>발표</th><th>날짜</th><th>티커</th><th style="text-align:left">회사</th><th>시점</th><th>EPS 예상</th><th>시총</th>
+      <th>날짜</th><th>발표</th><th></th><th style="text-align:left">티커</th>
+      <th style="text-align:left">회사</th><th>시점</th><th>EPS 예상</th><th>시총</th>
     </tr></thead>
     <tbody>
-    {% for e in earnings %}
-      <tr>
-        <td><span class="{{ 'neg' if e.dd == 0 else 'hot' if e.dd == 1 }}" style="{{ 'font-weight:700' if e.dd <= 1 }}">{{ e.dday }}</span></td>
-        <td style="color:var(--muted)">{{ e.date[5:] }}</td>
-        <td style="text-align:left"><a href="/stock/{{ e.symbol }}" style="color:var(--accent);text-decoration:none"><strong>{{ e.symbol }}</strong></a></td>
-        <td style="text-align:left;color:var(--ink-2)">{{ e.name[:30] }}</td>
+    {% for e in grid.list %}
+      <tr{{ ' style=opacity:.45' if e.past }}>
+        <td style="color:var(--muted)">{{ e.md }} ({{ e.dow }})</td>
+        <td><span class="{{ 'neg' if e.dd == 0 else 'hot' if e.dd == 1 }}"
+             style="{{ 'font-weight:700' if 0 <= e.dd <= 1 }}">{{ e.dday }}</span></td>
+        <td style="width:34px">{{ tick(e) }}</td>
+        <td style="text-align:left"><a href="/stock/{{ e.symbol }}"
+             style="color:var(--accent);text-decoration:none;{{ 'font-weight:700' if e.big }}">{{ e.symbol }}</a></td>
+        <td style="text-align:left;color:var(--ink-2)">{{ e.name }}</td>
         <td>{{ e.time_ko }}</td>
         <td>{{ e.eps }}</td>
         <td style="color:var(--muted)">{{ e.mcap_fmt }}</td>
@@ -132,8 +137,7 @@
     </tbody>
   </table>
   {% else %}
-  <div style="color:var(--muted);padding:20px;text-align:center">예정된 실적이 없습니다</div>
+  <div style="color:var(--muted);padding:20px;text-align:center">이 기간에 예정된 실적이 없습니다</div>
   {% endif %}
 </div>
-{% endif %}
 {% endblock %}

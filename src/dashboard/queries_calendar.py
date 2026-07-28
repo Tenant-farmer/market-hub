@@ -171,6 +171,31 @@ def _logo_kind(r) -> str:
     return "light"
 
 
+def _list_rows(rows, today) -> list[dict]:
+    """격자 아래에 붙는 전체 목록 — 날짜·시각·시총 순.
+
+    격자는 셀당 상한(주간 20·월간 4)이 있어 다 못 담는다. 별도 '목록' 탭으로 두는 대신
+    같은 화면 아래에 붙여 **한 번에 다 보이게** 한다(2026-07-29 사용자 요청).
+    """
+    from datetime import date as _d
+
+    out = []
+    for r in sorted(rows, key=lambda x: (x["date"], x["when_time"] or "", -(x["mcap"] or 0))):
+        dd = (_d.fromisoformat(r["date"]) - today).days
+        out.append({
+            "symbol": r["symbol"], "name": (r["name"] or "")[:34], "date": r["date"],
+            "md": r["date"][5:], "dow": "월화수목금토일"[_d.fromisoformat(r["date"]).weekday()],
+            "dday": "오늘" if dd == 0 else "내일" if dd == 1 else (
+                f"{dd}일 후" if dd > 0 else f"{-dd}일 전"),
+            "dd": dd, "time_ko": EARN_TIME_KO.get(r["when_time"], "미정"),
+            "eps": r["eps_forecast"] or "–",
+            "mcap_fmt": fmt_usd(r["mcap"]) if r["mcap"] else "–",
+            "big": bool(r["mcap"] and r["mcap"] >= 2e11),
+            "logo": _logo_kind(r), "past": r["date"] < today.isoformat(),
+        })
+    return out
+
+
 def _cell(r, today):
     return {"symbol": r["symbol"], "name": (r["name"] or "")[:28],
             "eps": r["eps_forecast"] or "–",
@@ -201,6 +226,7 @@ def earnings_week(con, offset: int = 0) -> dict:
         "days": [{"date": d.isoformat(), "md": f"{d.month}/{d.day}",
                   "dow": "월화수목금"[i], "today": d == today} for i, d in enumerate(days)],
         # 셀당 상위 시총 WEEK_CELL_MAX개만 — 하루 90개가 찍히면 격자가 아니라 벽이 된다
+        "list": _list_rows(rows, today),
         "slots": [{"key": k, "icon": ic, "label": lab,
                    "cells": [{"syms": grid[k][d.isoformat()][:WEEK_CELL_MAX],
                               "more": max(0, len(grid[k][d.isoformat()]) - WEEK_CELL_MAX)}
@@ -239,5 +265,6 @@ def earnings_month(con, offset: int = 0) -> dict:
         "kind": "month", "offset": offset,
         "label": f"{y}년 {m}월" + (" (이번 달)" if offset == 0 else ""),
         "dows": list("월화수목금"), "weeks": weeks,
+        "list": _list_rows([r for r in rows if r["date"][:7] == f"{y}-{m:02d}"], today),
         "total": sum(len(v) for k, v in by_day.items() if k[:7] == f"{y}-{m:02d}"),
     }

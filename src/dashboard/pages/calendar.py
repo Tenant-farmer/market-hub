@@ -28,20 +28,15 @@ def calendar_legacy():
 
 @bp.get("/earnings")
 def earnings_page():
-    view = request.args.get("view", "week")
-    if view not in ("list", "week", "month"):
-        view = "week"
+    # 목록은 별도 탭이 아니라 **격자 아래**에 붙는다(2026-07-29 사용자 요청) →
+    # 뷰는 주간·월간 둘뿐. 옛 view=list 링크는 주간으로 흡수
+    view = "month" if request.args.get("view") == "month" else "week"
     con = db.connect()
-    earnings = grid = None
-    if view == "list":
-        earnings = queries.earnings_upcoming(con, days=45, limit=120)
-    elif view == "week":
-        grid = queries.earnings_week(con, _int_arg("w", -4, 6))
-    else:
-        grid = queries.earnings_month(con, _int_arg("m", -1, 1))
+    grid = (queries.earnings_month(con, _int_arg("m", -1, 1)) if view == "month"
+            else queries.earnings_week(con, _int_arg("w", -4, 6)))
     fw = queries.fed_watch(con)
     con.close()
-    return render_template("earnings.html", view=view, earnings=earnings, grid=grid,
+    return render_template("earnings.html", view=view, grid=grid,
                            fed_next=fw["next"] if fw else None)
 
 

@@ -119,6 +119,7 @@ def test_all_routes_smoke(monkeypatch):
               "/signals?mkt=kr", "/signals?mkt=us", "/gurus", "/econ", "/econ?major=1",
               "/earnings", "/earnings?view=week&w=-1",
               "/earnings?view=month", "/earnings?view=month&m=1", "/earnings?view=list",
+              "/earnings?view=week&w=1",
               "/fed", "/positions", "/health"]
     failed = []
     for r in routes:
