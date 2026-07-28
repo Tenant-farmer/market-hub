@@ -66,19 +66,13 @@ def _is_noise(event: str) -> bool:
     return any(k.lower() in event.lower() for k in NOISE)
 
 
-# 국기를 이미 붙이므로 이름 앞의 국가 수식어는 중복이다 — 떼면 폭도 줄고 읽기도 낫다
-# ('🇩🇪 German Unemployment Change' → '🇩🇪 Unemployment Change')
-COUNTRY_PREFIX = ("German ", "Chinese ", "Japanese ", "Spanish ", "Italian ", "French ",
-                  "S&P Global South Korea ", "S&P Global ", "HCOB Eurozone ", "HCOB ")
-
-
 def _short(event: str) -> str:
-    """이벤트명 정리 — 중복 국가 접두어 제거 후 절단(단어 경계 우선)."""
+    """이벤트명 절단 — 단어 경계 우선, 넘치면 말줄임.
+
+    국가 접두어('German CPI')는 국기와 중복이라 한 번 떼봤으나, 사용자 판단으로 되돌렸다
+    (2026-07-29) — 국기는 작아서 훑을 때 놓치기 쉽고 이름에 명시돼 있는 편이 확실하다.
+    """
     e = event.strip()
-    for pre in COUNTRY_PREFIX:
-        if e.startswith(pre):
-            e = e[len(pre):]
-            break
     if len(e) <= EVENT_MAX:
         return e
     cut = e[:EVENT_MAX]
