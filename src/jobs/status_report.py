@@ -79,14 +79,23 @@ def build_text(con) -> str:
     if not rows:
         rows, label = _trades((today - timedelta(days=1)).isoformat()), "어제"
     if rows:
-        L.append(f"<b>🔄 {label} 매매 {len(rows)}건</b>")
-        for r in rows[:8]:
-            mark = "✅" if r["status"] in ("filled", "submitted", "accepted") else "❌"
+        # 목록은 접는다 — 로테이션 날엔 10건 넘게 나와 리포트의 나머지(전제·검증)를 밀어낸다.
+        # 접으니 8건 제한도 필요 없어져 **전건**을 담는다(예전엔 '… 외 N건'으로 잘렸다)
+        ok = [r for r in rows if r["status"] in ("filled", "submitted", "accepted")]
+        bad = [r for r in rows if r not in ok]
+        head = f"<b>🔄 {label} 매매 {len(ok)}건</b>"
+        if bad:
+            head += f" · <b>실패 {len(bad)}</b>"
+        L.append(head)
+        for r in bad:                      # 실패는 펼친 채로 — 즉시 봐야 함
             verb = "매수" if r["action"] == "buy" else "매도"
-            name = _name(con, r["ticker"])
-            L.append(f"{mark} {name} {verb} <i>({r['src'] or '수동'})</i>")
-        if len(rows) > 8:
-            L.append(f"  … 외 {len(rows) - 8}건")
+            L.append(f"❌ {_name(con, r['ticker'])} {verb} <i>({r['status']})</i>")
+        if ok:
+            items = "\n".join(
+                f"✅ {_name(con, r['ticker'])} "
+                f"{'매수' if r['action'] == 'buy' else '매도'} <i>({r['src'] or '수동'})</i>"
+                for r in ok)
+            L.append(f"<blockquote expandable>📋 <b>종목 {len(ok)}건</b>\n{items}</blockquote>")
         L.append("")
 
     # ---------- 전제 점검 ----------

@@ -872,3 +872,26 @@ def test_trade_alert_pnl_needs_two_days(con):
     con.execute("INSERT INTO portfolio_snapshots VALUES ('2026-07-28','kiwoom',1000,0,0)")
     con.commit()
     assert trade_alerts._pnl_block(con) == ""
+
+
+def test_trade_alert_splits_totals_by_currency(con, monkeypatch):
+    """로테이션은 한 그룹에 KR·US가 섞인다 — 합계를 통화별로 나눠야 한다.
+
+    초안은 첫 종목 통화로 뭉뚱그려 달러 체결을 원화로 표기했다(2026-07-29 테스트 발송에서 발견).
+    """
+    from src.jobs import trade_alerts
+
+    con.executemany(
+        "INSERT INTO orders (client_order_id, broker, ticker, action, qty, price, status, "
+        "message, created_at) VALUES (?,?,?,?,?,?,?,?,?)", [
+            ("k1", "kiwoom", "010170", "buy", 100, 10000, "filled", "1 filled 100@10000",
+             "2026-07-29T10:00"),
+            ("u1", "alpaca", "DVA", "buy", 4, 250, "filled", None, "2026-07-29T10:00")])
+    con.commit()
+    sent = []
+    monkeypatch.setattr("src.notify.send", lambda t, **k: sent.append(t) or True)
+    trade_alerts.notify_new_orders(con)
+
+    head = sent[0].split("\n", 1)[0]
+    assert "1,000,000원" in head and "$1,000.00" in head      # 통화별로 각각
+    assert "2건" in head

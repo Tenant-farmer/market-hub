@@ -17,6 +17,16 @@ def _pct(a, b):
     return (a / b - 1) * 100 if b else None
 
 
+def _contrarian_safe(code) -> bool:
+    """신호진입(역발상) 포지션인가 — 손절 대상이 아니므로 감시에서도 빼야 한다."""
+    try:
+        from src.trading.exits import _contrarian
+
+        return _contrarian(code)
+    except Exception:
+        return False
+
+
 def _failed(out, strategy, assumption, exc):
     """점검이 실패하면 **항목을 빼지 말고 warn으로 남긴다**.
 
@@ -106,13 +116,19 @@ def check_theses(con) -> list[dict]:
                     "assumption": "손절 -8%가 작동해 그보다 크게 물린 보유가 없다",
                     "status": "warn", "detail": "잔고 조회 실패 — 손절 감시 판정 불가"})
             else:
-                deep = [h for h in b["holdings"] if h["plpc"] <= -8]
+                # 손절폭은 시장별로 다르고 env로 바뀐다 → **실제 규칙과 같은 함수**를 쓴다.
+                # 여기에 -8%를 박아두면 손절폭을 넓힌 순간 감시가 거짓 경보를 낸다
+                # (2026-07-28 실측: KR -25%로 넓혔는데 감시는 -8%라 '전제 위반 🔴'이 떴다)
+                from src.trading.exits import _stop_pct
+
+                deep = [h for h in b["holdings"]
+                        if h["plpc"] <= _stop_pct(h["code"]) and not _contrarian_safe(h["code"])]
                 names = ", ".join(f"{h['name']}({h['plpc']:.1f}%)" for h in deep[:3])
                 out.append({
                     "strategy": "청산 규칙",
-                    "assumption": "손절 -8%가 작동해 그보다 크게 물린 보유가 없다",
+                    "assumption": "손절(US -15% / KR -25%)이 작동해 그보다 크게 물린 보유가 없다",
                     "status": "ok" if not deep else "broken",
-                    "detail": (f"보유 {len(b['holdings'])}종목 중 -8% 초과 {len(deep)}종목"
+                    "detail": (f"보유 {len(b['holdings'])}종목 중 손절선 초과 {len(deep)}종목"
                                + (f": {names}" if deep else "")),
                 })
     except Exception as e:

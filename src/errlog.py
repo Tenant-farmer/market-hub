@@ -27,7 +27,16 @@ _COOLDOWN = 600
 
 
 def swallow(where: str, exc: BaseException, *, db_record: bool = True) -> None:
-    """예외를 삼키되 기록한다. 절대 재발생시키지 않는다(호출부 흐름 보존)."""
+    """예외를 삼키되 기록한다. 절대 재발생시키지 않는다(호출부 흐름 보존).
+
+    **테스트 중에는 기록하지 않는다** — 인메모리 DB로 도는 테스트가 예외를 유발하면
+    운영 errors.log와 collector_runs에 가짜 '조용한 실패'가 쌓인다(2026-07-28 실측:
+    상태 리포트에 '조용한 실패 7건'으로 떠서 운영 장애로 오인할 뻔했다).
+    """
+    import os
+
+    if os.getenv("PYTEST_CURRENT_TEST"):
+        return
     now = time.time()
     if now - _LAST.get(where, 0) < _COOLDOWN:
         return

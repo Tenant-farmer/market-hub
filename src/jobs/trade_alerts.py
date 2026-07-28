@@ -127,8 +127,10 @@ def notify_new_orders(con) -> int:
         for (src, action), items in groups.items():
             head = STRAT.get(src, f"📌 {src}")
             verb = "매수" if action == "buy" else "매도"
-            is_kr = str(items[0]["ticker"]).isdigit()
-            ok_lines, bad_lines, total = [], [], 0.0
+            # 로테이션은 한 그룹에 KR·US가 섞여 나온다 → 합계를 통화별로 따로 센다
+            # (초안은 첫 종목 통화로 뭉뚱그려 원화 2,040,148원처럼 달러를 원으로 표기했다)
+            ok_lines, bad_lines = [], []
+            totals = {True: 0.0, False: 0.0}         # True=KR(원) / False=US($)
             for r in items:
                 kr = str(r["ticker"]).isdigit()
                 name = _name(con, r["ticker"]) if kr else r["ticker"]
@@ -138,7 +140,7 @@ def notify_new_orders(con) -> int:
                 amt = (qty * price) if (qty and price) else None
                 good = r["status"] in OK
                 if amt and good:
-                    total += amt
+                    totals[kr] += amt
                 line = f"{'✅' if good else '❌'} <b>{name}</b>"
                 if kr and name != r["ticker"]:
                     line += f" ({r['ticker']})"
@@ -161,8 +163,9 @@ def notify_new_orders(con) -> int:
             # 헤드라인에 건수·합계를 실어 **접힌 상태에서도** 규모를 알 수 있게 한다.
             # 합계는 성공분만 더하므로 건수도 성공분 기준 — 실패는 따로 표기해야 안 헷갈린다
             title = f"<b>{head} {verb} {len(ok_lines)}건</b>"
-            if total:
-                title += f" · {_cur(total, is_kr)}"
+            sums = [_cur(v, k) for k, v in totals.items() if v]
+            if sums:
+                title += " · " + " + ".join(sums)
             if bad_lines:
                 title += f" · <b>실패 {len(bad_lines)}</b>"
             L = [title, ""]
