@@ -899,3 +899,42 @@ def test_trade_alert_splits_blocks_by_market(con, monkeypatch):
     assert msg.index("🇰🇷") < msg.index("🇺🇸")                 # 국내 먼저
     assert "010170" in msg.split("🇰🇷")[1].split("🇺🇸")[0]      # 종목이 제 블록에 들어간다
     assert "DVA" in msg.split("🇺🇸")[1]
+
+
+def test_watchdog_distinguishes_crash_from_clean_stop(con, monkeypatch, tmp_path):
+    """정지의 성격을 판별한다 — 정상 종료인가 급사인가.
+
+    2026-07-28: 워커가 2시간 38분 사라졌는데 예외·크래시·절전·스케줄러 종료 어느 흔적도
+    없었다. 원인을 못 찾았으므로 **다음번엔 구분되게** 계측했다:
+    stop 기록이 있고 생존 파일보다 나중이면 정상 종료, 없으면 급사.
+    """
+    from src.jobs import watchdog
+    from src.trading import worker
+
+    con.execute("CREATE TABLE collector_runs "
+                "(collector TEXT, run_at TEXT, status TEXT, rows INT, message TEXT)")
+    con.commit()
+    alive = tmp_path / "engine_alive.txt"
+    monkeypatch.setattr(worker, "ALIVE_PATH", alive)
+
+    alive.write_text("2026-07-28T05:51:43", encoding="utf-8")
+    assert "급사" in watchdog._death_note(con)          # 종료 기록 없음 → 급사
+
+    con.execute("INSERT INTO collector_runs VALUES ('engine','2026-07-28T05:52:00','stop',0,'x')")
+    con.commit()
+    note = watchdog._death_note(con)
+    assert "정상 종료" in note and "05:52" in note      # 생존 파일보다 나중 → 정상 종료
+
+    alive.write_text("2026-07-28T09:00:00", encoding="utf-8")   # 그 뒤로도 살아있었다면
+    assert "급사" in watchdog._death_note(con)          # 옛 stop 기록은 근거가 못 된다
+
+
+def test_worker_exit_hook_records_stop(con, monkeypatch):
+    """정상 종료 경로는 'stop'을 남긴다 — 이 기록의 **부재**가 급사의 증거."""
+    from src.trading import worker
+
+    rec = []
+    monkeypatch.setattr(worker, "_record", lambda s, n, m: rec.append((s, m)))
+    monkeypatch.setattr(worker, "_log", lambda m: None)
+    worker._on_exit("시그널 15")
+    assert rec == [("stop", "worker 종료: 시그널 15")]

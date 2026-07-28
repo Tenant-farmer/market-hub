@@ -50,6 +50,56 @@ def _log(msg: str) -> None:
         pass
 
 
+# ── 급사 진단 ────────────────────────────────────────────────────────────────
+# 2026-07-28: 워커가 05:51~08:29(2시간 38분) 사라졌는데 **아무 흔적이 없었다**.
+# Python 예외 아님(루프가 잡아 로깅함) · 절전 아님(Kernel-Power 이벤트 없음) ·
+# 크래시 아님(WER 기록 없음) · 스케줄러 종료 아님. 원인을 못 찾았으므로
+# **다음번엔 잡을 수 있게** 계측한다:
+#   ① 종료 훅 — 정상 종료면 'stop' 기록이 남는다. 기록 없이 사라졌으면 **급사**
+#   ② 생존 파일 — 매 폴(15초)마다 시각을 덮어써 '마지막 살아있던 순간'을 초 단위로 남긴다
+#      (DB 하트비트는 15분 주기라 해상도가 부족했다)
+ALIVE_PATH = db.ROOT / "data" / "engine_alive.txt"
+
+
+def _touch_alive() -> None:
+    try:
+        ALIVE_PATH.write_text(datetime.now().isoformat(timespec="seconds"), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _on_exit(reason: str) -> None:
+    """정상 종료 경로에서만 호출된다 — 이 기록의 **부재**가 급사의 증거."""
+    _log(f"stop ({reason})")
+    try:
+        _record("stop", 0, f"worker 종료: {reason}")
+    except Exception:
+        pass
+
+
+def _install_exit_hooks() -> None:
+    import atexit
+    import signal
+
+    atexit.register(_on_exit, "정상 종료(atexit)")
+    for sig in ("SIGTERM", "SIGINT", "SIGBREAK"):        # Windows는 SIGBREAK도 온다
+        s = getattr(signal, sig, None)
+        if s is None:
+            continue
+        try:
+            signal.signal(s, lambda n, f: (_on_exit(f"시그널 {n}"), os._exit(0)))
+        except (ValueError, OSError):
+            pass                                          # 스레드 등에서 설정 불가 시 무시
+
+
+def last_alive() -> str | None:
+    """마지막 생존 기록 시각 (진단·워치독용)."""
+    try:
+        return ALIVE_PATH.read_text(encoding="utf-8").strip()
+    except Exception:
+        return None
+
+
 EXIT_CHECK = int(os.getenv("EXIT_CHECK_SEC", "60"))     # 손절은 지연이 돈 → 1분 감지
 ENTRY_CHECK = int(os.getenv("SIGNAL_ENTRY_CHECK_SEC", "3600"))
 RECONCILE = int(os.getenv("RECONCILE_SEC", "300"))
@@ -58,9 +108,11 @@ ROT_CHECK = int(os.getenv("ROTATION_CHECK_SEC", "3600"))   # 로테이션 점검
 
 
 def main() -> None:
+    _install_exit_hooks()
+    _touch_alive()
     _log(f"start - poll {POLL}s, heartbeat {HEARTBEAT}s, exit {EXIT_CHECK}s, "
-         f"entry {ENTRY_CHECK}s, reconcile {RECONCILE}s")
-    _record("ok", 0, "worker 시작")
+         f"entry {ENTRY_CHECK}s, reconcile {RECONCILE}s (pid {os.getpid()})")
+    _record("ok", 0, f"worker 시작 (pid {os.getpid()})")
     if os.getenv("TELEGRAM_BOT_TOKEN") and os.getenv("TELEGRAM_CHAT_ID"):
         import threading
 
@@ -73,6 +125,7 @@ def main() -> None:
     EVT_CHECK = int(os.getenv("EVENT_ALERT_SEC", "300"))   # 지표·실적 발표 감지 주기
     while True:
         try:
+            _touch_alive()                 # 초 단위 생존 흔적 (급사 시각 특정용)
             res = engine.process_once()
             if res["processed"] or res["rejected"]:
                 _record("ok", res["processed"],
