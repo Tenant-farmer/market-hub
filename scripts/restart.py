@@ -12,6 +12,7 @@
 
 사용: python scripts/restart.py dashboard|engine|tunnel|all
 """
+import re
 import subprocess
 import sys
 import time
@@ -31,15 +32,36 @@ def _ps(cmd: str) -> str:
 
 
 def _script_path(task: str) -> str:
-    """작업이 실행하는 스크립트 경로 — 이게 프로세스 매칭 키다."""
+    """작업이 실행하는 대상 — 이게 프로세스 매칭 키다.
+
+    Arguments가 있으면 그것(`app.py`, `-m src.trading.worker`), 없으면 Command.
+    hourly는 `run_hourly.bat`처럼 배치를 직접 실행해 Arguments가 비어 있다 —
+    Arguments만 보면 매칭 키가 빈 문자열이 돼 **아무 프로세스도 못 찾는다**.
+    배치가 띄우는 python은 배치 안의 모듈명을 명령줄에 갖고 있으므로 그걸 캐낸다.
+    """
     xml = subprocess.run(["schtasks", "/Query", "/TN", f"\\{task}", "/XML"],
                          capture_output=True, text=True, timeout=30).stdout
     # schtasks가 UTF-16 BOM을 붙여 나오는 경우가 있어 선두 잡음을 잘라낸다
     xml = xml[xml.index("<?xml"):] if "<?xml" in xml else xml
     root = ET.fromstring(xml)
     ns = {"t": root.tag.split("}")[0].strip("{")} if "}" in root.tag else {}
-    arg = root.find(".//t:Exec/t:Arguments", ns) if ns else root.find(".//Exec/Arguments")
-    return (arg.text or "").strip() if arg is not None else ""
+
+    def _find(tag):
+        el = root.find(f".//t:Exec/t:{tag}", ns) if ns else root.find(f".//Exec/{tag}")
+        return (el.text or "").strip() if el is not None else ""
+
+    arg, cmd = _find("Arguments"), _find("Command")
+    if arg:
+        return arg
+    if cmd.lower().endswith(".bat"):        # 배치 → 안에서 돌리는 `-m 모듈`을 매칭 키로
+        try:
+            body = Path(cmd).read_text(encoding="utf-8", errors="replace")
+            m = re.search(r"-m\s+([\w.]+)", body)
+            if m:
+                return f"-m {m.group(1)}"
+        except OSError:
+            pass
+    return cmd
 
 
 def _pids(script: str) -> list[int]:
