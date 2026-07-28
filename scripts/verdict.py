@@ -144,9 +144,14 @@ def main():
     if "--since" in sys.argv:
         since = sys.argv[sys.argv.index("--since") + 1]
     con = db.connect()
-    n_eq = con.execute("SELECT COUNT(DISTINCT date) n FROM portfolio_snapshots").fetchone()["n"]
+    # 표본은 **거래일만** — 주말 행은 금요일 값 복사라 수익률 0%인 가짜 관측이다
+    # (verdict_alert._eq_days와 같은 기준을 써야 표시와 발송 시점이 어긋나지 않는다)
+    from src.jobs.verdict_alert import VERDICT2_MIN_DATE, _eq_days
+
+    n_eq = _eq_days(con)
     print(f"무인 가동 판정 · 개시 {since} · 오늘 {date.today()}")
-    print(f"에쿼티 표본 {n_eq}일 (성과 판정 최소 {MIN_EQUITY_DAYS}일)\n")
+    print(f"에쿼티 표본 {n_eq}거래일 (성과 판정 최소 {MIN_EQUITY_DAYS}일 · "
+          f"2차 판정일 {VERDICT2_MIN_DATE} 이후)\n")
 
     print("=" * 68)
     print("1차 — 시스템 안정성 (VPS 이전 판단 기준)")

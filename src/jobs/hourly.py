@@ -64,11 +64,6 @@ DAILY_REPORTS = [
     (8, "telegram_brief", "아침 브리핑 (주도주·섹터·수급 — 우리 관점)"),
     (16, "status_report", "상태 리포트 (계좌·전제·검증 — KR 마감 후 당일 결산)"),
 ]
-# 발송이 아니라 **기록**만 하는 일일 작업 — DAILY_REPORTS와 섞지 않는다.
-# 섞었더니 '알림 시간 분산' 테스트가 기록 항목을 알림으로 세어 깨졌다(2026-07-28).
-# 16시인 이유: KR 마감(15:30) 직후이고, 이 시각 Alpaca는 직전 미국장 종가 기준이라
-# 두 브로커 모두 '확정 종가'로 매일 같은 위상에서 찍힌다 (수익률 계열이 성립하는 전제)
-DAILY_JOBS = [(16, "account_equity", "실계좌 평가액 스냅샷 (에쿼티 곡선 — 2차 판정 α용)")]
 # 주 1회 — 월요일 아침, '이번 주 지도'. 매일 보내면 같은 내용이 반복된다
 WEEKLY_REPORTS = [(0, 8, "econ_week", "주간 경제 일정 (요일별 접이식)")]
 
@@ -87,12 +82,6 @@ def _send_daily_reports(con, hour: int) -> None:
     for h, name, _desc in DAILY_REPORTS:
         if hour >= h and not _ran_today(con, name):
             base.run_collector(name, senders[name]())
-    # 기록 전용 작업 (텔레그램 안 감)
-    for h, name, _desc in DAILY_JOBS:
-        if hour >= h and not _ran_today(con, name):
-            from src.jobs import account_equity
-
-            base.run_collector(name, {"account_equity": account_equity.snapshot}[name])
     from datetime import date as _date
 
     for wd, h, name, _desc in WEEKLY_REPORTS:

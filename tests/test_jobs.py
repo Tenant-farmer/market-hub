@@ -208,13 +208,9 @@ def test_daily_reports_are_staggered(con, monkeypatch):
     hourly._send_daily_reports(con, 12)
     assert len(sent) == 2                               # 낮엔 추가 발송 없음
     hourly._send_daily_reports(con, 16)
-    # 16시엔 상태 리포트(알림) + 에쿼티 스냅샷(기록)이 함께 돈다.
-    # **알림만** 분산 대상이므로 기록은 세지 않는다 (2026-07-28 DAILY_JOBS 분리)
-    notes = [n for n in sent if n in {r[1] for r in hourly.DAILY_REPORTS}]
-    assert notes == ["market_brief", "telegram_brief", "status_report"]
-    assert "account_equity" in sent                     # 기록은 돌되 알림은 아니다
+    assert sent[-1] == "status_report"                  # 16시 상태(KR 마감 후)
     hourly._send_daily_reports(con, 17)
-    assert len(sent) == 4                               # 재실행해도 중복 없음
+    assert len(sent) == 3                               # 재실행해도 중복 없음
 
 
 def test_daily_reports_catch_up_on_missed_slot(con, monkeypatch):
@@ -227,8 +223,7 @@ def test_daily_reports_catch_up_on_missed_slot(con, monkeypatch):
     monkeypatch.setattr(hourly, "_ran_today", lambda c, n: n in sent)
 
     hourly._send_daily_reports(con, 18)                 # 하루 종일 꺼져 있다가 18시에 첫 실행
-    notes = [n for n in sent if n in {r[1] for r in hourly.DAILY_REPORTS}]
-    assert notes == ["market_brief", "telegram_brief", "status_report"]
+    assert sent == ["market_brief", "telegram_brief", "status_report"]
 
 
 def test_status_report_prefers_today_trades(con, monkeypatch):
@@ -252,7 +247,9 @@ def test_status_report_prefers_today_trades(con, monkeypatch):
 def test_verdict_alert_fires_on_condition_not_date_memory(con, monkeypatch):
     """판정은 **조건 충족 시 자동 발송**된다 — 날짜를 기억해 수동 실행하면 잊는다.
 
-    2차는 날짜가 아니라 **표본**(에쿼티 20영업일)이 조건이라 며칠 앞뒤로 움직인다.
+    2차는 **표본(거래일 20일) AND 날짜 하한(8/25)** 둘 다 만족해야 나간다 —
+    표본만 차고 날짜가 이르면 관찰 기간이 짧고, 날짜만 넘고 표본이 모자라면 무의미하다
+    (2026-07-28 사용자 결정으로 하한 추가).
     """
     from datetime import date as _d
 
@@ -263,17 +260,28 @@ def test_verdict_alert_fires_on_condition_not_date_memory(con, monkeypatch):
     monkeypatch.setattr(verdict_alert, "build_first", lambda c, s: "1차 본문")
     monkeypatch.setattr(verdict_alert, "build_second", lambda c, s: "2차 본문")
     monkeypatch.setattr(verdict_alert, "VERDICT1_DATE", _d(2099, 1, 1))   # 아직 안 됨
+    monkeypatch.setattr(verdict_alert, "VERDICT2_MIN_DATE", _d(2020, 1, 1))  # 날짜는 충족
 
+    # 평일만 넣는다 — 주말 행은 표본으로 안 세므로 넣으면 개수가 어긋난다
+    days = [d for d in range(1, 32) if _d(2026, 8, d).weekday() < 5][:19]
     con.executemany("INSERT INTO portfolio_snapshots(date,broker,equity,pl) VALUES (?,?,?,?)",
-                    [(f"2026-08-{d:02d}", "kiwoom", 1000, 0) for d in range(1, 20)])
+                    [(f"2026-08-{d:02d}", "kiwoom", 1000, 0) for d in days])
     con.commit()
+    assert verdict_alert._eq_days(con) == 19
     assert verdict_alert.run(con) == 0            # 19일 — 아직 미달, 1차도 날짜 전
     assert sent == []
 
-    con.execute("INSERT INTO portfolio_snapshots(date,broker,equity,pl) "
-                "VALUES ('2026-08-20','kiwoom',1000,0)")
+    last = [d for d in range(1, 32) if _d(2026, 8, d).weekday() < 5][19]
+    con.execute("INSERT INTO portfolio_snapshots(date,broker,equity,pl) VALUES (?,?,?,?)",
+                (f"2026-08-{last:02d}", "kiwoom", 1000, 0))
     con.commit()
-    assert verdict_alert.run(con) == 1            # 20일 도달 → 2차 발송
+
+    monkeypatch.setattr(verdict_alert, "VERDICT2_MIN_DATE", _d(2099, 1, 1))  # 날짜 미도달
+    assert verdict_alert.run(con) == 0            # 표본은 찼지만 판정일 전 → 발송 안 함
+    assert sent == []
+
+    monkeypatch.setattr(verdict_alert, "VERDICT2_MIN_DATE", _d(2020, 1, 1))
+    assert verdict_alert.run(con) == 1            # 표본 20일 + 날짜 충족 → 2차 발송
     assert sent == ["2차 본문"]
     assert verdict_alert.run(con) == 0            # 재실행해도 중복 없음(멱등)
 
@@ -431,50 +439,29 @@ def test_econ_week_no_truncation_and_no_lookalikes(con):
     lines = [line for line in body.split("\n")[1:] if line.strip()]
     assert len(lines) == len(set(lines))                # 똑같아 보이는 줄 없음
 
-def test_account_equity_snapshot(monkeypatch, tmp_path):
-    """실계좌 에쿼티 스냅샷 — 판정용 곡선의 두 함정을 막는다.
+def test_verdict2_excludes_weekends_and_honors_date_floor(monkeypatch):
+    """2차 판정 게이트 — 주말 패딩과 조기 발송을 둘 다 막는다.
 
-    ① 키움 'cash'는 **추정예탁자산**(보유분 포함)이라 value를 더하면 이중계상된다
-    ② 조회 실패 브로커를 0으로 기록하면 곡선이 -100% 폭락으로 보인다 → 행을 안 남겨야
+    portfolio_snapshots는 매시간 돌아 주말에도 행이 남는데, 그날은 금요일 값 복사라
+    **수익률 0%인 가짜 관측**이다. 달력일로 세면 20일이 8/11에 차서 조기 발송되고,
+    0% 날이 변동성을 낮춰 α의 t값까지 부풀린다(2026-07-28 사용자 결정으로 8/25 하한 추가).
     """
     import sqlite3
+    from datetime import date, timedelta
 
-    from src.jobs import account_equity as ae
-
-    con = sqlite3.connect(":memory:")
-    con.row_factory = sqlite3.Row
-
-    monkeypatch.setattr(ae, "_kiwoom", lambda: {
-        "equity": 497_006_068, "cash": 480_393_818, "n_pos": 11, "currency": "KRW"})
-    monkeypatch.setattr(ae, "_alpaca", lambda: None)          # 조회 실패 재현
-
-    assert ae.snapshot(con, "2026-07-28") == 1                # 실패한 alpaca는 미기록
-    rows = con.execute("SELECT * FROM account_equity").fetchall()
-    assert len(rows) == 1 and rows[0]["broker"] == "kiwoom"
-    assert rows[0]["equity"] == 497_006_068                   # 이중계상 없음
-    assert rows[0]["currency"] == "KRW"
-    assert [b for b, _ in [(r["broker"], r["equity"]) for r in rows]] == ["kiwoom"]
-    assert ae.curve(con, "alpaca") == []                      # 0 행이 안 생겼다
-
-    # 같은 날 재실행은 덮어쓴다(하루 1점) — 중복 행이 생기면 수익률 계열이 깨진다
-    monkeypatch.setattr(ae, "_kiwoom", lambda: {
-        "equity": 498_000_000, "cash": 1, "n_pos": 11, "currency": "KRW"})
-    ae.snapshot(con, "2026-07-28")
-    assert ae.curve(con, "kiwoom") == [("2026-07-28", 498_000_000.0)]
-    con.close()
-
-
-def test_account_equity_skips_zero_equity(monkeypatch):
-    """평가액 0은 '조회는 됐지만 값이 없음' — 기록하면 폭락으로 읽힌다."""
-    import sqlite3
-
-    from src.jobs import account_equity as ae
+    from src.jobs import verdict_alert as va
 
     con = sqlite3.connect(":memory:")
     con.row_factory = sqlite3.Row
-    monkeypatch.setattr(ae, "_kiwoom", lambda: {"equity": 0, "cash": 0, "n_pos": 0,
-                                                "currency": "KRW"})
-    monkeypatch.setattr(ae, "_alpaca", lambda: (_ for _ in ()).throw(RuntimeError("API down")))
-    assert ae.snapshot(con, "2026-07-28") == 0                # 둘 다 미기록
-    assert con.execute("SELECT COUNT(*) FROM account_equity").fetchone()[0] == 0
+    con.execute("CREATE TABLE portfolio_snapshots (date TEXT, broker TEXT, equity REAL)")
+    d = date(2026, 7, 23)
+    for _ in range(28):                        # 4주치 = 달력일 28일, 거래일 20일
+        con.execute("INSERT INTO portfolio_snapshots VALUES (?, 'kiwoom', 1.0)",
+                    (d.isoformat(),))
+        d += timedelta(days=1)
+    con.commit()
+
+    assert con.execute("SELECT COUNT(DISTINCT date) FROM portfolio_snapshots").fetchone()[0] == 28
+    assert va._eq_days(con) == 20               # 주말 8일 제외
+    assert va.VERDICT2_MIN_DATE == date(2026, 8, 25)
     con.close()

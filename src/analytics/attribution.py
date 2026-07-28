@@ -86,16 +86,14 @@ def _daily_returns(con, symbol: str, market: str | None = None, days: int = 90):
             [rows[i]["close"] / rows[i - 1]["close"] - 1 for i in range(1, len(rows))])
 
 
-def _alpha_from_curve(con, curve, label: str, bench: str) -> dict:
-    """(날짜, 평가액) 곡선 → α/β. 가상장부와 실계좌가 **같은 계산**을 쓴다.
-
-    2026-07-28 분리: 원래 daytrade_equity에 묶여 있어 실계좌는 영영 α를 낼 수 없었다.
-    """
-    if len(curve) < 6:
-        return {"strategy": label, "n": len(curve), "error": "표본 부족 (최소 6일)"}
-    dates = [d for d, _ in curve]
-    eq = [e for _, e in curve]
-    prets = [eq[i] / eq[i - 1] - 1 for i in range(1, len(eq))]
+def attribute_strategy(con, strategy: str, bench: str = "SPY") -> dict | None:
+    """가상장부 전략(momentum/meanrev)의 알파·베타 — daytrade_equity 기반."""
+    rows = con.execute("SELECT date, equity FROM daytrade_equity WHERE strategy=? "
+                       "ORDER BY date", (strategy,)).fetchall()
+    if len(rows) < 6:
+        return {"strategy": strategy, "n": len(rows), "error": "표본 부족 (최소 6일)"}
+    dates = [r["date"] for r in rows]
+    prets = [rows[i]["equity"] / rows[i - 1]["equity"] - 1 for i in range(1, len(rows))]
     bmap = {}
     for r in con.execute("SELECT date, close FROM prices_daily WHERE symbol=? ORDER BY date",
                          (bench,)):
@@ -107,29 +105,9 @@ def _alpha_from_curve(con, curve, label: str, bench: str) -> dict:
         cur = [d for d in bd if d <= dates[i]]
         brets.append(bmap[cur[-1]] / bmap[prev[-1]] - 1 if prev and cur else np.nan)
     out = alpha_beta(prets, brets)
-    out["strategy"] = label
+    out["strategy"] = strategy
     out["period"] = f"{dates[0]}~{dates[-1]}"
-    out["bench"] = bench
     return out
-
-
-def attribute_strategy(con, strategy: str, bench: str = "SPY") -> dict | None:
-    """가상장부 전략(momentum/meanrev)의 알파·베타 — daytrade_equity 기반."""
-    rows = con.execute("SELECT date, equity FROM daytrade_equity WHERE strategy=? "
-                       "ORDER BY date", (strategy,)).fetchall()
-    return _alpha_from_curve(con, [(r["date"], r["equity"]) for r in rows], strategy, bench)
-
-
-def attribute_account(con, broker: str, bench: str | None = None) -> dict:
-    """**실계좌**의 알파·베타 — account_equity 기반 (2차 판정의 'α > 0' 항목).
-
-    벤치마크는 브로커가 속한 시장에 맞춘다 — 키움(KRW/국내주식)을 SPY에 대면
-    환·시장이 뒤섞여 α가 무의미해진다.
-    """
-    from src.jobs.account_equity import curve
-
-    bench = bench or ("1001" if broker == "kiwoom" else "SPY")
-    return _alpha_from_curve(con, curve(con, broker), broker, bench)
 
 
 if __name__ == "__main__":
@@ -142,19 +120,12 @@ if __name__ == "__main__":
     from src import db
 
     c = db.connect()
-
-    def _show(r):
-        if r and "error" in r:
-            print(f"  {r['strategy']}: {r['error']} (n={r.get('n')})")
-        elif r:
-            print(f"  {r['strategy']} ({r['period']}, vs {r['bench']}): "
-                  f"α {r['alpha_ann']:+.1f}%/년 · β {r['beta']} · R² {r['r2']} "
-                  f"(시장설명 {r['market_share']}%) · t(α) {r['t_alpha']} · n={r['n']}")
-
     print("=== 가상장부 전략 알파/베타 ===")
     for s in ("momentum", "meanrev"):
-        _show(attribute_strategy(c, s))
-    print("=== 실계좌 알파/베타 (2026-07-28 기록 시작 — 표본 누적 중) ===")
-    for b in ("kiwoom", "alpaca"):
-        _show(attribute_account(c, b))
+        r = attribute_strategy(c, s)
+        if r and "error" in r:
+            print(f"  {s}: {r['error']} (n={r.get('n')})")
+        elif r:
+            print(f"  {s} ({r['period']}): α {r['alpha_ann']:+.1f}%/년 · β {r['beta']} · "
+                  f"R² {r['r2']} (시장설명 {r['market_share']}%) · t(α) {r['t_alpha']} · n={r['n']}")
     c.close()

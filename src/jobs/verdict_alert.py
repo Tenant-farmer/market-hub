@@ -18,6 +18,11 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))      # verdict.py / _perf_verdict.py 임포트용
 
 VERDICT1_DATE = date(2026, 8, 6)
+# 2차는 표본 조건(거래일 20일)만 있었는데, 실계좌 표본이 8/20에 겨우 20일이라
+# 여유가 없었다 → 사용자 결정으로 **8/25 이후**로 미룬다(2026-07-28).
+# 표본과 날짜를 **둘 다** 만족해야 발송한다 — 날짜만 넘고 표본이 모자라면 의미가 없고,
+# 표본만 차고 날짜가 이르면 관찰 기간이 짧다.
+VERDICT2_MIN_DATE = date(2026, 8, 25)
 
 
 def _esc(v) -> str:
@@ -46,7 +51,17 @@ def _mark(con, kind: str, msg: str) -> None:
 
 
 def _eq_days(con) -> int:
-    return con.execute("SELECT COUNT(DISTINCT date) n FROM portfolio_snapshots").fetchone()["n"]
+    """에쿼티 표본 — **거래일만** 센다.
+
+    portfolio_snapshots는 매시간 돌아 주말·공휴일에도 행이 생기는데, 장이 안 열린 날은
+    금요일 값이 그대로 복사돼 **수익률 0%인 가짜 관측**이 된다(2026-07-25·26 실측).
+    달력일로 세면 20일이 8/11에 차서 판정이 조기 발송되고, 더 나쁜 건 0% 날이
+    변동성을 낮춰 **α의 t값을 부풀린다** — 판정이 스스로를 속이게 된다.
+    strftime('%w')는 0=일, 6=토.
+    """
+    return con.execute(
+        "SELECT COUNT(DISTINCT date) n FROM portfolio_snapshots "
+        "WHERE CAST(strftime('%w', date) AS INTEGER) BETWEEN 1 AND 5").fetchone()["n"]
 
 
 def build_first(con, since: str) -> str:
@@ -95,7 +110,8 @@ def run(con, dry: bool = False, force: bool = False) -> int:
     sent = 0
     jobs = [
         ("verdict1", date.today() >= VERDICT1_DATE, lambda: build_first(con, since)),
-        ("verdict2", _eq_days(con) >= MIN_DIRECTION_DAYS, lambda: build_second(con, since)),
+        ("verdict2", _eq_days(con) >= MIN_DIRECTION_DAYS and date.today() >= VERDICT2_MIN_DATE,
+         lambda: build_second(con, since)),
     ]
     for kind, due, build in jobs:
         if not force and (not due or _sent(con, kind)):
