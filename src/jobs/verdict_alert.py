@@ -9,6 +9,7 @@
 
 수동: python -m src.jobs.verdict_alert [--dry] [--force]
 """
+import html
 import sys
 from datetime import date
 from pathlib import Path
@@ -17,6 +18,15 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))      # verdict.py / _perf_verdict.py 임포트용
 
 VERDICT1_DATE = date(2026, 8, 6)
+
+
+def _esc(v) -> str:
+    """판정 항목·실측값을 HTML에 넣기 전 이스케이프.
+
+    2026-07-28 실측: '수집 에러율 < 5%'의 `<`가 태그 시작으로 해석돼 텔레그램이 400을 냈다
+    (`can't parse entities: Unsupported start tag`). 8/6 판정이 그대로 실패했을 것.
+    """
+    return html.escape(str(v), quote=False)
 
 
 def _sent(con, kind: str) -> bool:
@@ -47,8 +57,8 @@ def build_first(con, since: str) -> str:
     L = [f"<b>{'✅' if ok else '❌'} 1차 판정 — 시스템 안정성</b>",
          f"<i>{since} ~ {date.today().isoformat()}</i>", ""]
     for r in rows:
-        L.append(f"{'✅' if r['ok'] else '❌'} {r['item']}")
-        L.append(f"   <i>{r['detail']}</i>")
+        L.append(f"{'✅' if r['ok'] else '❌'} {_esc(r['item'])}")
+        L.append(f"   <i>{_esc(r['detail'])}</i>")
     L += ["", f"<b>→ {'합격 — VPS 이전 진행 가능' if ok else '불합격 — 위 항목 해소 필요'}</b>"]
     return "\n".join(L)
 
@@ -63,13 +73,14 @@ def build_second(con, since: str) -> str:
          "<i>백테스트 예측이 실거동에서 재현되는가</i>", ""]
     for r in rows:
         icon = {True: "✅", False: "❌", None: "⏳"}[r["ok"]]
-        L.append(f"{icon} {r['item']}")
-        L.append(f"   <i>{r['detail']}</i>")
+        L.append(f"{icon} {_esc(r['item'])}")
+        L.append(f"   <i>{_esc(r['detail'])}</i>")
     L.append("")
     if not judged:
         L.append("<b>→ 판정 보류 — 표본 부족</b>")
     elif bad:
-        L.append(f"<b>→ 예측 빗나감 {len(bad)}건</b>: " + ", ".join(r["item"] for r in bad))
+        L.append(f"<b>→ 예측 빗나감 {len(bad)}건</b>: "
+                 + ", ".join(_esc(r["item"]) for r in bad))
     else:
         L.append(f"<b>→ 판정 {len(judged)}항목 전부 예측대로</b>")
     return "\n".join(L)

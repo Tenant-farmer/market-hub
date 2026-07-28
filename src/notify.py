@@ -17,7 +17,15 @@ def send(text: str) -> bool:
               "disable_web_page_preview": True},
         timeout=20,
     )
-    r.raise_for_status()
+    if not r.ok:
+        # raise_for_status()는 **URL을 그대로 담아** 봇 토큰이 로그·트레이스백에 새어나간다
+        # (2026-07-28 실측: 400 응답 한 번에 토큰이 콘솔에 노출됨).
+        # 토큰을 지우고 텔레그램이 준 사유만 남긴다.
+        try:
+            why = r.json().get("description", "")[:200]
+        except Exception:
+            why = r.text[:200]
+        raise RuntimeError(f"텔레그램 발송 실패 {r.status_code}: {why}")
     return True
 
 

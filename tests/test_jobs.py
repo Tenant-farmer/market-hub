@@ -275,3 +275,48 @@ def test_verdict_alert_fires_on_condition_not_date_memory(con, monkeypatch):
     monkeypatch.setattr(verdict_alert, "VERDICT1_DATE", _d(2020, 1, 1))  # 1차 날짜 도달
     assert verdict_alert.run(con) == 1
     assert sent[-1] == "1차 본문"
+
+
+def test_alert_bodies_are_html_safe(con, monkeypatch):
+    """알림 본문에 허용 외 태그가 없어야 한다 — 하나라도 있으면 텔레그램이 400을 낸다.
+
+    2026-07-28 실측: 1차 판정의 '수집 에러율 < 5%'에서 `<`가 태그 시작으로 해석돼
+    발송이 실패했다. 8/6 판정이 그대로 죽었을 것 — 미리 보내보지 않았으면 몰랐다.
+    """
+    import re
+
+    from src.jobs import verdict_alert
+
+    allowed = re.compile(r"</?(b|i|code|blockquote expandable|blockquote)>")
+    monkeypatch.setattr(verdict_alert, "_eq_days", lambda c: 3)
+    monkeypatch.setattr("verdict.system_verdict", lambda c, s: [
+        {"item": "수집 에러율 < 5% (최근 24h)", "ok": True, "detail": "24h 1.7% <제한>"}])
+    monkeypatch.setattr("_perf_verdict.perf_verdict", lambda c, s: [
+        {"item": "α > 0", "kind": "level", "basis": "x", "ok": None, "detail": "a < b & c"}])
+
+    for text in (verdict_alert.build_first(con, "2026-07-23"),
+                 verdict_alert.build_second(con, "2026-07-23")):
+        bad = [m for m in re.findall(r"<[^>]{0,80}>", text) if not allowed.fullmatch(m)]
+        assert not bad, f"허용 외 태그: {bad}"
+    assert "&lt; 5%" in verdict_alert.build_first(con, "2026-07-23")   # 실제로 이스케이프됨
+
+
+def test_notify_does_not_leak_token_on_error(monkeypatch):
+    """발송 실패 시 봇 토큰이 새면 안 된다 — raise_for_status()는 URL을 그대로 담는다."""
+    import src.notify as notify
+
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:SECRET-TOKEN")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "1")
+
+    class _R:
+        ok, status_code, text = False, 400, '{"description":"Bad Request: parse error"}'
+
+        def json(self):
+            return {"description": "Bad Request: parse error"}
+
+    monkeypatch.setattr(notify.requests, "post", lambda *a, **k: _R())
+    try:
+        notify.send("x")
+        raise AssertionError("예외가 나야 한다")
+    except RuntimeError as e:
+        assert "SECRET-TOKEN" not in str(e) and "parse error" in str(e)
