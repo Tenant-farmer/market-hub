@@ -26,13 +26,23 @@ NOISE = ("Baden", "Bavaria", "Brandenburg", "Hesse", "Saxony", "North Rhine",
          "EIA ", "Cushing", "Rig Count", "Money Supply")
 DAY_MAX = 12                    # 요일당 표시 상한 — 넘으면 '+N건 더'
 
-# 접이식 블록의 폭은 **가장 긴 줄**이 정한다 → 요일마다 상자 크기가 달랐다
-# (실측 19~45자, 두 배 넘게 차이). 고정폭 구분선으로 최소 폭을 잡고, 이벤트명을 잘라
-# 최대 폭도 묶는다. 둘 다 있어야 통일된다(구분선만 있으면 긴 줄이 여전히 삐져나감).
+# 접이식 블록의 폭은 **가장 긴 줄**이 정한다 → 요일마다 상자 크기가 달랐다(실측 19~45자).
+# 폭 맞춤을 **별도 줄**로 넣었더니 일정 1건짜리 요일에서 빈 줄처럼 보였다(사용자 지적 2회).
+# → 줄을 늘리지 말고 **헤더 끝에 가로로** 보이지 않는 문자를 채운다. 행 수는 그대로고
+#    폭만 맞는다. U+2800(점자 공백)은 렌더링이 비어 있으면서 자리를 차지한다.
 EVENT_MAX = 20                  # 이벤트명 표시 상한
-# 폭 맞춤용 **보이지 않는** 줄. U+2800(점자 공백)은 렌더링은 비어 있지만 자리를 차지해,
-# 눈에 거슬리는 구분선 없이 상자 최소 폭만 잡아준다(2026-07-29 사용자 요청).
-RULE = "⠀" * 30            # 보이지 않는 폭 맞춤 줄
+PAD = "⠀"                  # 보이지 않는 폭 채움 문자
+TARGET_W = 34                   # 목표 표시 폭(셀) — 최장 내용 줄(33)보다 커야 지배한다
+
+
+def _w(text: str) -> int:
+    """대략적 표시 폭 — 한글·이모지 등 넓은 글자는 2셀로 센다."""
+    return sum(2 if (ord(ch) > 0x1100 and ord(ch) != 0x2800) else 1 for ch in text)
+
+
+def _pad_to(text: str, target: int = TARGET_W) -> str:
+    """뒤에 보이지 않는 문자를 채워 목표 폭까지 늘린다(줄은 늘리지 않는다)."""
+    return text + PAD * max(0, target - _w(text))
 
 
 def _is_noise(event: str) -> bool:
@@ -122,14 +132,15 @@ def build_text(con, monday: date | None = None) -> str:
         items = ev.get(d.isoformat())
         if not items:
             continue                                   # 일정 없는 요일은 아예 안 띄운다
-        head = f"<b>[{d.month}/{d.day} {WD[d.weekday()]}요일]</b> {len(items)}건"
+        label = f"[{d.month}/{d.day} {WD[d.weekday()]}요일] {len(items)}건"
+        # 헤더 **끝을 가로로** 채워 폭만 맞춘다 — 별도 줄로 넣으면 1건짜리 요일에서
+        # 빈 줄처럼 보인다(2026-07-29 사용자 지적 2회 끝에 이 방식으로 정착)
+        head = f"<b>{label}</b>" + PAD * max(0, TARGET_W - _w(label))
         shown = items[:DAY_MAX]
         body = "\n".join(f"{hm} {FLAG.get(c, '')} {_short(e)}" for hm, c, e in shown)
         if len(items) > DAY_MAX:
-            body += f"\n<i>… 외 {len(items) - DAY_MAX}건 (/econ 탭에서 전체)</i>"
-        # 폭 맞춤 줄은 **맨 끝**에 둔다 — 헤더 바로 밑에 있으면 제목과 내용 사이가
-        # 빈 줄처럼 보여 어색하다(2026-07-29 사용자 지적)
-        L.append(f"<blockquote expandable>{head}\n{body}\n{RULE}</blockquote>")
+            body += f"\n<i>… 외 {len(items) - DAY_MAX}건</i>"
+        L.append(f"<blockquote expandable>{head}\n{body}</blockquote>")
     L += ["", f"<i>{_closing(ev)}</i>"]
     return "\n".join(L)
 
