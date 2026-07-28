@@ -208,9 +208,13 @@ def test_daily_reports_are_staggered(con, monkeypatch):
     hourly._send_daily_reports(con, 12)
     assert len(sent) == 2                               # 낮엔 추가 발송 없음
     hourly._send_daily_reports(con, 16)
-    assert sent[-1] == "status_report"                  # 16시 상태(KR 마감 후)
+    # 16시엔 상태 리포트(알림) + 에쿼티 스냅샷(기록)이 함께 돈다.
+    # **알림만** 분산 대상이므로 기록은 세지 않는다 (2026-07-28 DAILY_JOBS 분리)
+    notes = [n for n in sent if n in {r[1] for r in hourly.DAILY_REPORTS}]
+    assert notes == ["market_brief", "telegram_brief", "status_report"]
+    assert "account_equity" in sent                     # 기록은 돌되 알림은 아니다
     hourly._send_daily_reports(con, 17)
-    assert len(sent) == 3                               # 재실행해도 중복 없음
+    assert len(sent) == 4                               # 재실행해도 중복 없음
 
 
 def test_daily_reports_catch_up_on_missed_slot(con, monkeypatch):
@@ -223,7 +227,8 @@ def test_daily_reports_catch_up_on_missed_slot(con, monkeypatch):
     monkeypatch.setattr(hourly, "_ran_today", lambda c, n: n in sent)
 
     hourly._send_daily_reports(con, 18)                 # 하루 종일 꺼져 있다가 18시에 첫 실행
-    assert sent == ["market_brief", "telegram_brief", "status_report"]
+    notes = [n for n in sent if n in {r[1] for r in hourly.DAILY_REPORTS}]
+    assert notes == ["market_brief", "telegram_brief", "status_report"]
 
 
 def test_status_report_prefers_today_trades(con, monkeypatch):
@@ -425,3 +430,51 @@ def test_econ_week_no_truncation_and_no_lookalikes(con):
     assert "German Unemployment Change" in body         # 국가 접두어는 유지(사용자 요청)
     lines = [line for line in body.split("\n")[1:] if line.strip()]
     assert len(lines) == len(set(lines))                # 똑같아 보이는 줄 없음
+
+def test_account_equity_snapshot(monkeypatch, tmp_path):
+    """실계좌 에쿼티 스냅샷 — 판정용 곡선의 두 함정을 막는다.
+
+    ① 키움 'cash'는 **추정예탁자산**(보유분 포함)이라 value를 더하면 이중계상된다
+    ② 조회 실패 브로커를 0으로 기록하면 곡선이 -100% 폭락으로 보인다 → 행을 안 남겨야
+    """
+    import sqlite3
+
+    from src.jobs import account_equity as ae
+
+    con = sqlite3.connect(":memory:")
+    con.row_factory = sqlite3.Row
+
+    monkeypatch.setattr(ae, "_kiwoom", lambda: {
+        "equity": 497_006_068, "cash": 480_393_818, "n_pos": 11, "currency": "KRW"})
+    monkeypatch.setattr(ae, "_alpaca", lambda: None)          # 조회 실패 재현
+
+    assert ae.snapshot(con, "2026-07-28") == 1                # 실패한 alpaca는 미기록
+    rows = con.execute("SELECT * FROM account_equity").fetchall()
+    assert len(rows) == 1 and rows[0]["broker"] == "kiwoom"
+    assert rows[0]["equity"] == 497_006_068                   # 이중계상 없음
+    assert rows[0]["currency"] == "KRW"
+    assert [b for b, _ in [(r["broker"], r["equity"]) for r in rows]] == ["kiwoom"]
+    assert ae.curve(con, "alpaca") == []                      # 0 행이 안 생겼다
+
+    # 같은 날 재실행은 덮어쓴다(하루 1점) — 중복 행이 생기면 수익률 계열이 깨진다
+    monkeypatch.setattr(ae, "_kiwoom", lambda: {
+        "equity": 498_000_000, "cash": 1, "n_pos": 11, "currency": "KRW"})
+    ae.snapshot(con, "2026-07-28")
+    assert ae.curve(con, "kiwoom") == [("2026-07-28", 498_000_000.0)]
+    con.close()
+
+
+def test_account_equity_skips_zero_equity(monkeypatch):
+    """평가액 0은 '조회는 됐지만 값이 없음' — 기록하면 폭락으로 읽힌다."""
+    import sqlite3
+
+    from src.jobs import account_equity as ae
+
+    con = sqlite3.connect(":memory:")
+    con.row_factory = sqlite3.Row
+    monkeypatch.setattr(ae, "_kiwoom", lambda: {"equity": 0, "cash": 0, "n_pos": 0,
+                                                "currency": "KRW"})
+    monkeypatch.setattr(ae, "_alpaca", lambda: (_ for _ in ()).throw(RuntimeError("API down")))
+    assert ae.snapshot(con, "2026-07-28") == 0                # 둘 다 미기록
+    assert con.execute("SELECT COUNT(*) FROM account_equity").fetchone()[0] == 0
+    con.close()
