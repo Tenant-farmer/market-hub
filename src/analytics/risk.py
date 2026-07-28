@@ -104,10 +104,12 @@ if __name__ == "__main__":
 
     c = db.connect()
     print("=== 실계좌 리스크 (알파카 에쿼티 스냅샷) ===")
-    rows = c.execute("SELECT date, equity FROM portfolio_snapshots WHERE broker='alpaca' "
-                     "ORDER BY date").fetchall()
+    # 주말 행(직전 영업일 값 복사 = 수익률 0%)을 빼야 VaR가 실제보다 작게 나오지 않는다
+    from src.trading.portfolio import equity_curve
+
+    rows = equity_curve(c, "alpaca")
     if len(rows) >= 21:
-        rets = [rows[i]["equity"] / rows[i - 1]["equity"] - 1 for i in range(1, len(rows))]
+        rets = [rows[i][1] / rows[i - 1][1] - 1 for i in range(1, len(rows))]
         v = var_cvar(rets)
         print(f"  VaR95 {v['var_pct']}% · CVaR {v['cvar_pct']}% · 연변동성 {v['vol_ann']}%")
     else:

@@ -16,16 +16,22 @@ def ensure(con):
 
 
 def snapshot(con) -> int:
-    """브로커별 (총자산, 현금, 미실현손익) upsert. 반환: 기록한 브로커 수."""
+    """브로커별 (총자산, 현금, 미실현손익) upsert. 반환: 기록한 브로커 수.
+
+    **네트워크를 먼저 다 끝내고 그다음에 쓴다.** 원래는 키움 INSERT로 쓰기 트랜잭션을
+    연 뒤 Alpaca API를 2번 부르고 나서야 커밋해, 락을 **0.4~5초** 쥐고 있었다
+    (키움 `_throttle()` 1초 + 레이트리밋 재시도 1.2초×2까지 겹치면 더 길다).
+    그게 엔진이 :05마다 `database is locked`로 넘어지던 진짜 원인이다 —
+    대량 INSERT가 느린 게 아니었다(5,300행 executemany+commit 실측 **3ms**).
+    지금 구조에서 락 점유는 쓰기 몇 ms뿐이다.
+    """
     ensure(con)
     today = date.today().isoformat()
-    n = 0
+    rows = []
     if kiwoom.configured():
         b = kiwoom.KiwoomBroker().account_balance()
         if b and b["cash"]:                # 추정예탁자산 = 현금 + 평가 = 총자산
-            con.execute("INSERT OR REPLACE INTO portfolio_snapshots VALUES (?,?,?,?,?)",
-                        (today, "kiwoom", b["cash"], b["cash"] - b["value"], b["pl"]))
-            n += 1
+            rows.append((today, "kiwoom", b["cash"], b["cash"] - b["value"], b["pl"]))
     if alpaca.configured():
         try:
             br = alpaca.AlpacaBroker()
@@ -33,12 +39,13 @@ def snapshot(con) -> int:
             eq = float(a.get("equity") or 0)
             if eq:
                 pl = sum(float(p.get("unrealized_pl") or 0) for p in br.get_positions())
-                con.execute("INSERT OR REPLACE INTO portfolio_snapshots VALUES (?,?,?,?,?)",
-                            (today, "alpaca", eq, float(a.get("cash") or 0), pl))
-                n += 1
+                rows.append((today, "alpaca", eq, float(a.get("cash") or 0), pl))
         except Exception as e:
             swallow("portfolio.snapshot", e)
-    return n
+    if rows:                               # 여기서부터 몇 ms — 네트워크는 이미 끝났다
+        con.executemany("INSERT OR REPLACE INTO portfolio_snapshots VALUES (?,?,?,?,?)", rows)
+        con.commit()
+    return len(rows)
 
 
 if __name__ == "__main__":
@@ -57,6 +64,26 @@ if __name__ == "__main__":
         print(f"  {r['date']} {r['broker']:8} 총자산 {r['equity']:,.0f}  현금 {r['cash']:,.0f}  "
               f"미실현 {r['pl']:+,.0f}")
     c.close()
+
+
+def equity_curve(con, broker: str, trading_days_only: bool = True) -> list[tuple[str, float]]:
+    """(날짜, 평가액) 시계열 — **통계용 정본 조회**.
+
+    스냅샷은 매시간 돌아 **주말·공휴일에도 행이 생긴다**. 장이 안 열린 날은 직전 영업일
+    값이 그대로 복사돼 **수익률 0%인 가짜 관측**이 된다(2026-07-25·26 실측 +0.000%).
+    그 0% 날들이 변동성을 낮춰 **VaR를 실제보다 작게, α의 t값을 실제보다 크게** 만든다 —
+    둘 다 '위험은 작고 실력은 있다'는 쪽으로 틀리므로 통계에 쓸 땐 반드시 제외한다.
+
+    표시용(차트에 평평한 주말 구간을 그대로 보여주는 것)은 정직하므로
+    trading_days_only=False로 쓰면 된다. 공휴일은 여기서 못 거르지만, 그날도 값이
+    복사되므로 남은 0% 관측은 소수다(거래일 필터가 대부분을 걷어낸다).
+    """
+    ensure(con)
+    q = ("SELECT date, equity FROM portfolio_snapshots "
+         "WHERE broker=? AND equity IS NOT NULL AND equity > 0")
+    if trading_days_only:
+        q += " AND CAST(strftime('%w', date) AS INTEGER) BETWEEN 1 AND 5"
+    return [(r["date"], r["equity"]) for r in con.execute(q + " ORDER BY date", (broker,))]
 
 
 def pnl_summary(con) -> dict | None:

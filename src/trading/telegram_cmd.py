@@ -97,7 +97,7 @@ def _balance(con) -> str:
 
 
 def _signals(con) -> str:
-    from src.dashboard.queries_macro import kr_signal, vix_signal
+    from src.analytics.signals import kr_signal, vix_signal
     from src.trading import state
 
     L = ["<b>🚦 신호등</b>"]

@@ -72,7 +72,7 @@ def check_theses(con) -> list[dict]:
     # ─── 전략 2: KR 신호진입 (VKOSPI) ──────────────────────────
     # 논거: VKOSPI≥30 & 낙폭-5%면 63일 승률 75%. 전제 = 그 조건이 실제로 켜져 있고 매수가 나감
     try:
-        from src.dashboard.queries_macro import kr_signal
+        from src.analytics.signals import kr_signal
 
         ks = kr_signal(con)
         if not ks:                     # VKOSPI·KOSPI 미수집 → 신호 자체를 못 냄

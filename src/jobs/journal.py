@@ -21,7 +21,7 @@ def _last2(con, sym):
 
 
 def write_today(con) -> str:
-    from src.dashboard.queries_macro import kr_signal, vix_signal
+    from src.analytics.signals import kr_signal, vix_signal
 
     today = date.today()
     t = today.isoformat()

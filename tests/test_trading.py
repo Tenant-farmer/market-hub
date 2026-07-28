@@ -973,3 +973,46 @@ def test_record_never_raises_when_db_locked(tmp_path, monkeypatch):
     n = c.execute("SELECT COUNT(*) FROM collector_runs WHERE status='ok'").fetchone()[0]
     c.close()
     assert n == 1
+
+def test_snapshot_does_not_hold_write_lock_across_network(monkeypatch, tmp_path):
+    """실사고 회귀: 스냅샷이 락을 쥔 채 브로커 API를 기다렸다 (2026-07-28).
+
+    키움 INSERT로 쓰기 트랜잭션을 연 뒤 Alpaca를 2번 호출하고서야 커밋해, 매시 :05마다
+    0.4~5초 락이 걸렸다. 그 창에서 엔진의 기록이 `database is locked`로 실패했고
+    결국 워커가 죽었다. 대량 INSERT는 범인이 아니었다(5,300행 3ms 실측).
+    → 네트워크 호출 시점에 **다른 연결이 쓰기 락을 잡을 수 있어야** 한다.
+    """
+    import sqlite3
+
+    from src.trading import portfolio
+
+    dbf = tmp_path / "m.db"
+    monkeypatch.setenv("MARKET_HUB_DB", str(dbf))
+    con = db_mod.connect()
+    portfolio.ensure(con)
+    con.commit()
+
+    probe = sqlite3.connect(dbf, timeout=0.2)      # 엔진 역할 — 그 순간 쓰려는 다른 연결
+    blocked = []
+
+    def fake_alpaca_account():
+        try:                                       # 네트워크 대기 중을 재현
+            probe.execute("BEGIN IMMEDIATE")
+            probe.rollback()
+        except sqlite3.OperationalError:
+            blocked.append(True)
+        return {"equity": "1000", "cash": "500"}
+
+    monkeypatch.setattr(portfolio.kiwoom, "configured", lambda: True)
+    monkeypatch.setattr(portfolio.kiwoom, "KiwoomBroker", lambda: type("B", (), {
+        "account_balance": lambda self: {"cash": 5.0e8, "value": 1.0e7, "pl": -1.0e6}})())
+    monkeypatch.setattr(portfolio.alpaca, "configured", lambda: True)
+    monkeypatch.setattr(portfolio.alpaca, "AlpacaBroker", lambda: type("A", (), {
+        "get_account": lambda self: fake_alpaca_account(),
+        "get_positions": lambda self: []})())
+
+    assert portfolio.snapshot(con) == 2
+    con.commit()
+    probe.close()
+    con.close()
+    assert not blocked, "브로커 API 호출 중에 쓰기 락이 잡혀 있다 — 엔진이 넘어진다"

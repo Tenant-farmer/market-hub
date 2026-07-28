@@ -91,25 +91,35 @@ def _send_daily_reports(con, hour: int) -> None:
             base.run_collector(name, econ_week.send_week)
 
 
-def main():
-    now = datetime.now()
+def _slots(now) -> dict:
+    """이 시각에 열려 있는 수집 창 — 분기 조건을 한곳에 모은다.
+
+    main()이 127줄·분기 18개라 손대기 어려웠다(2026-07-28). 조건 판정과 실행을 분리해
+    '언제 도는가'를 한눈에 보이게 했다. 조건식 자체는 그대로다.
+    """
     wd, hm = now.weekday(), now.hour * 100 + now.minute
-    print(f"--- hourly {now.isoformat(timespec='seconds')} ---")
+    return {
+        "wd": wd,
+        "kr_session": wd < 5 and 900 <= hm <= 1615,
+        # KRX 파생지수 게시는 장 마감 후 — 아침 06시 수집만으론 당일치를 못 받아 VKOSPI가
+        # 1거래일 밀린 채 KR 매수신호가 돌았다(2026-07-27 실측). 저녁에 한 번 더 받는다.
+        "kr_evening": wd < 5 and 1800 <= hm <= 2059,
+        # US 정규장: KST 22:30~다음날 05:00 (서머타임 아닐 땐 23:30~06:00 — 여유 있게)
+        "us_session": (wd < 5 and hm >= 2230) or (wd in (1, 2, 3, 4, 5) and hm <= 615),
+        "morning": 600 <= hm <= 859,
+    }
 
-    kr_session = wd < 5 and 900 <= hm <= 1615
-    # KRX 파생지수 게시는 장 마감 후 — 아침 06시 수집만으론 당일치를 못 받아 VKOSPI가
-    # 1거래일 밀린 채 KR 매수신호가 돌았다(2026-07-27 실측). 저녁에 한 번 더 받는다.
-    kr_evening = wd < 5 and 1800 <= hm <= 2059
-    # US 정규장: KST 22:30~다음날 05:00 (서머타임 아닐 땐 23:30~06:00 — 여유 있게 잡음)
-    us_session = (wd < 5 and hm >= 2230) or (wd in (1, 2, 3, 4, 5) and hm <= 615)
-    morning = 600 <= hm <= 859
 
+def _run_always() -> None:
+    """시각 무관 상시 수집 — 가볍고 24시간 갱신되는 것들."""
     base.run_collector("sentiment", sentiment.collect)
     base.run_collector("macro", lambda c: macro.collect(c, days=5))
     base.run_collector("news", news.collect)
     base.run_collector("dart", dart.collect)      # 공시 (DART_API_KEY 없으면 0건 통과)
 
-    con = db.connect()
+
+def _run_housekeeping(con) -> None:
+    """감시·스냅샷·일지 — 수집이 아니라 운영 기록. 하나가 실패해도 수집은 계속된다."""
     from src.jobs import watchdog
 
     watchdog.check_engine(con)     # 엔진 워커 생존 감시 (정체 시 텔레그램 경보)
@@ -126,65 +136,86 @@ def main():
         journal.write_today(con)
     except Exception as e:
         print("  [journal] 일지 실패:", str(e)[:80])
-    ran_kr = ran_us = False
 
-    if kr_session:
+
+def _run_sessions(con, s: dict) -> tuple[bool, bool]:
+    """장중 슬롯 수집. 반환: (KR 수집함, US 수집함) — 뒤이은 분석 실행 여부를 정한다."""
+    ran_kr = ran_us = False
+    if s["kr_session"]:
         base.run_collector("kr_sectors", lambda c: kr_sectors.collect(c, days=5))
         base.run_collector("kr_stocks", lambda c: kr_stocks.collect(c, days=3))
         base.run_collector("kr_flows", lambda c: kr_flows.collect(c, days=90))
         ran_kr = True
-
-    if kr_evening and not _ran_today(con, "vkospi_pm"):
+    if s["kr_evening"] and not _ran_today(con, "vkospi_pm"):
         base.run_collector("vkospi_pm", lambda c: vkospi.collect(c, days=3))
-
-    if us_session:
+    if s["us_session"]:
         base.run_collector("us_sectors", lambda c: us_sectors.collect(c, days=5))
         ran_us = True
+    return ran_kr, ran_us
 
-    if morning:
-        # 로컬 백업 하루 1회 (DB 스냅샷 + 설정 zip, 최근 14개 유지)
-        if not _ran_today(con, "backup"):
-            from src.jobs import backup
 
-            base.run_collector("backup", backup.run)
-        # 가상장부(모멘텀·단타 A/B) 하루 1회 — US 마감 후 종가 기준 처리
-        if wd < 6 and not _ran_today(con, "virtual"):
-            base.run_collector("virtual", _run_virtual)
-        # 내부자 매매(Form 4) 하루 1회 — 감시 종목 임원·주요주주 지분변동
-        if wd < 6 and not _ran_today(con, "insider"):
-            from src.collectors import insider
+def _run_morning(con, s: dict) -> tuple[bool, bool]:
+    """아침 슬롯 — 전일 확정치·하루 1회짜리. 반환: (KR 수집함, US 수집함)."""
+    wd = s["wd"]
+    ran_kr = ran_us = False
+    # 로컬 백업 하루 1회 (DB 스냅샷 + 설정 zip, 최근 14개 유지)
+    if not _ran_today(con, "backup"):
+        from src.jobs import backup
 
-            base.run_collector("insider", lambda c: insider.collect(c, days=30))
-        # 전일 마감 확정치 하루 1회 (실패 시 다음 시간에 재시도됨)
-        if wd < 6 and not _ran_today(con, "us_stocks"):
-            base.run_collector("us_sectors", lambda c: us_sectors.collect(c, days=7))
-            base.run_collector("us_stocks", lambda c: us_stocks.collect(c, days=7))
-            base.run_collector("gurus", gurus.collect)
-            base.run_collector("earnings", earnings.collect)
-            base.run_collector("econ_calendar", econ_calendar.collect)
-            base.run_collector("fed", fed.collect)
-            ran_us = True
-        if wd < 5 and not _ran_today(con, "kr_sectors"):
-            base.run_collector("kr_sectors", lambda c: kr_sectors.collect(c, days=5))
-            base.run_collector("kr_flows", lambda c: kr_flows.collect(c, days=90))
-            ran_kr = True
-        # 한은 거시 (기준금리·국고금리·CPI) 하루 1회 — 키 없으면 0건 통과
-        if wd < 6 and not _ran_today(con, "ecos"):
-            base.run_collector("ecos", ecos.collect)
-        # VKOSPI (KRX Open API) — 아침 1회는 '지난 며칠 보정'용. 당일치는 저녁 슬롯에서
-        if wd < 6 and not _ran_today(con, "vkospi"):
-            base.run_collector("vkospi", vkospi.collect)
-        if wd == 0 and not _ran_today(con, "kr_map"):
-            base.run_collector("kr_map", kr_sectors.refresh_constituents)
-        # CapEx는 분기 공시 — 25일 이상 지났으면 재수집 (사실상 월 1회)
-        for cname, mod in (("us_capex", us_capex), ("kr_capex", kr_capex)):
-            fresh_row = con.execute(
-                "SELECT 1 FROM collector_runs WHERE collector=? AND status='ok' "
-                "AND run_at >= replace(datetime('now','localtime','-25 days'),' ','T') LIMIT 1",
-                (cname,),
-            ).fetchone()
-            if wd < 6 and not fresh_row:
-                base.run_collector(cname, mod.collect)
+        base.run_collector("backup", backup.run)
+    # 가상장부(모멘텀·단타 A/B) 하루 1회 — US 마감 후 종가 기준 처리
+    if wd < 6 and not _ran_today(con, "virtual"):
+        base.run_collector("virtual", _run_virtual)
+    # 내부자 매매(Form 4) 하루 1회 — 감시 종목 임원·주요주주 지분변동
+    if wd < 6 and not _ran_today(con, "insider"):
+        from src.collectors import insider
+
+        base.run_collector("insider", lambda c: insider.collect(c, days=30))
+    # 전일 마감 확정치 하루 1회 (실패 시 다음 시간에 재시도됨)
+    if wd < 6 and not _ran_today(con, "us_stocks"):
+        base.run_collector("us_sectors", lambda c: us_sectors.collect(c, days=7))
+        base.run_collector("us_stocks", lambda c: us_stocks.collect(c, days=7))
+        base.run_collector("gurus", gurus.collect)
+        base.run_collector("earnings", earnings.collect)
+        base.run_collector("econ_calendar", econ_calendar.collect)
+        base.run_collector("fed", fed.collect)
+        ran_us = True
+    if wd < 5 and not _ran_today(con, "kr_sectors"):
+        base.run_collector("kr_sectors", lambda c: kr_sectors.collect(c, days=5))
+        base.run_collector("kr_flows", lambda c: kr_flows.collect(c, days=90))
+        ran_kr = True
+    # 한은 거시 (기준금리·국고금리·CPI) 하루 1회 — 키 없으면 0건 통과
+    if wd < 6 and not _ran_today(con, "ecos"):
+        base.run_collector("ecos", ecos.collect)
+    # VKOSPI (KRX Open API) — 아침 1회는 '지난 며칠 보정'용. 당일치는 저녁 슬롯에서
+    if wd < 6 and not _ran_today(con, "vkospi"):
+        base.run_collector("vkospi", vkospi.collect)
+    if wd == 0 and not _ran_today(con, "kr_map"):
+        base.run_collector("kr_map", kr_sectors.refresh_constituents)
+    # CapEx는 분기 공시 — 25일 이상 지났으면 재수집 (사실상 월 1회)
+    for cname, mod in (("us_capex", us_capex), ("kr_capex", kr_capex)):
+        fresh_row = con.execute(
+            "SELECT 1 FROM collector_runs WHERE collector=? AND status='ok' "
+            "AND run_at >= replace(datetime('now','localtime','-25 days'),' ','T') LIMIT 1",
+            (cname,),
+        ).fetchone()
+        if wd < 6 and not fresh_row:
+            base.run_collector(cname, mod.collect)
+    return ran_kr, ran_us
+
+
+def main():
+    now = datetime.now()
+    s = _slots(now)
+    print(f"--- hourly {now.isoformat(timespec='seconds')} ---")
+
+    _run_always()
+    con = db.connect()
+    _run_housekeeping(con)
+    ran_kr, ran_us = _run_sessions(con, s)
+    if s["morning"]:
+        mk, mu = _run_morning(con, s)
+        ran_kr, ran_us = ran_kr or mk, ran_us or mu
     con.close()
 
     import analyze  # 루트 모듈 (bat이 CWD를 리포 루트로 보장)

@@ -148,7 +148,10 @@ def build_text(con) -> str:
         L.append("")
 
     # ---------- 판정 진행 ----------
-    n_eq = con.execute("SELECT COUNT(DISTINCT date) n FROM portfolio_snapshots").fetchone()["n"]
+    # 판정과 **같은 기준**(거래일만)으로 세야 리포트의 D-day와 실제 발송이 어긋나지 않는다
+    from src.jobs.verdict_alert import _eq_days
+
+    n_eq = _eq_days(con)
     dday = (VERDICT_DATE - today).days
     L.append("<b>🎯 검증 진행</b>")
     L.append(f"• 1차(시스템) {VERDICT_DATE.isoformat()} · <b>D-{dday}</b>"

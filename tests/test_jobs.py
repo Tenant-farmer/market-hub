@@ -465,3 +465,70 @@ def test_verdict2_excludes_weekends_and_honors_date_floor(monkeypatch):
     assert va._eq_days(con) == 20               # 주말 8일 제외
     assert va.VERDICT2_MIN_DATE == date(2026, 8, 25)
     con.close()
+
+_HOURLY_TIMES = [
+    ("2026-07-28T10:05:00", "KR 장중"),
+    ("2026-07-28T07:05:00", "아침 슬롯"),
+    ("2026-07-28T19:05:00", "KR 저녁(VKOSPI 재수집)"),
+    ("2026-07-28T23:05:00", "US 장중"),
+    ("2026-07-26T13:05:00", "일요일 장외"),
+]
+
+
+def _hourly_sequence(monkeypatch, tmp_path, iso):
+    """그 시각에 hourly가 부르는 수집기 이름을 **순서대로** 뽑는다 (실제 수집 없음)."""
+    import sys
+    from datetime import datetime
+
+    from src import db as _db
+    from src.collectors import base
+    from src.jobs import hourly
+
+    monkeypatch.setenv("MARKET_HUB_DB", str(tmp_path / "h.db"))
+    c = _db.connect()
+    c.execute("CREATE TABLE IF NOT EXISTS collector_runs (id INTEGER PRIMARY KEY, "
+              "collector TEXT, run_at TEXT, status TEXT, rows INT, message TEXT)")
+    c.commit()
+    c.close()
+
+    seq = []
+    monkeypatch.setattr(base, "run_collector", lambda name, fn: seq.append(name))
+    monkeypatch.setattr(hourly, "_ran_today", lambda c, n: False)
+    monkeypatch.setattr(hourly, "_send_daily_reports", lambda c, h: None)
+    # 부수효과 있는 것들은 무력화 — 라우팅만 본다
+    import src.jobs.watchdog as wd
+    import src.trading.portfolio as pf
+    monkeypatch.setattr(wd, "check_engine", lambda c: 0)
+    monkeypatch.setattr(pf, "snapshot", lambda c: 0)
+
+    class _Now(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime.fromisoformat(iso)
+    monkeypatch.setattr(hourly, "datetime", _Now)
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    sys.modules.setdefault("analyze", type(sys)("analyze"))
+    sys.modules["analyze"].run_us = lambda: None
+    sys.modules["analyze"].run_kr = lambda: None
+    hourly.main()
+    return seq
+
+
+@pytest.mark.parametrize("iso,label", _HOURLY_TIMES)
+def test_hourly_routing_is_stable(monkeypatch, tmp_path, iso, label):
+    """hourly 라우팅 회귀 잠금 — main()을 리팩터해도 **호출 집합이 변하면 안 된다**.
+
+    main()이 127줄·분기 18개라 손대기 겁나는 상태였다. 리팩터 전에 시각별 호출
+    시퀀스를 못박아, 순수 이동인지 동작 변경인지 테스트가 판별하게 한다.
+    """
+    seq = _hourly_sequence(monkeypatch, tmp_path, iso)
+    assert seq[:4] == ["sentiment", "macro", "news", "dart"], f"{label}: 상시 수집이 먼저"
+    assert len(seq) == len(set(seq)) or "us_sectors" in seq   # 중복은 us_sectors만 허용
+    if "장중" in label and "KR" in label:
+        assert {"kr_sectors", "kr_stocks", "kr_flows"} <= set(seq)
+    if "저녁" in label:
+        assert "vkospi_pm" in seq
+    if "아침" in label:
+        assert {"backup", "virtual", "insider", "us_stocks", "ecos", "vkospi"} <= set(seq)
+    if "일요일" in label:
+        assert not ({"kr_stocks", "us_stocks"} & set(seq)), "일요일엔 장 수집 없음"

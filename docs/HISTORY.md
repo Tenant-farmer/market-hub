@@ -14,6 +14,41 @@
   안 나온 상태였다. limit 400으로 올려 안전장치로만 남김
 - ★주요만 토글과 국가 탭은 서로 독립 — 링크에 상대 값을 실어 상태가 유지된다
 
+### 아키텍처 점검 → 4건 수리
+구조를 그려보고 평가한 결과를 순서대로 고쳤다.
+
+**1. 매수신호 로직이 대시보드 안에 있었다 (최우선)**
+`kr_signal`·`vix_signal`이 `dashboard/queries_macro.py`("개요 페이지의 신호등 영역")에
+정의돼 있는데, 소비자는 6곳이었고 그중 하나가 **실주문을 내는 `trading/signal_entry.py`**.
+표시용 수정이 매매 판단을 조용히 바꿀 수 있었고, 부작용으로 **엔진이 Flask를 통째로
+메모리에 올리고 있었다**(실측: `import src.trading.signal_entry` → `flask` in sys.modules).
+
+→ `src/analytics/signals.py`로 이관, `queries_macro`는 re-export만 남김.
+**화면 코드는 한 줄도 안 바뀜**(overview.py는 `queries.vix_signal(con)` 그대로).
+엔진에서 flask·werkzeug 로드 **False** 확인. 순환 4쌍 중 2쌍 해소.
+
+**2. 주말 0% 관측이 통계를 오염 (VaR·α)**
+`portfolio.equity_curve(con, broker, trading_days_only=True)`를 테이블 주인 모듈에 정본으로
+두고 `analytics/risk.py`(VaR)와 `status_report`(표본 표시)가 쓰게 했다. 6점 → 4점.
+0% 날은 변동성을 낮춰 **VaR를 작게, α의 t값을 크게** 만든다 — 둘 다 자기기만 방향이다.
+
+**3. SQLite 쓰기 경합 — 진짜 원인은 대량 INSERT가 아니었다**
+측정부터 했다: 5,300행 `executemany`+commit = **3ms**, 락 획득 = 0.1ms. 느리지 않았다.
+범인은 `portfolio.snapshot()` — 키움 INSERT로 트랜잭션을 연 뒤 **Alpaca API를 2번 호출하고서야**
+커밋해 락을 **0.4~5초** 쥐고 있었다(키움 `_throttle()` 1초 + 레이트리밋 재시도 1.2초×2).
+매시 :05에 엔진이 `database is locked`로 넘어지던 창이 정확히 이것이다.
+→ 네트워크를 전부 끝낸 뒤 한 번에 쓰도록 변경. 회귀 테스트로 못박음
+(`test_snapshot_does_not_hold_write_lock_across_network` — 되돌리면 실패 확인).
+
+**4. hourly.main() 127줄 → 45줄**
+분기 18개·중첩 4단이라 손대기 어려웠다. `_slots` / `_run_always` / `_run_housekeeping` /
+`_run_sessions` / `_run_morning`으로 **순수 이동**. 로직 무변경을 보장하려고
+**리팩터 전에** 시각별 호출 시퀀스를 잠그는 테스트 5종을 먼저 넣었다.
+실제 hourly 1회 실행으로 에러 0건 확인. 테스트 84 → 90.
+
+**안 고친 것**: `jobs/briefing.py`가 `dashboard.queries`의 랭킹·수급 등 12개 질의를 쓴다.
+돈 경로가 아니고 이관 범위가 훨씬 커서 남겼다(hourly가 Flask를 올리는 비용만 있음).
+
 ### 2차 판정일 8/20 → 8/25 + 표본이 주말로 부풀던 오류
 사용자 결정으로 판정을 미루면서, 게이트를 들여다보다 **표본 계산이 틀린 것**을 찾았다.
 

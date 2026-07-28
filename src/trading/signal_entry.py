@@ -15,7 +15,7 @@ import os
 from datetime import date, datetime
 
 from src import db
-from src.dashboard.queries_macro import kr_signal, vix_signal
+from src.analytics.signals import kr_signal, vix_signal
 from src.trading import ensure_tables
 
 
