@@ -20,6 +20,12 @@ from src.trading.brokers.base import BrokerAdapter, OrderRequest
 _TOKEN = {"val": None, "exp": None}
 _ORD_TS = {"t": 0.0}                     # 마지막 주문요청 시각 (사전 스로틀용)
 
+# 커넥션 재사용 — 매 호출 requests.get()은 TCP+TLS를 새로 맺고 **CA 번들을 디스크에서
+# 다시 읽는다**(실측 load_verify_locations 0.23s/회). /positions 1.8초의 대부분이 이거였다.
+# Session 하나를 재사용하면 785ms → 180ms (2026-07-29 실측). urllib3 풀은 스레드 안전하고
+# 우리는 세션 상태(headers/cookies)를 바꾸지 않으므로 모듈 전역으로 둔다.
+_S = requests.Session()
+
 
 def _throttle():
     """주문류 요청 간 최소 1초 간격 보장 — 1700(초당 한도) 예방."""
@@ -76,7 +82,7 @@ def _token(force: bool = False) -> str | None:
                     return row["token"]
             except ValueError:
                 pass
-    r = requests.post(
+    r = _S.post(
         f"{_base()}/oauth2/token",
         json={"grant_type": "client_credentials",
               "appkey": os.getenv("KIWOOM_APP_KEY"), "secretkey": os.getenv("KIWOOM_APP_SECRET")},
@@ -123,7 +129,7 @@ class KiwoomBroker(BrokerAdapter):
             _throttle()
             tok_retry = False
             for _ in range(3):        # 1700=유령접수 확인 후 재시도 / 8005=토큰 강제재발급 후 재시도
-                r = requests.post(
+                r = _S.post(
                     f"{_base()}/api/dostk/ordr",
                     headers={"Content-Type": "application/json;charset=UTF-8",
                              "authorization": f"Bearer {_token(force=tok_retry)}", "api-id": api_id},
@@ -165,7 +171,7 @@ class KiwoomBroker(BrokerAdapter):
     def order_history(self, ord_dt: str | None = None) -> list[dict]:
         """kt00007 계좌별주문체결내역 — 당일(기본) 주문의 체결/미체결 상태. 실패 시 []."""
         try:
-            r = requests.post(
+            r = _S.post(
                 f"{_base()}/api/dostk/acnt",
                 headers={"Content-Type": "application/json;charset=UTF-8",
                          "authorization": f"Bearer {_token()}", "api-id": "kt00007"},
@@ -207,7 +213,7 @@ class KiwoomBroker(BrokerAdapter):
         """kt10003 취소주문 — qty 0이면 전량취소. 반환 {ok, msg}."""
         try:
             _throttle()
-            r = requests.post(
+            r = _S.post(
                 f"{_base()}/api/dostk/ordr",
                 headers={"Content-Type": "application/json;charset=UTF-8",
                          "authorization": f"Bearer {_token()}", "api-id": "kt10003"},
@@ -231,7 +237,7 @@ class KiwoomBroker(BrokerAdapter):
         for attempt in range(3):
             try:
                 _throttle()                            # 1초 최소 간격 (submit_order와 공유)
-                r = requests.post(
+                r = _S.post(
                     f"{_base()}/api/dostk/acnt",
                     headers={"Content-Type": "application/json;charset=UTF-8",
                              "authorization": f"Bearer {_token()}", "api-id": "kt00018"},

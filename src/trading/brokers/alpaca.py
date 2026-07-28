@@ -13,6 +13,12 @@ from src.trading.brokers.base import BrokerAdapter, OrderRequest
 BASE = "https://paper-api.alpaca.markets"
 CRYPTO_MAP = {"BTCUSD": "BTC/USD", "ETHUSD": "ETH/USD", "SOLUSD": "SOL/USD"}
 
+# 커넥션 재사용 — 매 호출 requests.get()은 TCP+TLS를 새로 맺고 **CA 번들을 디스크에서
+# 다시 읽는다**(실측 load_verify_locations 0.23s/회). /positions 1.8초의 대부분이 이거였다.
+# Session 하나를 재사용하면 785ms → 180ms (2026-07-29 실측). urllib3 풀은 스레드 안전하고
+# 우리는 세션 상태(headers/cookies)를 바꾸지 않으므로 모듈 전역으로 둔다.
+_S = requests.Session()
+
 
 def _headers():
     return {
@@ -39,10 +45,10 @@ class AlpacaBroker(BrokerAdapter):
         }
         dup, ok, status, msg = False, False, "error", ""
         try:
-            r = requests.post(f"{BASE}/v2/orders", json=body, headers=_headers(), timeout=15)
+            r = _S.post(f"{BASE}/v2/orders", json=body, headers=_headers(), timeout=15)
             if r.status_code == 422 and "client_order_id" in r.text:
                 dup = True
-                r = requests.get(
+                r = _S.get(
                     f"{BASE}/v2/orders:by_client_order_id",
                     params={"client_order_id": client_order_id},
                     headers=_headers(), timeout=15,
@@ -72,22 +78,22 @@ class AlpacaBroker(BrokerAdapter):
         return {"ok": ok, "dup": dup, "status": status}
 
     def order_status(self, client_order_id: str) -> dict:
-        r = requests.get(
+        r = _S.get(
             f"{BASE}/v2/orders:by_client_order_id",
             params={"client_order_id": client_order_id}, headers=_headers(), timeout=15,
         )
         return r.json() if r.ok else {"status": f"http_{r.status_code}"}
 
     def get_account(self) -> dict:
-        r = requests.get(f"{BASE}/v2/account", headers=_headers(), timeout=15)
+        r = _S.get(f"{BASE}/v2/account", headers=_headers(), timeout=15)
         return r.json() if r.ok else {}
 
     def get_positions(self) -> list:
-        r = requests.get(f"{BASE}/v2/positions", headers=_headers(), timeout=15)
+        r = _S.get(f"{BASE}/v2/positions", headers=_headers(), timeout=15)
         return r.json() if r.ok else []
 
     def is_market_open(self, ticker: str) -> bool:
         if "/" in CRYPTO_MAP.get(ticker, ticker):
             return True   # 크립토 24/7
-        r = requests.get(f"{BASE}/v2/clock", headers=_headers(), timeout=15)
+        r = _S.get(f"{BASE}/v2/clock", headers=_headers(), timeout=15)
         return bool(r.ok and r.json().get("is_open"))

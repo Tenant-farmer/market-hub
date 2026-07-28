@@ -3,6 +3,7 @@
 실전 게이트 상태 + 브로커별 보유종목 평가손익 + 최근 주문. 브로커 API 온디맨드 조회.
 """
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 
 from flask import Blueprint, render_template
@@ -44,6 +45,16 @@ def _alpaca_view():
             "acct_no": acct.get("account_number", ""),
             "holdings": holdings,
         }
+    except Exception:
+        return None
+
+
+def _kiwoom_view():
+    """키움 잔고 (KRW). 미설정·실패 시 None — 병렬 실행을 위해 함수로 뺐다."""
+    if not kiwoom.configured():
+        return None
+    try:
+        return kiwoom.KiwoomBroker().account_balance()
     except Exception:
         return None
 
@@ -201,9 +212,13 @@ def positions():
         "max_daily": int(risk._f("MAX_DAILY_ORDERS", risk.MAX_DAILY_ORDERS)),
         "orders_today": orders_today,
     }
-    kr = kiwoom.KiwoomBroker().account_balance() if kiwoom.configured() else None
+    # 키움·Alpaca는 서로 무관한 외부 호출이라 **동시에** 던진다 — 순차면 둘의 합,
+    # 병렬이면 느린 쪽 하나만큼만 기다린다. 각자 자기 모듈의 Session을 쓰므로 공유 상태 없음
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        f_kr = ex.submit(_kiwoom_view)
+        f_us = ex.submit(_alpaca_view)
+        kr, us = f_kr.result(), f_us.result()
     kr_mock = kiwoom.is_mock() if kiwoom.configured() else True
-    us = _alpaca_view()
     for h in (kr or {}).get("holdings", []) + (us or {}).get("holdings", []):
         h["tag"] = tag(h["code"])
         h["insider"] = insider.get(h["code"])         # 내부자 순매수/매도 (US만 있음)

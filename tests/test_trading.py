@@ -319,7 +319,7 @@ def test_kiwoom_ratelimit_verify_then_retry(con, monkeypatch):
         posts.append(kw.get("headers", {}).get("api-id"))
         return R({"return_code": 5, "return_msg": "허용된 요청 개수를 초과하였습니다[1700:...]"})
 
-    monkeypatch.setattr(kiwoom.requests, "post", post_reject)
+    monkeypatch.setattr(kiwoom._S, "post", post_reject)
     monkeypatch.setattr(kiwoom.KiwoomBroker, "_find_recent_order",
                         lambda self, req: {"ord_no": "0070001"})
     res = kiwoom.KiwoomBroker().submit_order(
@@ -338,7 +338,7 @@ def test_kiwoom_ratelimit_verify_then_retry(con, monkeypatch):
             return R({"return_code": 5, "return_msg": "...[1700:...]"})
         return R({"return_code": 0, "ord_no": "0070002", "return_msg": "모의투자 매수주문완료"})
 
-    monkeypatch.setattr(kiwoom.requests, "post", post_then_ok)
+    monkeypatch.setattr(kiwoom._S, "post", post_then_ok)
     monkeypatch.setattr(kiwoom.KiwoomBroker, "_find_recent_order", lambda self, req: None)
     res = kiwoom.KiwoomBroker().submit_order(
         con, OrderRequest(ticker="035420", action="buy", qty=1, price=None, strategy=""),

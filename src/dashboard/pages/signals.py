@@ -18,15 +18,15 @@ IDX = {  # (symbol, market, 표시명)
 
 
 def _close(con, symbol, market):
-    return [{"time": r["date"], "value": r["close"]} for r in con.execute(
+    return [{"time": r["date"], "value": round(r["close"], 2)} for r in con.execute(
         "SELECT date, close FROM prices_daily WHERE symbol=? AND market=? AND date>=? "
         "ORDER BY date", (symbol, market, START)) if r["close"] is not None]
 
 
 def _sent(con, metric):
-    return [{"time": r["date"], "value": r["value"]} for r in con.execute(
+    return [{"time": r["date"], "value": round(r["value"], 2)} for r in con.execute(
         "SELECT date, value FROM sentiment_daily WHERE metric=? AND date>=? ORDER BY date",
-        (metric, START))]
+        (metric, START)) if r["value"] is not None]
 
 
 @bp.get("/signals")

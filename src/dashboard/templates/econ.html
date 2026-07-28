@@ -3,12 +3,21 @@
 {% block title %}경제지표 — market-hub{% endblock %}
 {% block body %}
 <h1>경제지표</h1>
-<div class="sub">US·KR 주요 지표 향후 14일 · 시간은 KST
+<div class="sub">미국·한국·일본·중국·유로존·독일·영국 향후 14일 · 시간은 KST
   {% if fed_next %} · <a href="/fed" style="color:var(--accent);text-decoration:none">다음 FOMC {{ fed_next.date[5:] }} (D-{{ fed_next.dday }})</a>{% endif %}</div>
 
+{# 두 필터는 독립 — 국가를 바꿔도 ★주요만 상태가 유지되도록 서로의 값을 링크에 싣는다 #}
+{% set q = '&major=1' if major_only else '' %}
+<div class="pills" style="margin-bottom:8px">
+  <a href="/econ?c={{ country }}" class="{{ 'on' if not major_only }}">전체</a>
+  <a href="/econ?c={{ country }}&major=1" class="{{ 'on' if major_only }}">★ 주요만</a>
+</div>
 <div class="pills" style="margin-bottom:12px">
-  <a href="/econ" class="{{ 'on' if not major_only }}">전체</a>
-  <a href="/econ?major=1" class="{{ 'on' if major_only }}">★ 주요만</a>
+  <a href="/econ?c={{ q }}" class="{{ 'on' if not country }}">🌐 전체 {{ total }}</a>
+  {% for code, label in countries %}
+  <a href="/econ?c={{ code }}{{ q }}" class="{{ 'on' if country == code }}"
+     style="{{ 'opacity:.4' if not counts[code] }}">{{ label }} {{ counts[code] }}</a>
+  {% endfor %}
 </div>
 
 <div class="card" style="overflow-x:auto">

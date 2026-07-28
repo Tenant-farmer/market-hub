@@ -42,12 +42,24 @@ def earnings_page():
 
 @bp.get("/econ")
 def econ_page():
+    from src.dashboard.queries_calendar import ECON_COUNTRIES
+
     major_only = request.args.get("major") == "1"
+    country = request.args.get("c", "")
+    valid = {c for c, _ in ECON_COUNTRIES}
+    if country not in valid:
+        country = ""
     con = db.connect()
-    econ = queries.econ_upcoming(con, days=14, limit=80)
+    econ = queries.econ_upcoming(con, days=14, country=country)
     if major_only:
         econ = [e for e in econ if e["major"]]
+    # 탭 배지용 건수 — 현재 major 토글을 반영해야 탭 숫자와 표가 어긋나지 않는다
+    allrows = queries.econ_upcoming(con, days=14)
+    if major_only:
+        allrows = [e for e in allrows if e["major"]]
+    counts = {c: sum(1 for e in allrows if e["country"] == c) for c, _ in ECON_COUNTRIES}
     fw = queries.fed_watch(con)
     con.close()
-    return render_template("econ.html", econ=econ, major_only=major_only,
+    return render_template("econ.html", econ=econ, major_only=major_only, country=country,
+                           countries=ECON_COUNTRIES, counts=counts, total=len(allrows),
                            fed_next=fw["next"] if fw else None)

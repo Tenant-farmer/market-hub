@@ -59,21 +59,32 @@ def fed_watch(con):
     }
 
 
-def econ_upcoming(con, days: int = 7, limit: int = 12) -> list[dict]:
-    """향후 경제지표 (주요 지표 우선, KST 시각)."""
+# 국가 표시 — 수집 국가 7종(econ_calendar.COUNTRY와 짝)
+ECON_COUNTRIES = [("US", "🇺🇸 미국"), ("KR", "🇰🇷 한국"), ("JP", "🇯🇵 일본"),
+                  ("CN", "🇨🇳 중국"), ("EU", "🇪🇺 유로존"), ("DE", "🇩🇪 독일"),
+                  ("UK", "🇬🇧 영국")]
+
+
+def econ_upcoming(con, days: int = 7, limit: int = 400, country: str = "") -> list[dict]:
+    """향후 경제지표 (주요 지표 우선, KST 시각).
+
+    limit 기본값을 400으로 올렸다 — 수집 국가를 7종으로 넓힌 뒤 80이면 **154건이
+    조용히 잘렸다**(2026-07-29 실측). 국가 탭으로 좁혀 보는 게 정상 사용이라
+    상한은 안전장치로만 둔다.
+    """
     from datetime import date, datetime, timedelta
 
     today = date.today()
+    where = "date >= ? AND date <= ?"
+    args = [today.isoformat(), (today + timedelta(days=days)).isoformat()]
+    if country:
+        where += " AND country = ?"
+        args.append(country)
     try:
         rows = con.execute(
-            """
-            SELECT date, gmt, country, event, consensus, previous, major
-            FROM econ_calendar WHERE date >= ? AND date <= ?
-            ORDER BY date, major DESC, gmt
-            LIMIT ?
-            """,
-            (today.isoformat(), (today + timedelta(days=days)).isoformat(), limit),
-        ).fetchall()
+            f"SELECT date, gmt, country, event, consensus, previous, major "
+            f"FROM econ_calendar WHERE {where} ORDER BY date, major DESC, gmt LIMIT ?",
+            (*args, limit)).fetchall()
     except Exception:
         return []
     out = []

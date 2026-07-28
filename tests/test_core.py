@@ -117,6 +117,7 @@ def test_all_routes_smoke(monkeypatch):
     cl = create_app().test_client()
     routes = ["/", "/us", "/kr", "/leaders", "/kr-leaders", "/stocks",
               "/signals?mkt=kr", "/signals?mkt=us", "/gurus", "/econ", "/econ?major=1",
+              "/econ?c=US", "/econ?c=JP&major=1", "/econ?c=XX",   # XX=미지원 국가 → 전체로 폴백
               "/earnings", "/earnings?view=week&w=-1",
               "/earnings?view=month", "/earnings?view=month&m=1", "/earnings?view=list",
               "/earnings?view=week&w=1",
