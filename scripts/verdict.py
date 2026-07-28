@@ -97,52 +97,15 @@ def system_verdict(con, since: str) -> list[dict]:
     return out
 
 
-def perf_verdict(con) -> list[dict]:
-    """2차: 전략 성과 — 표본 부족이면 '보류'."""
-    out = []
-    n_eq = con.execute("SELECT COUNT(DISTINCT date) n FROM portfolio_snapshots").fetchone()["n"]
-    if n_eq < MIN_EQUITY_DAYS:
-        return [{"item": "성과 판정", "ok": None,
-                 "detail": f"표본 {n_eq}/{MIN_EQUITY_DAYS}일 — **판정 보류** "
-                           f"(무리한 결론 방지)"}]
+def perf_verdict(con, since: str) -> list[dict]:
+    """2차: 전략 성과 — **백테스트 예측 대조**로 재설계(_perf_verdict.py).
 
-    # α/β
-    try:
-        from src.analytics.attribution import attribute_strategy
+    수익률·α의 t값을 20일로 판정하는 건 자기기만이라, 사전 등록한 예측을 실측과
+    대조하고 표본이 모자란 항목은 판정하지 않고 참고치로 남긴다.
+    """
+    from _perf_verdict import perf_verdict as _pv
 
-        for s in ("momentum", "meanrev"):
-            r = attribute_strategy(con, s)
-            if r and "error" not in r:
-                out.append({"item": f"{s} α/β", "ok": r["alpha_ann"] > 0,
-                            "detail": f"α {r['alpha_ann']:+.1f}%/년 · β {r['beta']} · "
-                                      f"시장설명 {r['market_share']}% · t {r['t_alpha']}"})
-    except Exception:
-        pass
-
-    # VaR 실측 vs 백테스트 예측(-2.65%)
-    try:
-        from src.analytics.risk import strategy_risk
-
-        r = strategy_risk(con, "momentum")
-        if r and "error" not in r:
-            ok = abs(r["var_pct"] - 2.65) < 2.0          # 예측과 2%p 이내면 정합
-            out.append({"item": "VaR 실측 vs 백테스트(-2.65%)", "ok": ok,
-                        "detail": f"실측 -{r['var_pct']}% · CVaR -{r['cvar_pct']}%"})
-    except Exception:
-        pass
-
-    # 가상장부 A/B 방향
-    eqs = {}
-    for s in ("momentum", "meanrev"):
-        r = con.execute("SELECT equity FROM daytrade_equity WHERE strategy=? "
-                        "ORDER BY date DESC LIMIT 1", (s,)).fetchone()
-        if r:
-            eqs[s] = (r["equity"] / 100000 - 1) * 100
-    if len(eqs) == 2:
-        out.append({"item": "가상장부 A/B (모멘텀 > 단타 예측)",
-                    "ok": eqs["momentum"] >= eqs["meanrev"],
-                    "detail": f"모멘텀 {eqs['momentum']:+.2f}% vs 단타 {eqs['meanrev']:+.2f}%"})
-    return out
+    return _pv(con, since)
 
 
 def main():
@@ -164,11 +127,11 @@ def main():
     print(f"\n  → 1차 판정: {'✅ 합격 — VPS 이전 진행 가능' if passed else '❌ 불합격 — 위 항목 해소 필요'}")
 
     print("\n" + "=" * 68)
-    print(f"2차 — 전략 성과 (표본 {MIN_EQUITY_DAYS}영업일 도달 시)")
+    print("2차 — 전략 성과 (백테스트 예측이 실거동에서 재현되는가)")
     print("=" * 68)
-    for r in perf_verdict(con):
-        icon = "⏳" if r["ok"] is None else _icon(r["ok"])
-        print(f"  {icon} {r['item']:34} {r['detail']}")
+    from _perf_verdict import render
+
+    print(render(perf_verdict(con, since), n_eq))
     con.close()
 
 
