@@ -3,10 +3,13 @@
 - 경제지표(US·KR major): 발표시각(gmt+9h=KST) 도달 → Nasdaq API 당일 재조회로 actual 확인
   → "📊 CPI 발표: 3.2% (예상 3.1% · 이전 3.4%)". actual이 아직 비면 다음 사이클 재확인,
   30분 넘게 비면 예상치만으로 1회 알림(값 대기 표기), 2시간 지나면 조용히 종료
-- 실적(감시 = 로테이션 US 슬롯 + AAPL): 발표 시간대 도달 시 알림 —
-  장전(BMO) = 당일 19:00 KST(=06:00 ET), 장후(AMC·미표기) = 익일 05:00 KST(=16:00 ET)
+- 실적(감시 = 로테이션 US + 메가캡 + **섹터별 시총 상위 3** + AAPL, 44종목):
+  ① 발표 후 리뷰(PEAD) 우선 — 실적 숫자 해석
+  ② 리뷰가 안 나간 종목만 '발표 시간대' 예고 —
+     장전(BMO) 당일 19:00 KST(=06:00 ET) / 장후(AMC·미표기) 익일 05:00 KST(=16:00 ET)
 - 멱등: collector_runs('event_alert', message=키) — 이벤트당 1회
 """
+import os
 from datetime import datetime, timedelta
 
 import requests
@@ -29,13 +32,26 @@ def _once(con, key: str) -> bool:
     return True
 
 
-def _send(text: str):
+def _send(text: str) -> bool:
+    """알림 발송. 실패해도 예외를 올리지 않되 **조용히 넘어가지도 않는다**.
+
+    원래 `except: pass`라 텔레그램이 400을 내도 '발송함'으로 카운트됐다. 오늘 아침
+    판정 알림이 `<` 때문에 400을 낸 것과 같은 함정 — 실패했다는 사실 자체를 알 수 없었다.
+    """
     try:
         from src import notify
 
         notify.send(text)
-    except Exception:
-        pass
+        return True
+    except Exception as e:
+        try:
+            from src.errlog import swallow
+
+            swallow("event_alerts._send", e)
+        except Exception:
+            pass
+        print(f"[event_alerts] 발송 실패: {type(e).__name__}: {str(e)[:120]}")
+        return False
 
 
 def _refresh_econ(con, d: str) -> None:
@@ -117,14 +133,27 @@ def check(con, now: datetime | None = None) -> int:
                   if not str(x["symbol"]).isdigit()}
     except Exception:
         pass
-    try:                                               # 섹터별 시총 1위 (US)
+    # 섹터별 시총 상위 N (US) — 1위만 보면 섹터 대표 대형주가 줄줄이 빠진다.
+    # 2026-07-28: 코카콜라(KO) 실적에 알림이 안 왔다는 지적 — 필수소비재 1위가 아니라 제외됐다.
+    # 실측 알림량(향후 14일): 1위 0.9건/일 · 3위 1.6건 · 5위 2.4건 · 8위 3.7건.
+    # 3위면 섹터 대표 대형주가 대부분 들어오면서도 알림 피로가 없다. 11섹터 × 3 = 감시 44종목.
+    try:
+        top = int(os.getenv("EVENT_SECTOR_TOP", "3"))
         watch |= {r["symbol"] for r in con.execute(
             "SELECT symbol FROM (SELECT m.symbol, ROW_NUMBER() OVER "
             "(PARTITION BY sm.sector_name ORDER BY m.mcap DESC) rn "
             "FROM stock_meta m JOIN sector_map sm "
-            "ON sm.stock_code=m.symbol AND sm.market='US_STOCK') WHERE rn=1")}
+            "ON sm.stock_code=m.symbol AND sm.market='US_STOCK') WHERE rn<=?", (top,))}
     except Exception:
         pass
+    # 리뷰(PEAD)를 **먼저** 내보내고, 리뷰가 나간 종목은 예고를 생략한다.
+    # 장전(BMO) 발표는 예고 창이 열리는 19:00 KST에 이미 실적이 확정돼 있어, 예고와 리뷰가
+    # 같은 사이클에 3초 간격으로 둘 다 갔다(2026-07-28 KO 실측). 예고가 예고 역할을 못 한다.
+    # '장전이면 무조건 생략'이 아니라 '리뷰가 실제로 나갔을 때만 생략' — 리뷰 데이터가
+    # 없는 종목까지 침묵하면 알림 자체가 사라진다. 장후(AMC)는 시차가 있어 2단이 유지된다.
+    reviewed = _pead_alerts(con, watch, now)
+    n += len(reviewed)
+
     try:
         ers = con.execute(
             "SELECT symbol, date, when_time, name, eps_forecast FROM earnings_calendar "
@@ -133,7 +162,7 @@ def check(con, now: datetime | None = None) -> int:
     except Exception:
         ers = []
     for e in ers:
-        if e["symbol"] not in watch:
+        if e["symbol"] not in watch or e["symbol"] in reviewed:
             continue
         pre = "pre" in (e["when_time"] or "")
         d = datetime.fromisoformat(e["date"])
@@ -157,8 +186,6 @@ def check(con, now: datetime | None = None) -> int:
             _send(msg)
             n += 1
 
-    # ---- 실적 발표 '후' 서프라이즈 해석 (PEAD) ----
-    n += _pead_alerts(con, watch, now)
     return n
 
 
@@ -240,14 +267,14 @@ def _earnings_detail(sym: str) -> dict | None:
     return d
 
 
-def _pead_alerts(con, watch, now) -> int:
+def _pead_alerts(con, watch, now) -> set:
     """발표 후 애널리스트式 실적 리뷰 알림 — EPS·매출·마진·SUE·주가반응 + PEAD 기대치.
 
     근거(scripts/pead_backtest.py, 1,797 이벤트): 서프라이즈 상위20%는 63일 시장초과 +9.4%
     (승률 59%), 하위20%는 -6.2%(승률 32%). **미스 회피가 더 강한 엣지** — 보유 중이면 경고.
     문서 가중치: 매출>EPS(조작 난이도), 마진=가격결정력, 첫 서프라이즈>연속 서프라이즈.
     """
-    sent = 0
+    sent = set()                       # 반환: **리뷰를 보낸 종목** — 예고 중복 억제에 쓴다
     for sym in watch:
         row = con.execute(
             "SELECT symbol, date FROM earnings_calendar WHERE symbol=? AND date <= ? "
@@ -353,7 +380,7 @@ def _pead_alerts(con, watch, now) -> int:
             L.append("• 모멘텀 지속 가능성 — 로테이션 다음 평가 시 순위 상승 여지")
         L.append("<i>근거: pead_backtest.py 1,797 이벤트 (2024-11~2026-06)</i>")
         _send("\n".join(L))
-        sent += 1
+        sent.add(sym)
     return sent
 
 

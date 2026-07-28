@@ -628,7 +628,7 @@ def test_event_alerts(con, monkeypatch):
     con.execute("CREATE TABLE IF NOT EXISTS rotation_slots (symbol TEXT)")
     con.execute("INSERT INTO rotation_slots VALUES ('AMD')")
     con.commit()
-    monkeypatch.setattr(event_alerts, "_pead_alerts", lambda *a: 0)   # PEAD는 별도 테스트
+    monkeypatch.setattr(event_alerts, "_pead_alerts", lambda *a: set())  # PEAD는 별도 테스트
     assert event_alerts.check(con, now2) == 1
     assert "AMD" in sent[-1] and "0.92" in sent[-1]
     assert event_alerts.check(con, now2) == 0            # 멱등
@@ -699,9 +699,9 @@ def test_pead_alert_grading(con, monkeypatch):
 
     import yfinance
     monkeypatch.setattr(yfinance, "Ticker", _FakeTicker)
-    assert event_alerts._pead_alerts(con, ["XYZ"], now) == 1
+    assert event_alerts._pead_alerts(con, ["XYZ"], now) == {"XYZ"}   # 반환: 리뷰한 종목
     assert "실적 미스" in sent[0] and "보유 중" in sent[0]        # 보유 경고
-    assert event_alerts._pead_alerts(con, ["XYZ"], now) == 0      # 멱등
+    assert event_alerts._pead_alerts(con, ["XYZ"], now) == set()   # 멱등 — 재호출은 빈 집합
 
 
 def test_slippage_parse_and_outlier(con):

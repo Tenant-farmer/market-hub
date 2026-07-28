@@ -532,3 +532,46 @@ def test_hourly_routing_is_stable(monkeypatch, tmp_path, iso, label):
         assert {"backup", "virtual", "insider", "us_stocks", "ecos", "vkospi"} <= set(seq)
     if "일요일" in label:
         assert not ({"kr_stocks", "us_stocks"} & set(seq)), "일요일엔 장 수집 없음"
+
+def test_earnings_review_suppresses_heads_up(monkeypatch, tmp_path):
+    """장전 발표는 예고와 리뷰가 **같은 사이클**에 둘 다 나갔다 (2026-07-28 KO 실측).
+
+    예고 창(19:00 KST)이 열릴 때 장전 실적은 이미 확정돼 있어, 3초 간격으로 중복 도착했다.
+    → 리뷰를 먼저 보내고, 리뷰가 나간 종목은 예고를 생략한다.
+    단 '장전이면 무조건 생략'이 아니다 — 리뷰 데이터가 없으면 예고라도 가야 한다.
+    """
+    import sqlite3
+    from datetime import datetime
+
+    from src import db as _db
+    from src.jobs import event_alerts as ea
+
+    monkeypatch.setenv("MARKET_HUB_DB", str(tmp_path / "e.db"))
+    con = _db.connect()
+    con.execute("CREATE TABLE collector_runs (id INTEGER PRIMARY KEY, collector TEXT, "
+                "run_at TEXT, status TEXT, rows INT, message TEXT)")
+    con.execute("CREATE TABLE earnings_calendar (symbol TEXT, date TEXT, when_time TEXT, "
+                "name TEXT, eps_forecast TEXT)")
+    con.execute("CREATE TABLE econ_calendar (date TEXT, gmt TEXT, country TEXT, event TEXT, "
+                "actual TEXT, consensus TEXT, previous TEXT, major INT)")
+    con.execute("CREATE TABLE news (code TEXT, title TEXT, url TEXT, summary TEXT, dt TEXT)")
+    con.execute("CREATE TABLE rotation_slots (symbol TEXT)")     # 감시 목록에 넣기 위함
+    con.executemany("INSERT INTO rotation_slots VALUES (?)", [("KO",), ("XX",)])
+    con.executemany("INSERT INTO earnings_calendar VALUES (?,?,?,?,?)", [
+        ("KO", "2026-07-28", "time-pre-market", "Coca-Cola", "$0.92"),
+        ("XX", "2026-07-28", "time-pre-market", "No Review Co", "$1.00"),
+    ])
+    con.commit()
+
+    sent = []
+    monkeypatch.setattr(ea, "_send", lambda m: sent.append(m) or True)
+    monkeypatch.setattr(ea, "_pead_alerts", lambda c, w, n: {"KO"})   # KO만 리뷰됨
+    monkeypatch.setattr(ea, "_refresh_econ", lambda c, d: None)
+
+    now = datetime(2026, 7, 28, 20, 0)      # 예고 창(19:00~01:00) 안
+    ea.check(con, now=now)
+    heads = [m for m in sent if "실적 발표 시간대" in m]
+    con.close()
+
+    assert not any("KO" in m for m in heads), "리뷰가 나간 KO는 예고가 생략돼야 한다"
+    assert any("XX" in m for m in heads), "리뷰가 없는 종목은 예고라도 가야 한다"
