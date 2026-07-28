@@ -233,8 +233,37 @@ def main() -> None:
         time.sleep(POLL)
 
 
+def _crash_dump(kind: str, text: str) -> None:
+    """최후의 그물 — DB도 _log도 거치지 않고 전용 파일에 직접 쓴다.
+
+    2026-07-28 12시대: `_record` 무예외화 이후에도 워커가 3분마다 재시작했는데,
+    루프의 `_log("ERROR"…)`도 atexit의 `stop`도 안 남아 **어디서 끝나는지 알 수 없었다**.
+    기존 경로(DB·공용 로그)를 전부 우회하는 독립 기록이 있어야 다음번에 잡는다.
+    """
+    try:
+        with open(db.ROOT / "data" / "engine_crash.log", "a", encoding="utf-8") as f:
+            f.write(f"\n=== {datetime.now().isoformat(timespec='seconds')} pid {os.getpid()} "
+                    f"[{kind}] ===\n{text}\n")
+    except Exception:
+        pass
+
+
 if __name__ == "__main__":
+    import sys
+
+    # 스레드에서 터진 예외도(텔레그램 폴러 등) 놓치지 않는다
+    sys.excepthook = lambda t, v, tb: _crash_dump(
+        "excepthook", "".join(traceback.format_exception(t, v, tb)))
+    if hasattr(__import__("threading"), "excepthook"):
+        __import__("threading").excepthook = lambda a: _crash_dump(
+            "thread", "".join(traceback.format_exception(a.exc_type, a.exc_value, a.exc_traceback)))
     try:
         main()
     except KeyboardInterrupt:
         print("[engine worker] stopped")
+        _crash_dump("KeyboardInterrupt", "정상 중단")
+    except BaseException:                  # SystemExit·MemoryError 등도 포함
+        _crash_dump("main 탈출", traceback.format_exc())
+        raise
+    else:
+        _crash_dump("main 정상 반환", "while 루프가 끝났다 — 있을 수 없는 경로")

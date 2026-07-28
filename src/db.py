@@ -19,7 +19,10 @@ def connect() -> sqlite3.Connection:
     con = sqlite3.connect(path, timeout=10)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA journal_mode=WAL")
-    con.execute("PRAGMA busy_timeout=5000")   # 동시 쓰기(워커+수집기) 시 잠금 대기
+    # 동시 쓰기(워커+수집기) 시 잠금 대기. 5초는 짧았다 — hourly가 kr_stocks 5,301행 등을
+    # 쏟아붓는 :05 구간에서 워커 기록이 실제로 5초를 넘겨 실패했다(2026-07-28 12:05 실측).
+    # 기다렸다 쓰는 편이 기록을 잃는 것보다 낫다. 폴은 15초라 최악에도 회차가 밀릴 뿐이다.
+    con.execute(f"PRAGMA busy_timeout={os.getenv('SQLITE_BUSY_MS', '30000')}")
     return con
 
 
