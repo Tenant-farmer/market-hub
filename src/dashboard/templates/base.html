@@ -59,6 +59,10 @@
     border-radius: 10px; padding: 16px;
   }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  /* 나란히 놓인 캘린더 카드 — 세로 스크롤은 두지 않는다(넘치는 건 '전체보기 →'로).
+     행 수를 양쪽 같게 맞추고 grid의 stretch가 높이를 맞춘다. 가로만 좁은 화면 대비 */
+  .cal-body { overflow-x: auto; }
+  .cal-body td:first-child { white-space: nowrap; }   /* '3일 후'가 '후'에서 접히지 않게 */
   .cards3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 16px; }
   .cards6 { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 16px; }
   @media (max-width: 1200px) { .cards6 { grid-template-columns: repeat(3, 1fr); } }

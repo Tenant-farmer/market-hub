@@ -48,8 +48,12 @@ def home():
     signal = queries.vix_signal(con)
     kr_sig = queries.kr_signal(con)
     kq_ratio = queries.market_ratio(con)
-    earnings = queries.earnings_upcoming(con)
-    econ = queries.econ_upcoming(con)
+    # 나란한 두 캘린더 카드는 **행 수를 같게** 맞춘다 — 스크롤 없이 크기가 통일된다
+    # (넘치는 건 각 카드의 '전체보기 →'로). 경제지표는 ★주요만: 수집 국가를 7종으로
+    # 넓힌 뒤 전체를 뿌리니 222행이 돼 옆 실적 카드(14행)와 심하게 어긋났다
+    CAL_ROWS = 12
+    earnings = queries.earnings_upcoming(con)[:CAL_ROWS]
+    econ = [e for e in queries.econ_upcoming(con) if e["major"]][:CAL_ROWS]
     trend = queries.investor_trend(con)
     treasury = queries.treasury_line(con)
     fw = queries.fed_watch(con)
