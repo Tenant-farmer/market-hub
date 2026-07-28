@@ -80,11 +80,11 @@ def econ_upcoming(con, days: int = 7, limit: int = 12) -> list[dict]:
     for r in rows:
         kst = ""
         if r["gmt"]:
-            try:
-                t = datetime.fromisoformat(f"{r['date']} {r['gmt']}") + timedelta(hours=9)
+            from src.timeutil import et_to_kst      # gmt는 실제로 ET (timeutil 참조)
+
+            t = et_to_kst(r["date"], r["gmt"])
+            if t:
                 kst = t.strftime("%H:%M") + ("+1" if t.date().isoformat() > r["date"] else "")
-            except ValueError:
-                pass
         dd = (date.fromisoformat(r["date"]) - today).days
         out.append({
             "date": r["date"],
@@ -141,12 +141,34 @@ def _earn_rows(con, start, end) -> list:
     """[start, end] 구간 실적 일정 — 시총 큰 순."""
     try:
         return con.execute(
-            "SELECT e.symbol, e.date, e.when_time, e.name, e.eps_forecast, sm.mcap "
+            "SELECT e.symbol, e.date, e.when_time, e.name, e.eps_forecast, sm.mcap, "
+            "sl.has_logo, sl.bright "                       # 로고 유무·밝기 (scripts/logo_scan.py)
             "FROM earnings_calendar e LEFT JOIN stock_meta sm ON sm.symbol = e.symbol "
+            "LEFT JOIN stock_logo sl ON sl.symbol = e.symbol "
             "WHERE e.date BETWEEN ? AND ? ORDER BY sm.mcap DESC",
             (start.isoformat(), end.isoformat())).fetchall()
     except Exception:
         return []
+
+
+BRIGHT_DARK_BG = 200      # 이 밝기 초과 = 흰 배경에선 안 보이는 로고 → 어두운 타일
+
+
+def _logo_kind(r) -> str:
+    """타일 배경 결정 — 'none'(모노그램) / 'dark'(흰 로고) / 'light'(일반).
+
+    실측(2026-07-29): BA·RCL·REGN 등은 평균밝기 254~255의 **순백 로고**라 흰 타일에서
+    사라진다. 게다가 투명 PNG가 뒤의 모노그램까지 덮어 폴백도 안 떴다.
+    밝기는 scripts/logo_scan.py가 미리 재서 stock_logo에 넣어둔다(미스캔이면 light).
+    """
+    try:
+        if r["has_logo"] == 0:
+            return "none"
+        if r["bright"] is not None and r["bright"] > BRIGHT_DARK_BG:
+            return "dark"
+    except (KeyError, IndexError):
+        pass
+    return "light"
 
 
 def _cell(r, today):
@@ -154,6 +176,7 @@ def _cell(r, today):
             "eps": r["eps_forecast"] or "–",
             "mcap": r["mcap"] or 0, "mcap_fmt": fmt_usd(r["mcap"]) if r["mcap"] else "",
             "big": bool(r["mcap"] and r["mcap"] >= 2e11),      # 2000억 달러↑ = 대형
+            "logo": _logo_kind(r),
             "past": r["date"] < today.isoformat()}
 
 

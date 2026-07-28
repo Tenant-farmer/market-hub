@@ -116,10 +116,9 @@ def test_all_routes_smoke(monkeypatch):
 
     cl = create_app().test_client()
     routes = ["/", "/us", "/kr", "/leaders", "/kr-leaders", "/stocks",
-              "/signals?mkt=kr", "/signals?mkt=us", "/gurus", "/calendar",
-              "/calendar?tab=earn&view=week", "/calendar?tab=earn&view=week&w=-1",
-              "/calendar?tab=earn&view=month", "/calendar?tab=earn&view=month&m=1",
-              "/calendar?tab=earn&view=list",
+              "/signals?mkt=kr", "/signals?mkt=us", "/gurus", "/econ", "/econ?major=1",
+              "/earnings", "/earnings?view=week&w=-1",
+              "/earnings?view=month", "/earnings?view=month&m=1", "/earnings?view=list",
               "/fed", "/positions", "/health"]
     failed = []
     for r in routes:

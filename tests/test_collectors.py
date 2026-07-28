@@ -97,7 +97,11 @@ def test_fed_skips_placeholder_values(con, monkeypatch):
 
 # ------------------------------------------------------------------ 경제 캘린더
 def test_econ_calendar_major_flag_and_country_filter(con, monkeypatch):
-    """major 키워드 판정(대소문자 무관)과 미지원 국가 제외."""
+    """major 키워드 판정과 미지원 국가 제외.
+
+    2026-07-29 확장: US·KR → +JP·CN·EU·DE·UK (BOJ·ECB·BOE 금리결정이 빠져 있었다).
+    브라질 등 그 밖은 여전히 제외.
+    """
     def fake_get(url, params=None, **k):
         if params["date"] != date.today().isoformat():
             return _Resp({"data": {"rows": []}})
@@ -106,14 +110,14 @@ def test_econ_calendar_major_flag_and_country_filter(con, monkeypatch):
              "consensus": "0.2%", "previous": "0.3%"},
             {"country": "United States", "eventName": "Baltic Dry Index"},   # major 아님
             {"country": "South Korea", "eventName": "Interest Rate Decision"},
-            {"country": "Japan", "eventName": "GDP"},                        # 미지원 국가
+            {"country": "Brazil", "eventName": "GDP"},                       # 미지원 국가
         ]}})
     monkeypatch.setattr(econ_calendar.requests, "get", fake_get)
     monkeypatch.setattr(econ_calendar.time, "sleep", lambda s: None)
 
     assert econ_calendar.collect(con, days=1) == 3
     rows = con.execute("SELECT country, event, major FROM econ_calendar ORDER BY event").fetchall()
-    assert {r["country"] for r in rows} == {"US", "KR"}          # Japan 제외
+    assert {r["country"] for r in rows} == {"US", "KR"}          # Brazil 제외
     flags = {r["event"]: r["major"] for r in rows}
     assert flags["CPI (MoM)"] == 1 and flags["Interest Rate Decision"] == 1
     assert flags["Baltic Dry Index"] == 0

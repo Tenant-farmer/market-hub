@@ -320,3 +320,48 @@ def test_notify_does_not_leak_token_on_error(monkeypatch):
         raise AssertionError("예외가 나야 한다")
     except RuntimeError as e:
         assert "SECRET-TOKEN" not in str(e) and "parse error" in str(e)
+
+
+def test_econ_calendar_gmt_field_is_actually_et():
+    """캘린더의 `gmt` 필드는 이름과 달리 **ET**다 — +9h로 보면 4시간 어긋난다.
+
+    2026-07-29 실측 근거: Core PCE는 08:30 ET 발표이고 응답의 gmt도 08:30이다.
+    ET→KST(여름 +13h)면 21:30 KST — 외부 시황 서비스 표기와 일치한다.
+    이 오류는 /econ 표시뿐 아니라 **event_alerts가 발표를 4시간 일찍 잡는** 문제였다.
+    """
+    from src.timeutil import et_to_kst
+
+    summer = et_to_kst("2026-07-31", "08:30")          # EDT (UTC-4)
+    assert summer.strftime("%m-%d %H:%M") == "07-31 21:30"
+    winter = et_to_kst("2026-01-15", "08:30")          # EST (UTC-5) → 1시간 더
+    assert winter.strftime("%m-%d %H:%M") == "01-15 22:30"
+    fomc = et_to_kst("2026-07-30", "14:00")            # 날짜가 넘어간다
+    assert fomc.strftime("%m-%d %H:%M") == "07-31 03:00"
+    assert et_to_kst("2026-07-31", "") is None
+
+
+def test_econ_week_groups_by_kst_day_and_folds(con):
+    """주간 다이제스트 — 요일별 접이식, 노이즈·중복 제거, KST 날짜로 재배치."""
+    from datetime import date as _d
+
+    from src.jobs import econ_week
+
+    mon = _d(2026, 7, 27)
+    con.executemany(
+        "INSERT INTO econ_calendar(date,gmt,country,event,major) VALUES (?,?,?,?,1)", [
+            ("2026-07-30", "14:00", "US", "FOMC Statement"),        # → 7/31 03:00 KST
+            ("2026-07-31", "08:30", "US", "Core PCE Price Index"),  # → 7/31 21:30
+            ("2026-07-31", "08:30", "US", "Core PCE Price Index"),  # 중복
+            ("2026-07-31", "07:00", "DE", "Bavaria CPI"),           # 주별 CPI = 노이즈
+            ("2026-07-31", "11:00", "UK", "BoE MPC vote hike"),     # 투표 항목 = 노이즈
+        ])
+    con.commit()
+    ev = econ_week.week_events(con, mon)
+    fri = ev["2026-07-31"]
+    assert [x[0] for x in fri] == ["03:00", "21:30"]    # KST 재배치 + 중복·노이즈 제거
+    assert all("Bavaria" not in x[2] and "MPC vote" not in x[2] for x in fri)
+
+    txt = econ_week.build_text(con, mon)
+    assert txt.count("<blockquote expandable>") == 1   # 일정 있는 요일만 블록
+    assert "[7/31 금요일]" in txt and "2건" in txt
+    assert "통화정책" in txt                            # 마무리 코멘트는 데이터 기반

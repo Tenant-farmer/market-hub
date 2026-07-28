@@ -70,7 +70,12 @@ def check(con, now: datetime | None = None) -> int:
     refreshed = set()
     for r in rows:
         try:
-            rel = datetime.fromisoformat(f"{r['date']} {r['gmt']}") + timedelta(hours=9)
+            from src.timeutil import et_to_kst   # gmt는 ET — +9h면 4시간 일찍 잡는다
+
+            _t = et_to_kst(r["date"], r["gmt"])
+            if _t is None:
+                continue
+            rel = _t.replace(tzinfo=None)
         except ValueError:
             continue
         age = (now - rel).total_seconds()

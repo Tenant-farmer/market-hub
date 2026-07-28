@@ -124,7 +124,7 @@ def stock_page(symbol):
             monthly=_monthly_vm(d.get("monthly")) if d else None,
             sym=symbol, sym_name=(d["name"] if d else us["name"]),
             sym_prices=sym_prices, tv_symbol=tv_symbol, tv_embed_ok=True, candles=candles,
-            back_url="/calendar?tab=earn", iv_ok=True,
+            back_url="/earnings", iv_ok=True,
         )
 
     kr = con.execute(

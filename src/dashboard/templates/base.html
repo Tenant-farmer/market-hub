@@ -131,9 +131,10 @@
   </div>
   <a href="/signals" class="{{ 'active' if active=='signals' }}">지표</a>
   <div class="nav-group">
-    <span class="{{ 'active' if active in ('calendar', 'fed') }}">일정 ▾</span>
+    <span class="{{ 'active' if active in ('earnings', 'econ', 'fed') }}">일정 ▾</span>
     <div class="menu">
-      <a href="/calendar?tab=econ" class="{{ 'active' if active=='calendar' }}">경제·실적 일정</a>
+      <a href="/earnings" class="{{ 'active' if active=='earnings' }}">기업실적</a>
+      <a href="/econ" class="{{ 'active' if active=='econ' }}">경제지표</a>
       <a href="/fed" class="{{ 'active' if active=='fed' }}">Fed Watch</a>
     </div>
   </div>

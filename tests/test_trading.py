@@ -606,7 +606,7 @@ def test_event_alerts(con, monkeypatch):
                 "actual TEXT, consensus TEXT, previous TEXT, major INTEGER)")
     con.execute("CREATE TABLE earnings_calendar (symbol TEXT, date TEXT, when_time TEXT, "
                 "name TEXT, eps_forecast TEXT)")
-    # CPI: GMT 13:30 → KST 22:30. actual 비어 있음
+    # CPI: gmt 필드는 실제로 **ET** → 13:30 ET = 익일 02:30 KST (2026-07-29 정정)
     con.execute("INSERT INTO econ_calendar VALUES "
                 "('2026-07-23','13:30','US','CPI (YoY)','','3.1%','3.4%',1)")
     con.execute("INSERT INTO earnings_calendar VALUES "
@@ -617,8 +617,8 @@ def test_event_alerts(con, monkeypatch):
     monkeypatch.setattr(event_alerts, "_refresh_econ", lambda c, d: (
         c.execute("UPDATE econ_calendar SET actual='3.2%' WHERE event='CPI (YoY)'"), c.commit()))
 
-    # 발표 5분 후 → 재조회로 actual 확보 → 알림 1건
-    now = datetime.fromisoformat("2026-07-23T22:35:00")
+    # 발표 5분 후 → 재조회로 actual 확보 → 알림 1건 (13:30 ET = 익일 02:30 KST)
+    now = datetime.fromisoformat("2026-07-24T02:35:00")
     assert event_alerts.check(con, now) == 1
     assert "3.2%" in sent[0] and "3.1%" in sent[0]
     assert event_alerts.check(con, now) == 0            # 멱등

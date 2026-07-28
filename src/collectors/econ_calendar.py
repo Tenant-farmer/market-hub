@@ -14,9 +14,16 @@ UA = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
     "Accept": "application/json",
 }
-COUNTRY = {"United States": "US", "South Korea": "KR"}
+# 한국 투자자 관점에서 시장을 움직이는 국가만 (2026-07-29 확장 — 이전엔 US·KR뿐이라
+# 일본 BOJ·영국 BOE·ECB 금리결정 같은 큰 이벤트가 통째로 빠져 있었다)
+COUNTRY = {"United States": "US", "South Korea": "KR", "Japan": "JP",
+           "China": "CN", "Euro Zone": "EU", "Germany": "DE", "United Kingdom": "UK"}
+FLAG = {"US": "🇺🇸", "KR": "🇰🇷", "JP": "🇯🇵", "CN": "🇨🇳",
+        "EU": "🇪🇺", "DE": "🇩🇪", "UK": "🇬🇧"}
 MAJOR_KW = ("CPI", "PPI", "GDP", "Nonfarm", "Unemployment", "FOMC", "Interest Rate",
-            "Retail Sales", "PCE", "ISM", "Consumer Confidence", "Michigan", "Payroll")
+            "Retail Sales", "PCE", "ISM", "Consumer Confidence", "Michigan", "Payroll",
+            "PMI", "Rate Decision", "BOJ", "ECB", "BoE", "Monetary Policy",
+            "Employment", "Industrial Production", "Trade Balance")
 COLS = ["date", "gmt", "country", "event", "actual", "consensus", "previous", "major"]
 
 

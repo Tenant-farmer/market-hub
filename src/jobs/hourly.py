@@ -31,6 +31,16 @@ def _ran_today(con, collector: str) -> bool:
     ).fetchone() is not None
 
 
+def _ran_week(con, collector: str) -> bool:
+    """이번 주(월요일 이후)에 이미 돌았나 — 주간 리포트 멱등용."""
+    from datetime import date, timedelta
+
+    mon = (date.today() - timedelta(days=date.today().weekday())).isoformat()
+    return con.execute(
+        "SELECT 1 FROM collector_runs WHERE collector=? AND status='ok' AND run_at >= ? LIMIT 1",
+        (collector, mon)).fetchone() is not None
+
+
 def _run_virtual(con) -> int:
     """가상장부 A/B: yfinance 유니버스 갱신 → 종가 기준 하루치 처리. 반환: 총 매매 건수."""
     from src.trading import virtual
@@ -54,6 +64,8 @@ DAILY_REPORTS = [
     (8, "telegram_brief", "아침 브리핑 (주도주·섹터·수급 — 우리 관점)"),
     (16, "status_report", "상태 리포트 (계좌·전제·검증 — KR 마감 후 당일 결산)"),
 ]
+# 주 1회 — 월요일 아침, '이번 주 지도'. 매일 보내면 같은 내용이 반복된다
+WEEKLY_REPORTS = [(0, 8, "econ_week", "주간 경제 일정 (요일별 접이식)")]
 
 
 def _send_daily_reports(con, hour: int) -> None:
@@ -70,6 +82,13 @@ def _send_daily_reports(con, hour: int) -> None:
     for h, name, _desc in DAILY_REPORTS:
         if hour >= h and not _ran_today(con, name):
             base.run_collector(name, senders[name]())
+    from datetime import date as _date
+
+    for wd, h, name, _desc in WEEKLY_REPORTS:
+        if _date.today().weekday() == wd and hour >= h and not _ran_week(con, name):
+            from src.jobs import econ_week
+
+            base.run_collector(name, econ_week.send_week)
 
 
 def main():

@@ -1,36 +1,26 @@
 {% extends "base.html" %}
-{% set active = 'calendar' %}
-{% block title %}일정 — market-hub{% endblock %}
+{% set active = 'earnings' %}
+{% block title %}기업실적 — market-hub{% endblock %}
 {% block body %}
-<h1>일정</h1>
-<div class="sub">경제지표(US·KR) 향후 14일 · 실적(S&P500) 향후 45일 · 시간은 현지 기준
+<h1>기업실적</h1>
+<div class="sub">S&P500 향후 45일 · 발표 시점은 현지 기준
   {% if fed_next %} · <a href="/fed" style="color:var(--accent);text-decoration:none">다음 FOMC {{ fed_next.date[5:] }} (D-{{ fed_next.dday }})</a>{% endif %}</div>
 
 <div class="pills" style="margin-bottom:12px">
-  <a href="/calendar?tab=econ" class="{{ 'on' if tab == 'econ' }}">📈 경제일정</a>
-  <a href="/calendar?tab=earn" class="{{ 'on' if tab == 'earn' }}">📅 실적일정</a>
-  <a href="/fed">🏛 Fed Watch</a>
-  {% if tab == 'econ' %}
-  <span style="margin-left:auto"></span>
-  <a href="/calendar?tab=econ" class="{{ 'on' if not major_only }}">전체</a>
-  <a href="/calendar?tab=econ&major=1" class="{{ 'on' if major_only }}">★ 주요만</a>
-  {% else %}
-  <span style="margin-left:auto"></span>
-  <a href="/calendar?tab=earn&view=week" class="{{ 'on' if view == 'week' }}">주간</a>
-  <a href="/calendar?tab=earn&view=month" class="{{ 'on' if view == 'month' }}">월간</a>
-  <a href="/calendar?tab=earn&view=list" class="{{ 'on' if view == 'list' }}">목록</a>
-  {% endif %}
+  <a href="/earnings?view=week" class="{{ 'on' if view == 'week' }}">주간</a>
+  <a href="/earnings?view=month" class="{{ 'on' if view == 'month' }}">월간</a>
+  <a href="/earnings?view=list" class="{{ 'on' if view == 'list' }}">목록</a>
 </div>
 
 {% macro navbar(param, cur, prev_lo, next_hi, label, total) %}
 <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
   <a class="chip" style="text-decoration:none{{ ';opacity:.3;pointer-events:none' if cur <= prev_lo }}"
-     href="/calendar?tab=earn&view={{ view }}&{{ param }}={{ cur - 1 }}">◀ 이전</a>
+     href="/earnings?view={{ view }}&{{ param }}={{ cur - 1 }}">◀ 이전</a>
   <strong style="font-size:15px">{{ label }}</strong>
   <a class="chip" style="text-decoration:none{{ ';opacity:.3;pointer-events:none' if cur >= next_hi }}"
-     href="/calendar?tab=earn&view={{ view }}&{{ param }}={{ cur + 1 }}">다음 ▶</a>
+     href="/earnings?view={{ view }}&{{ param }}={{ cur + 1 }}">다음 ▶</a>
   <span style="color:var(--muted);font-size:12px">{{ total }}건</span>
-  {% if cur != 0 %}<a href="/calendar?tab=earn&view={{ view }}" style="color:var(--accent);font-size:12px;text-decoration:none">오늘로</a>{% endif %}
+  {% if cur != 0 %}<a href="/earnings?view={{ view }}" style="color:var(--accent);font-size:12px;text-decoration:none">오늘로</a>{% endif %}
 </div>
 {% endmacro %}
 
@@ -49,11 +39,12 @@
 .eg .cell.dim { opacity:.4 }
 .tiles { display:grid; grid-template-columns:repeat(auto-fill, minmax(44px, 1fr)); gap:7px 3px }
 .tl { text-decoration:none; display:flex; flex-direction:column; align-items:center; gap:3px }
-.tl .lg { width:28px; height:28px; border-radius:7px; background:#fff; display:flex;
-          align-items:center; justify-content:center; overflow:hidden; position:relative }
-/* 로고는 모노그램 위에 덮어씌운다 — onerror로 제거되면 아래 글자가 그대로 드러남 */
-.tl .lg img { position:absolute; inset:0; width:100%; height:100%; object-fit:contain;
-              padding:2px; background:#fff }
+.tl .lg { width:28px; height:28px; border-radius:7px; display:flex;
+          align-items:center; justify-content:center; overflow:hidden }
+.tl .lg.light { background:#fff }
+.tl .lg.dark  { background:#3a3a38 }   /* 순백 로고용 — 흰 타일에선 사라진다 */
+.tl .lg.none  { background:var(--surface); border:1px solid var(--border) }
+.tl .lg img { width:100%; height:100%; object-fit:contain; padding:2px }
 .tl .lg .mn { font-size:11px; font-weight:700; color:#333; letter-spacing:-.3px }
 .tl.big .lg { outline:2px solid var(--accent); outline-offset:1px }
 .tl .tk { font-size:10px; color:var(--ink-2); letter-spacing:.2px; line-height:1 }
@@ -63,41 +54,24 @@
 .eg .none { text-align:center; color:var(--baseline); font-size:12px; padding:16px 0 }
 </style>
 
-{# 로고: FMP CDN. onerror 시 모노그램 표시 — 외부 소스가 죽어도 격자는 읽힌다 #}
+{# 로고 배경은 종목마다 다르다 — 순백 로고(BA·RCL 등)는 흰 타일에서 사라진다.
+   밝기를 scripts/logo_scan.py가 미리 재서 stock_logo에 저장, 여기선 그걸 읽어 쓴다.
+   로고가 없으면 img를 아예 그리지 않는다(투명 PNG가 모노그램을 덮는 문제 원천 차단) #}
 {% macro tick(e) %}
 <a class="tl{{ ' big' if e.big }}{{ ' done' if e.past }}" href="/stock/{{ e.symbol }}"
    title="{{ e.name }} · EPS 예상 {{ e.eps }}{{ ' · 시총 ' ~ e.mcap_fmt if e.mcap_fmt }}">
-  <span class="lg"><img src="https://financialmodelingprep.com/image-stock/{{ e.symbol }}.png"
-    alt="" loading="lazy" onerror="this.remove()"><span class="mn">{{ e.symbol[:2] }}</span></span>
+  <span class="lg {{ e.logo }}">
+    {%- if e.logo == 'none' -%}
+      <span class="mn">{{ e.symbol[:2] }}</span>
+    {%- else -%}
+      <img src="https://financialmodelingprep.com/image-stock/{{ e.symbol }}.png"
+           alt="{{ e.symbol }}" loading="lazy">
+    {%- endif -%}
+  </span>
   <span class="tk">{{ e.symbol }}</span></a>
 {% endmacro %}
 
-{% if tab == 'econ' %}
-<div class="card" style="overflow-x:auto">
-  {% if econ %}
-  <table>
-    <thead><tr>
-      <th>발표</th><th>날짜</th><th>KST</th><th>국가</th><th style="text-align:left">지표</th><th>예상</th><th>이전</th>
-    </tr></thead>
-    <tbody>
-    {% for e in econ %}
-      <tr>
-        <td><span class="{{ 'neg' if e.dd == 0 else 'hot' if e.dd == 1 }}" style="{{ 'font-weight:700' if e.dd <= 1 }}">{{ e.dday }}</span></td>
-        <td style="color:var(--muted)">{{ e.date[5:] if e.date else '' }}</td>
-        <td style="color:var(--muted)">{{ e.kst or '–' }}</td>
-        <td><span class="chip">{{ e.country }}</span></td>
-        <td style="text-align:left;{{ 'font-weight:700' if e.major }}">{{ '★ ' if e.major }}{{ e.event }}</td>
-        <td>{{ e.consensus }}</td>
-        <td style="color:var(--muted)">{{ e.previous }}</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <div style="color:var(--muted);padding:20px;text-align:center">예정된 일정이 없습니다 (캘린더는 임박해야 채워집니다)</div>
-  {% endif %}
-</div>
-{% elif view == 'week' %}
+{% if view == 'week' %}
 {{ navbar('w', grid.offset, -4, 6, grid.label, grid.total) }}
 <div style="overflow-x:auto">
   <div class="eg" style="grid-template-columns:64px repeat(5, minmax(0,1fr))">
