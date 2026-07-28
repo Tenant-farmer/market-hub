@@ -242,3 +242,36 @@ def test_status_report_prefers_today_trades(con, monkeypatch):
                 (f"{_d.today().isoformat()}T14:00",))
     txt = status_report.build_text(con)
     assert "오늘 매매 1건" in txt and "어제" not in txt.split("🔄")[1][:30]
+
+
+def test_verdict_alert_fires_on_condition_not_date_memory(con, monkeypatch):
+    """판정은 **조건 충족 시 자동 발송**된다 — 날짜를 기억해 수동 실행하면 잊는다.
+
+    2차는 날짜가 아니라 **표본**(에쿼티 20영업일)이 조건이라 며칠 앞뒤로 움직인다.
+    """
+    from datetime import date as _d
+
+    from src.jobs import verdict_alert
+
+    sent = []
+    monkeypatch.setattr("src.notify.send", lambda t, **k: sent.append(t) or True)
+    monkeypatch.setattr(verdict_alert, "build_first", lambda c, s: "1차 본문")
+    monkeypatch.setattr(verdict_alert, "build_second", lambda c, s: "2차 본문")
+    monkeypatch.setattr(verdict_alert, "VERDICT1_DATE", _d(2099, 1, 1))   # 아직 안 됨
+
+    con.executemany("INSERT INTO portfolio_snapshots(date,broker,equity,pl) VALUES (?,?,?,?)",
+                    [(f"2026-08-{d:02d}", "kiwoom", 1000, 0) for d in range(1, 20)])
+    con.commit()
+    assert verdict_alert.run(con) == 0            # 19일 — 아직 미달, 1차도 날짜 전
+    assert sent == []
+
+    con.execute("INSERT INTO portfolio_snapshots(date,broker,equity,pl) "
+                "VALUES ('2026-08-20','kiwoom',1000,0)")
+    con.commit()
+    assert verdict_alert.run(con) == 1            # 20일 도달 → 2차 발송
+    assert sent == ["2차 본문"]
+    assert verdict_alert.run(con) == 0            # 재실행해도 중복 없음(멱등)
+
+    monkeypatch.setattr(verdict_alert, "VERDICT1_DATE", _d(2020, 1, 1))  # 1차 날짜 도달
+    assert verdict_alert.run(con) == 1
+    assert sent[-1] == "1차 본문"

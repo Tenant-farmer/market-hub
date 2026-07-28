@@ -184,6 +184,16 @@ def main():
     if os.getenv("TELEGRAM_BOT_TOKEN") and os.getenv("TELEGRAM_CHAT_ID"):
         con2 = db.connect()
         _send_daily_reports(con2, now.hour)
+        # 판정 자동 발송 — 1차는 날짜, 2차는 **표본 충족**이 조건이라 사람이 기억할 수 없다
+        if morning:
+            from src.jobs import verdict_alert
+
+            try:
+                verdict_alert.run(con2)
+            except Exception as e:
+                from src.errlog import swallow
+
+                swallow("hourly.verdict_alert", e)
         con2.close()
 
 
