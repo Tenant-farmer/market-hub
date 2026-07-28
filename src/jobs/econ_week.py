@@ -39,7 +39,9 @@ def _is_key(event: str) -> bool:
 # 지도가 목록이 되지 않게 이런 하위 항목을 뺀다(전체는 /econ 탭에서 볼 수 있다).
 NOISE = ("Baden", "Bavaria", "Brandenburg", "Hesse", "Saxony", "North Rhine",
          "MPC vote", "Auction", "Bill ", "Bond ", "Letter", "Redbook", "API Weekly",
-         "EIA ", "Cushing", "Rig Count", "Money Supply")
+         "EIA ", "Cushing", "Rig Count", "Money Supply",
+         # 일본 METI의 1·2개월 '전망치' — 발표가 아니고, 잘리면 두 줄이 똑같이 보인다
+         "forecast 1m", "forecast 2m")
 DAY_MAX = 12                    # 요일당 표시 상한 — 넘으면 '+N건 더'
 
 # 접이식 블록의 폭은 **가장 긴 줄**이 정한다 → 요일마다 상자 크기가 달랐다(실측 19~45자).
@@ -49,7 +51,7 @@ DAY_MAX = 12                    # 요일당 표시 상한 — 넘으면 '+N건 �
 # 표시 상한. 20자는 **폭을 고정하려던 시절**의 값이라 major 73개 중 39개(53%)가 잘렸다
 # ('Fed Interest Rate Decision' → 'Fed Interest Rate…'). 폭이 자동 계산되는 지금은
 # 그렇게 짧을 이유가 없다 → 30자면 90%가 온전히 들어간다(최장 40자만 잘림).
-EVENT_MAX = 30                  # 이벤트명 표시 상한
+EVENT_MAX = 38                  # 이벤트명 표시 상한 — 잘림 0건이 되도록
 PAD = "⠀"                  # 보이지 않는 폭 채움 문자
 MIN_W = 30                      # 하한 — 내용이 짧은 주에도 너무 좁아지지 않게
 # 목표 폭은 **고정값이 아니라 그 주의 실제 최장 줄에서 계산**한다.
@@ -66,6 +68,12 @@ def _is_noise(event: str) -> bool:
     return any(k.lower() in event.lower() for k in NOISE)
 
 
+# 데이터 **제공사** 접두어 — 국가 접두어(German·Chinese)는 사용자 요청으로 유지하지만
+# 제공사는 지표 내용과 무관해서 뗀다: 'S&P Global South Korea Manufacturing PMI'(40자) →
+# 'South Korea Manufacturing PMI'(29자). 나라 정보는 그대로 남는다.
+PROVIDER_PREFIX = ("S&P Global ", "HCOB ", "RatingDog ")
+
+
 def _short(event: str) -> str:
     """이벤트명 절단 — 단어 경계 우선, 넘치면 말줄임.
 
@@ -73,6 +81,10 @@ def _short(event: str) -> str:
     (2026-07-29) — 국기는 작아서 훑을 때 놓치기 쉽고 이름에 명시돼 있는 편이 확실하다.
     """
     e = event.strip()
+    for pre in PROVIDER_PREFIX:              # 제공사 이름은 정보가 아니다 (국가는 유지)
+        if e.startswith(pre):
+            e = e[len(pre):]
+            break
     if len(e) <= EVENT_MAX:
         return e
     cut = e[:EVENT_MAX]

@@ -395,3 +395,33 @@ def test_econ_week_width_adapts_and_bolds_key_events(con):
     assert not econ_week._is_key("Consumer Confidence")
     body = txt.split("<blockquote expandable>")[1]
     assert "<b>21:30 🇺🇸 CPI</b>" in body                # 08:30 ET = 21:30 KST · 핵심만 볼드
+
+
+def test_econ_week_no_truncation_and_no_lookalikes(con):
+    """지표명이 잘리지 않아야 하고, 잘려서 **똑같아 보이는 줄**이 없어야 한다.
+
+    2026-07-29 실측: 'Industrial Production forecast 1m/2m ahead'가 둘 다
+    'Industrial Production…'으로 잘려 같은 줄이 두 번 있는 것처럼 보였다.
+    """
+    from datetime import date as _d
+
+    from src.jobs import econ_week
+
+    mon = _d(2026, 7, 27)
+    con.executemany(
+        "INSERT INTO econ_calendar(date,gmt,country,event,major) VALUES (?,?,?,?,1)", [
+            ("2026-07-27", "08:30", "JP", "Industrial Production forecast 1m ahead"),
+            ("2026-07-27", "08:30", "JP", "Industrial Production forecast 2m ahead"),
+            ("2026-07-27", "09:00", "KR", "S&P Global South Korea Manufacturing PMI"),
+            ("2026-07-27", "10:00", "DE", "German Unemployment Change"),
+        ])
+    con.commit()
+    txt = econ_week.build_text(con, mon)
+    body = txt.split("<blockquote expandable>")[1].split("</blockquote>")[0]
+
+    assert "…" not in body                              # 잘림 0건
+    assert "forecast" not in body                       # METI 전망치는 노이즈로 제외
+    assert "South Korea Manufacturing PMI" in body      # 제공사(S&P Global)만 제거
+    assert "German Unemployment Change" in body         # 국가 접두어는 유지(사용자 요청)
+    lines = [line for line in body.split("\n")[1:] if line.strip()]
+    assert len(lines) == len(set(lines))                # 똑같아 보이는 줄 없음
