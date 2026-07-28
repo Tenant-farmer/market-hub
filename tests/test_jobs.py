@@ -365,3 +365,33 @@ def test_econ_week_groups_by_kst_day_and_folds(con):
     assert txt.count("<blockquote expandable>") == 1   # 일정 있는 요일만 블록
     assert "[7/31 금요일]" in txt and "2건" in txt
     assert "통화정책" in txt                            # 마무리 코멘트는 데이터 기반
+
+
+def test_econ_week_width_adapts_and_bolds_key_events(con):
+    """폭은 **그 주의 실제 최장 줄**에서 계산되고, 핵심 지표는 굵게 나온다.
+
+    고정 34로 박아두면 지표 이름이 긴 주에 그 요일만 삐져나온다(2026-07-29 사용자 지적).
+    """
+    import re
+    from datetime import date as _d
+
+    from src.jobs import econ_week
+
+    mon = _d(2026, 7, 27)
+    con.executemany(
+        "INSERT INTO econ_calendar(date,gmt,country,event,major) VALUES (?,?,?,?,1)", [
+            ("2026-07-27", "08:30", "US", "CPI"),                     # 짧고 **핵심**
+            ("2026-07-28", "08:30", "US", "Manufacturing PMI Final"),  # 길고 비핵심
+            ("2026-07-29", "08:30", "US", "Atlanta Fed GDPNow"),       # GDP지만 추정치
+        ])
+    con.commit()
+    txt = econ_week.build_text(con, mon)
+    heads = [b.split("\n")[0] for b in txt.split("<blockquote expandable>")[1:]]
+    widths = {econ_week._w(re.sub(r"</?[bi]>", "", h)) for h in heads}
+    assert len(widths) == 1 and widths.pop() >= econ_week.MIN_W   # 전 블록 동일 폭
+
+    assert econ_week._is_key("CPI") and econ_week._is_key("FOMC Statement")
+    assert not econ_week._is_key("Atlanta Fed GDPNow")   # 실시간 추정치는 굵게 안 함
+    assert not econ_week._is_key("Consumer Confidence")
+    body = txt.split("<blockquote expandable>")[1]
+    assert "<b>21:30 🇺🇸 CPI</b>" in body                # 08:30 ET = 21:30 KST · 핵심만 볼드

@@ -18,6 +18,22 @@ FLAG = {"US": "🇺🇸", "KR": "🇰🇷", "JP": "🇯🇵", "CN": "🇨🇳",
         "EU": "🇪🇺", "DE": "🇩🇪", "UK": "🇬🇧"}
 RATE_KW = ("Interest Rate", "Rate Decision", "FOMC", "Monetary Policy", "BOJ", "ECB", "BoE")
 
+# major 안에서도 무게가 다르다 — 금리결정·CPI·고용·GDP는 시장을 직접 움직이고
+# 소비자심리·무역수지는 참고에 가깝다. 앞의 것만 굵게(2026-07-29 사용자 요청).
+KEY_KW = RATE_KW + ("CPI", "PCE", "Nonfarm", "Payroll", "Unemployment", "GDP",
+                    "ISM", "Retail Sales")
+
+
+# GDPNow는 애틀랜타 연준의 **실시간 추정치**라 발표 이벤트가 아니다(매주 여러 번 갱신) —
+# 'GDP'에 걸려 굵게 나오던 걸 제외한다
+KEY_EXCLUDE = ("GDPNow", "forecast")
+
+
+def _is_key(event: str) -> bool:
+    if any(k.lower() in event.lower() for k in KEY_EXCLUDE):
+        return False
+    return any(k.lower() in event.lower() for k in KEY_KW)
+
 # 수집은 넓게, 표시는 좁게 — 넓힌 국가(DE·EU·UK)를 켜니 금요일에만 37건이 찍혔다.
 # 독일은 **주(州)별 CPI**를 6개씩 따로 발표하고, BoE는 위원 투표수를 항목마다 나눈다.
 # 지도가 목록이 되지 않게 이런 하위 항목을 뺀다(전체는 /econ 탭에서 볼 수 있다).
@@ -32,17 +48,15 @@ DAY_MAX = 12                    # 요일당 표시 상한 — 넘으면 '+N건 �
 #    폭만 맞는다. U+2800(점자 공백)은 렌더링이 비어 있으면서 자리를 차지한다.
 EVENT_MAX = 20                  # 이벤트명 표시 상한
 PAD = "⠀"                  # 보이지 않는 폭 채움 문자
-TARGET_W = 34                   # 목표 표시 폭(셀) — 최장 내용 줄(33)보다 커야 지배한다
+MIN_W = 30                      # 하한 — 내용이 짧은 주에도 너무 좁아지지 않게
+# 목표 폭은 **고정값이 아니라 그 주의 실제 최장 줄에서 계산**한다.
+# 34로 박아두면 지표 이름이 긴 주에 그 요일만 삐져나온다(2026-07-29 사용자 지적).
+# _short()가 이름을 자르므로 이론상 32셀이 상한이지만, 그 보장이 암묵적이라 의존하지 않는다.
 
 
 def _w(text: str) -> int:
     """대략적 표시 폭 — 한글·이모지 등 넓은 글자는 2셀로 센다."""
     return sum(2 if (ord(ch) > 0x1100 and ord(ch) != 0x2800) else 1 for ch in text)
-
-
-def _pad_to(text: str, target: int = TARGET_W) -> str:
-    """뒤에 보이지 않는 문자를 채워 목표 폭까지 늘린다(줄은 늘리지 않는다)."""
-    return text + PAD * max(0, target - _w(text))
 
 
 def _is_noise(event: str) -> bool:
@@ -127,19 +141,32 @@ def build_text(con, monday: date | None = None) -> str:
     if not ev:
         L.append("<i>수집된 주요 일정이 없습니다 (캘린더는 임박해야 채워집니다)</i>")
         return "\n".join(L)
+    # 1단계: 블록 내용을 먼저 만들고 **그 주의 실제 최장 줄**을 잰다
+    blocks = []
     for i in range(7):
         d = monday + timedelta(days=i)
         items = ev.get(d.isoformat())
         if not items:
             continue                                   # 일정 없는 요일은 아예 안 띄운다
         label = f"[{d.month}/{d.day} {WD[d.weekday()]}요일] {len(items)}건"
-        # 헤더 **끝을 가로로** 채워 폭만 맞춘다 — 별도 줄로 넣으면 1건짜리 요일에서
-        # 빈 줄처럼 보인다(2026-07-29 사용자 지적 2회 끝에 이 방식으로 정착)
-        head = f"<b>{label}</b>" + PAD * max(0, TARGET_W - _w(label))
         shown = items[:DAY_MAX]
-        body = "\n".join(f"{hm} {FLAG.get(c, '')} {_short(e)}" for hm, c, e in shown)
+        # (표시용 HTML, 폭 계산용 원문) 쌍 — 태그가 폭에 섞이면 계산이 틀어진다
+        lines = []
+        for hm, c, e in shown:
+            txt = f"{hm} {FLAG.get(c, '')} {_short(e)}"
+            lines.append((f"<b>{txt}</b>" if _is_key(e) else txt, txt))
         if len(items) > DAY_MAX:
-            body += f"\n<i>… 외 {len(items) - DAY_MAX}건</i>"
+            more = f"… 외 {len(items) - DAY_MAX}건"
+            lines.append((f"<i>{more}</i>", more))
+        blocks.append((label, lines))
+    target = max([MIN_W, *(_w(raw) for _, ls in blocks for _, raw in ls),
+                  *(_w(lb) for lb, _ in blocks)])
+
+    # 2단계: 모든 헤더를 그 폭까지 **가로로** 채운다 — 별도 줄로 넣으면 1건짜리 요일에서
+    # 빈 줄처럼 보인다(2026-07-29 사용자 지적 2회 끝에 이 방식으로 정착)
+    for label, lines in blocks:
+        head = f"<b>{label}</b>" + PAD * max(0, target - _w(label))
+        body = "\n".join(html for html, _raw in lines)
         L.append(f"<blockquote expandable>{head}\n{body}</blockquote>")
     L += ["", f"<i>{_closing(ev)}</i>"]
     return "\n".join(L)
