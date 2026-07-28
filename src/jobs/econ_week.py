@@ -46,7 +46,10 @@ DAY_MAX = 12                    # 요일당 표시 상한 — 넘으면 '+N건 �
 # 폭 맞춤을 **별도 줄**로 넣었더니 일정 1건짜리 요일에서 빈 줄처럼 보였다(사용자 지적 2회).
 # → 줄을 늘리지 말고 **헤더 끝에 가로로** 보이지 않는 문자를 채운다. 행 수는 그대로고
 #    폭만 맞는다. U+2800(점자 공백)은 렌더링이 비어 있으면서 자리를 차지한다.
-EVENT_MAX = 20                  # 이벤트명 표시 상한
+# 표시 상한. 20자는 **폭을 고정하려던 시절**의 값이라 major 73개 중 39개(53%)가 잘렸다
+# ('Fed Interest Rate Decision' → 'Fed Interest Rate…'). 폭이 자동 계산되는 지금은
+# 그렇게 짧을 이유가 없다 → 30자면 90%가 온전히 들어간다(최장 40자만 잘림).
+EVENT_MAX = 30                  # 이벤트명 표시 상한
 PAD = "⠀"                  # 보이지 않는 폭 채움 문자
 MIN_W = 30                      # 하한 — 내용이 짧은 주에도 너무 좁아지지 않게
 # 목표 폭은 **고정값이 아니라 그 주의 실제 최장 줄에서 계산**한다.
@@ -63,9 +66,19 @@ def _is_noise(event: str) -> bool:
     return any(k.lower() in event.lower() for k in NOISE)
 
 
+# 국기를 이미 붙이므로 이름 앞의 국가 수식어는 중복이다 — 떼면 폭도 줄고 읽기도 낫다
+# ('🇩🇪 German Unemployment Change' → '🇩🇪 Unemployment Change')
+COUNTRY_PREFIX = ("German ", "Chinese ", "Japanese ", "Spanish ", "Italian ", "French ",
+                  "S&P Global South Korea ", "S&P Global ", "HCOB Eurozone ", "HCOB ")
+
+
 def _short(event: str) -> str:
-    """이벤트명 절단 — 단어 경계 우선, 넘치면 말줄임."""
+    """이벤트명 정리 — 중복 국가 접두어 제거 후 절단(단어 경계 우선)."""
     e = event.strip()
+    for pre in COUNTRY_PREFIX:
+        if e.startswith(pre):
+            e = e[len(pre):]
+            break
     if len(e) <= EVENT_MAX:
         return e
     cut = e[:EVENT_MAX]
