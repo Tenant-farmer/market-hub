@@ -31,13 +31,28 @@ LOG_PATH = db.ROOT / "data" / "engine.log"
 
 
 def _record(status: str, rows: int, msg: str) -> None:
-    con = db.connect()
-    con.execute(
-        "INSERT INTO collector_runs (collector, run_at, status, rows, message) VALUES (?,?,?,?,?)",
-        ("engine", datetime.now().isoformat(timespec="seconds"), status, rows, msg),
-    )
-    con.commit()
-    con.close()
+    """실행 기록. **절대 예외를 던지지 않는다** — 관측이 관측 대상을 죽이면 안 된다.
+
+    2026-07-28 급사의 진범이 여기였다. 흐름:
+      ① try 안에서 `_record("ok", …)` 하트비트 → DB 락이면 예외
+      ② except가 받아 `_record("error", tb)`를 부르는데 **여전히 락이라 또 터진다**
+      ③ 그 예외는 잡을 사람이 없어 while 루프 밖으로 튄다. main()도 __main__도
+         KeyboardInterrupt만 잡으므로 → 프로세스 종료
+    결과가 관측된 그대로다: DB 기록 0건 · 로그 0줄(_log는 _record 뒤라 도달 못 함) ·
+    WER 없음(크래시가 아니라 정상 종료). 05:51 마지막 하트비트 → 06:06 다음 하트비트가
+    06:05 hourly의 쓰기 락과 겹치며 죽었고, 07:05 워치독이 73분 만에 발견했다.
+    """
+    try:
+        con = db.connect()
+        con.execute(
+            "INSERT INTO collector_runs (collector, run_at, status, rows, message) "
+            "VALUES (?,?,?,?,?)",
+            ("engine", datetime.now().isoformat(timespec="seconds"), status, rows, msg),
+        )
+        con.commit()
+        con.close()
+    except Exception as e:                 # 파일 로그는 DB와 무관하게 남는다
+        _log(f"기록 실패({status}): {type(e).__name__}: {e}")
 
 
 def _log(msg: str) -> None:

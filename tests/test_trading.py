@@ -938,3 +938,38 @@ def test_worker_exit_hook_records_stop(con, monkeypatch):
     monkeypatch.setattr(worker, "_log", lambda m: None)
     worker._on_exit("시그널 15")
     assert rec == [("stop", "worker 종료: 시그널 15")]
+
+def test_record_never_raises_when_db_locked(tmp_path, monkeypatch):
+    """실사고 회귀: 기록 실패가 엔진을 통째로 죽였다 (2026-07-28, 73분 무인 정지).
+
+    `_record`가 예외를 던지면 worker의 except 블록이 다시 `_record`를 부르다 재차 터지고,
+    그 예외는 while 루프 밖으로 튀어 **프로세스가 조용히 끝난다**(기록도 로그도 안 남음).
+    관측이 관측 대상을 죽이면 안 된다 → 어떤 DB 오류에도 조용히 넘어가야 한다.
+    """
+    import sqlite3
+
+    from src.trading import worker
+
+    dbf = tmp_path / "m.db"
+    monkeypatch.setenv("MARKET_HUB_DB", str(dbf))
+    c = db_mod.connect()
+    c.execute("CREATE TABLE collector_runs (id INTEGER PRIMARY KEY, collector TEXT, "
+              "run_at TEXT, status TEXT, rows INT, message TEXT)")
+    c.commit()
+    c.close()
+
+    blocker = sqlite3.connect(dbf, timeout=0.2)          # hourly 수집이 쓰기 중인 상황
+    blocker.execute("BEGIN IMMEDIATE")
+    blocker.execute("INSERT INTO collector_runs(collector) VALUES ('hourly')")
+    try:
+        worker._record("ok", 0, "heartbeat")             # 던지면 이 시점에서 실패
+        worker._record("error", 0, "traceback")          # except 블록의 재기록도 안전해야
+    finally:
+        blocker.rollback()
+        blocker.close()
+
+    c = db_mod.connect()                                 # 락이 풀린 뒤엔 정상 기록
+    worker._record("ok", 1, "복구 후")
+    n = c.execute("SELECT COUNT(*) FROM collector_runs WHERE status='ok'").fetchone()[0]
+    c.close()
+    assert n == 1
