@@ -90,12 +90,15 @@ def build_text(con) -> str:
         for r in bad:                      # 실패는 펼친 채로 — 즉시 봐야 함
             verb = "매수" if r["action"] == "buy" else "매도"
             L.append(f"❌ {_name(con, r['ticker'])} {verb} <i>({r['status']})</i>")
-        if ok:
+        for is_kr, label in ((True, "🇰🇷 국내"), (False, "🇺🇸 미국")):
+            part = [r for r in ok if str(r["ticker"]).isdigit() == is_kr]
+            if not part:
+                continue                       # 한쪽만 거래했으면 그쪽 블록만 나온다
             items = "\n".join(
                 f"✅ {_name(con, r['ticker'])} "
                 f"{'매수' if r['action'] == 'buy' else '매도'} <i>({r['src'] or '수동'})</i>"
-                for r in ok)
-            L.append(f"<blockquote expandable>📋 <b>종목 {len(ok)}건</b>\n{items}</blockquote>")
+                for r in part)
+            L.append(f"<blockquote expandable><b>{label} {len(part)}건</b>\n{items}</blockquote>")
         L.append("")
 
     # ---------- 전제 점검 ----------

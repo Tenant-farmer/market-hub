@@ -852,16 +852,15 @@ def test_trade_alert_layout_pnl_open_trades_collapsed(con, monkeypatch):
     assert trade_alerts.notify_new_orders(con) == 1
     msg = sent[0]
 
-    head, _, rest = msg.split("\n", 1)[0], None, msg.split("\n", 1)[1]
-    assert "1건" in head and "700,000원" in head          # 성공 건수·합계
-    assert "실패 1" in head                                # 실패는 따로 표기
+    head, rest = msg.split("\n", 1)[0], msg.split("\n", 1)[1]
+    assert "1건" in head and "실패 1" in head              # 헤드라인은 건수만(금액은 블록에)
     # 손익이 접이식 블록보다 **앞**에 = 펼쳐진 본문에 있다
     assert rest.index("📊 <b>손익 현황</b>") < rest.index("<blockquote expandable>")
     assert "오늘 -1,000,000원" in rest                    # 손익은 펼쳐진 본문
     body, _, folded = rest.partition("<blockquote expandable>")
     assert "잔고부족" in body and "000660" in body        # 실패는 접힌 블록 **밖**
     assert "005930" in folded and folded.endswith("</blockquote>")   # 성공만 접힘
-    assert "거래 종목 1건" in folded
+    assert "🇰🇷 국내" in folded and "700,000원" in folded   # 소계는 블록 머리에
 
 
 def test_trade_alert_pnl_needs_two_days(con):
@@ -874,8 +873,8 @@ def test_trade_alert_pnl_needs_two_days(con):
     assert trade_alerts._pnl_block(con) == ""
 
 
-def test_trade_alert_splits_totals_by_currency(con, monkeypatch):
-    """로테이션은 한 그룹에 KR·US가 섞인다 — 합계를 통화별로 나눠야 한다.
+def test_trade_alert_splits_blocks_by_market(con, monkeypatch):
+    """로테이션은 한 그룹에 KR·US가 섞인다 — **시장별로 나눠 접는다**.
 
     초안은 첫 종목 통화로 뭉뚱그려 달러 체결을 원화로 표기했다(2026-07-29 테스트 발송에서 발견).
     """
@@ -892,6 +891,11 @@ def test_trade_alert_splits_totals_by_currency(con, monkeypatch):
     monkeypatch.setattr("src.notify.send", lambda t, **k: sent.append(t) or True)
     trade_alerts.notify_new_orders(con)
 
-    head = sent[0].split("\n", 1)[0]
-    assert "1,000,000원" in head and "$1,000.00" in head      # 통화별로 각각
-    assert "2건" in head
+    msg = sent[0]
+    assert "2건" in msg.split("\n", 1)[0]                     # 헤드라인은 건수만
+    assert msg.count("<blockquote expandable>") == 2          # 시장별로 따로 접힌다
+    assert "🇰🇷 국내" in msg and "🇺🇸 미국" in msg
+    assert "1,000,000원" in msg and "$1,000.00" in msg        # 소계가 각 블록 머리에
+    assert msg.index("🇰🇷") < msg.index("🇺🇸")                 # 국내 먼저
+    assert "010170" in msg.split("🇰🇷")[1].split("🇺🇸")[0]      # 종목이 제 블록에 들어간다
+    assert "DVA" in msg.split("🇺🇸")[1]

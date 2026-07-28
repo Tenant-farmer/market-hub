@@ -127,10 +127,12 @@ def notify_new_orders(con) -> int:
         for (src, action), items in groups.items():
             head = STRAT.get(src, f"📌 {src}")
             verb = "매수" if action == "buy" else "매도"
-            # 로테이션은 한 그룹에 KR·US가 섞여 나온다 → 합계를 통화별로 따로 센다
-            # (초안은 첫 종목 통화로 뭉뚱그려 원화 2,040,148원처럼 달러를 원으로 표기했다)
-            ok_lines, bad_lines = [], []
-            totals = {True: 0.0, False: 0.0}         # True=KR(원) / False=US($)
+            # 로테이션은 한 그룹에 KR·US가 섞여 나온다 → **시장별로 나눠 접는다**.
+            # 통화가 다르니 합계도 섞을 수 없고(초안은 달러를 원화로 표기했다), 보는 사람도
+            # 국내/미국을 나눠 보는 게 자연스럽다(2026-07-29 사용자 제안).
+            ok_by_mkt = {True: [], False: []}        # True=KR / False=US
+            bad_lines = []
+            totals = {True: 0.0, False: 0.0}
             for r in items:
                 kr = str(r["ticker"]).isdigit()
                 name = _name(con, r["ticker"]) if kr else r["ticker"]
@@ -155,17 +157,14 @@ def notify_new_orders(con) -> int:
                 if extra:
                     line += f"\n   ↳ {extra}"
                 if good:
-                    ok_lines.append(line)
+                    ok_by_mkt[kr].append(line)
                 else:                                        # 실패는 접지 않는다 — 즉시 봐야 함
                     bad_lines.append(line + f"\n   ⚠ {r['status']}: "
                                             f"{str(r['message'] or '')[:60]}")
 
-            # 헤드라인에 건수·합계를 실어 **접힌 상태에서도** 규모를 알 수 있게 한다.
-            # 합계는 성공분만 더하므로 건수도 성공분 기준 — 실패는 따로 표기해야 안 헷갈린다
-            title = f"<b>{head} {verb} {len(ok_lines)}건</b>"
-            sums = [_cur(v, k) for k, v in totals.items() if v]
-            if sums:
-                title += " · " + " + ".join(sums)
+            # 헤드라인은 건수만 — 금액은 시장별 블록 머리에 각자 붙어 접힌 채로도 보인다
+            n_ok = sum(len(v) for v in ok_by_mkt.values())
+            title = f"<b>{head} {verb} {n_ok}건</b>"
             if bad_lines:
                 title += f" · <b>실패 {len(bad_lines)}</b>"
             L = [title, ""]
@@ -174,9 +173,13 @@ def notify_new_orders(con) -> int:
                 L += [pnl, ""]
             if bad_lines:                                    # 실패 건은 펼친 채로 앞에
                 L += bad_lines + [""]
-            if ok_lines:
-                L.append(f"<blockquote expandable>📋 <b>거래 종목 {len(ok_lines)}건</b>\n"
-                         + "\n".join(ok_lines) + "</blockquote>")
+            for kr_mkt, label in ((True, "🇰🇷 국내"), (False, "🇺🇸 미국")):
+                lines = ok_by_mkt[kr_mkt]
+                if not lines:
+                    continue                                 # 한쪽만 거래했으면 그쪽만
+                sub = f" · {_cur(totals[kr_mkt], kr_mkt)}" if totals[kr_mkt] else ""
+                L.append(f"<blockquote expandable><b>{label} {len(lines)}건</b>{sub}\n"
+                         + "\n".join(lines) + "</blockquote>")
             notify.send("\n".join(L))
             sent += 1
     except Exception as e:
