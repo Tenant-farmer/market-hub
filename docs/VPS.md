@@ -125,6 +125,97 @@ journalctl -u mh-engine -f        # 로그 확인
 4. **2주 무인 페이퍼/모의 가동** — 무사고 확인 후에만 실전 게이트 개방
    (`control.py mode live` + `arm`, risk 한도·일손실 한도 설정)
 
+## 5.5 이전 후 — 코드를 고칠 때 (일상 루프)
+
+이전 순간부터 **PC는 개발용, VPS가 운영**이다. 이 구분이 흐려지면 사고가 난다.
+
+```
+PC에서 수정 → pytest 통과 → git push → VPS에서 deploy.sh → 눈으로 확인
+```
+
+**VPS에서 직접 파일을 고치지 말 것.** git 이력과 어긋나 다음 `pull`에서 충돌하거나
+수정이 조용히 덮인다. 급해도 PC에서 고쳐 push하는 게 결국 빠르다.
+
+### (1) VPS에 배포 스크립트 하나 두기
+
+`~/market-hub/deploy.sh` (`chmod +x`):
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail                      # 하나라도 실패하면 즉시 중단
+cd ~/market-hub
+git pull --ff-only                     # 로컬 수정이 있으면 여기서 멈춘다(덮어쓰기 방지)
+.venv/bin/pip install -q -r requirements.txt
+.venv/bin/python -m pytest -q          # 실패하면 재시작까지 안 간다
+sudo systemctl restart mh-engine mh-dashboard
+sleep 3
+systemctl is-active mh-engine mh-dashboard
+.venv/bin/python scripts/check_hourly_impact.py "$(date +%H)" || true
+```
+
+테스트 관문이 핵심이다 — 깨진 코드가 운영에 올라가는 걸 `set -e`가 막는다.
+`--ff-only`는 VPS에서 누가 손댔을 때 조용히 덮지 않고 멈추게 한다.
+
+### (2) 재시작은 systemd — restart.py는 Windows 전용
+
+`scripts/restart.py`는 작업 스케줄러 XML을 읽는 구조라 **리눅스에서 동작하지 않는다.**
+
+```bash
+sudo systemctl restart mh-engine        # 엔진만
+sudo systemctl restart mh-dashboard     # 대시보드만
+systemctl status mh-engine              # 상태
+journalctl -u mh-engine -n 50 --no-pager    # 최근 로그
+journalctl -u mh-engine -f              # 실시간
+```
+
+systemd는 작업 스케줄러와 달리 cgroup으로 **자식 프로세스까지 확실히 죽인다**.
+Windows에서 우리를 괴롭힌 고아 프로세스 문제(2026-07-28: 대시보드가 한 번도 재시작되지
+않고 옛 코드가 돌던 사고)가 구조적으로 사라진다.
+
+### (3) DB와 .env는 git으로 가지 않는다 — **가장 위험한 지점**
+
+`.gitignore`가 `data/*.db`와 `.env`를 제외한다. 즉 배포해도 데이터는 안 움직인다.
+
+> **이전 시점에 한 번 복사한 뒤부터 VPS의 `market.db`가 원본이다.**
+> 나중에 PC의 DB를 다시 올리면 VPS가 그동안 쌓은 매매·수집·판정 기록이 통째로 사라진다.
+> 되돌릴 수 없다. PC의 DB는 이전 이후 **참고용 사본**일 뿐이다.
+
+`.env`도 VPS에서 한 번 만들고 그대로 둔다. 키 변경은 VPS에서 직접 편집:
+```bash
+nano ~/market-hub/.env && sudo systemctl restart mh-engine mh-dashboard
+```
+
+### (4) 스키마가 바뀌는 수정일 때
+
+테이블 추가는 코드가 `CREATE TABLE IF NOT EXISTS`로 자기치유하므로 배포만 하면 된다.
+**컬럼 추가·타입 변경은 자동으로 안 된다** — 배포 전에 백업부터:
+
+```bash
+.venv/bin/python -m src.jobs.backup     # data/ 스냅샷 (최근 14개 유지)
+```
+
+### (5) 되돌리기
+
+```bash
+git log --oneline -5
+git checkout <직전_커밋> && sudo systemctl restart mh-engine mh-dashboard
+```
+코드만 되돌아간다. 그 사이 DB에 쌓인 데이터는 남는다(대개 그게 맞다).
+
+### (6) 도메인·인증서는 코드와 무관
+
+nginx가 도메인을 받아 `localhost:5000`으로 넘기므로, 코드를 아무리 고쳐도
+도메인 설정은 건드릴 일이 없다. Let's Encrypt 인증서도 자동 갱신된다.
+도메인이 붙으면 ngrok 터널은 제거한다(`schtasks`/systemd 유닛 모두).
+
+### (7) 배포 후 확인 (눈으로)
+
+1. `systemctl is-active mh-engine mh-dashboard` → 둘 다 `active`
+2. `https://<도메인>/health` 접속 — 인증 걸리면 정상
+3. **바꾼 것이 실제로 반영됐는지 응답 내용으로 확인** — 프로세스 기동 시각만 보고
+   판단하지 말 것(2026-07-28 사고: 재시작했다고 믿는 동안 옛 코드가 돌았다)
+4. 15분 뒤 `journalctl -u mh-engine -n 30`으로 heartbeat 확인
+
 ## 6. 주의
 
 - KRX 세션 1시간 만료 — pykrx 자동 재로그인, 과도 요청 시 IP 차단 위험(청크당 1초 딜레이 유지)
