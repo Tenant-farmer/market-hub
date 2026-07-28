@@ -16,7 +16,8 @@ import requests
 
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "Accept": "application/json"}
 ECON_URL = "https://api.nasdaq.com/api/calendar/economicevents"
-FLAG = {"US": "🇺🇸", "KR": "🇰🇷"}
+# 국기 표는 국가코드를 정의하는 수집기가 정본 — 사본을 두면 국가를 넓힐 때 어긋난다
+from src.collectors.econ_calendar import FLAG  # noqa: E402
 
 
 def _once(con, key: str) -> bool:

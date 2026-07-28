@@ -14,8 +14,7 @@
 from datetime import date, datetime, timedelta
 
 WD = "월화수목금토일"
-FLAG = {"US": "🇺🇸", "KR": "🇰🇷", "JP": "🇯🇵", "CN": "🇨🇳",
-        "EU": "🇪🇺", "DE": "🇩🇪", "UK": "🇬🇧"}
+from src.collectors.econ_calendar import FLAG      # 국기 표 정본 (사본 금지)
 RATE_KW = ("Interest Rate", "Rate Decision", "FOMC", "Monetary Policy", "BOJ", "ECB", "BoE")
 
 # major 안에서도 무게가 다르다 — 금리결정·CPI·고용·GDP는 시장을 직접 움직이고

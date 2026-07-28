@@ -116,7 +116,12 @@ def _issues(con) -> list[str]:
         if name in seen:
             return
         seen.add(name)
-        flag = "🇺🇸" if r["country"] == "US" else "🇰🇷"
+        # US가 아니면 전부 🇰🇷로 찍고 있었다 — 수집 국가를 7종으로 넓힌 뒤
+        # "🇰🇷 BoJ Core CPI" 같은 오표기가 나왔다(2026-07-29 사용자 지적).
+        # 국기 표는 국가코드를 정의하는 수집기(econ_calendar)가 정본이다.
+        from src.collectors.econ_calendar import FLAG
+
+        flag = FLAG.get(r["country"], "🏳")
         d = "오늘" if r["date"] == today else r["date"][5:].replace("-", "/")
         out.append(f"{icon if icon != '🇺🇸' else flag} {d} {name}")
 
