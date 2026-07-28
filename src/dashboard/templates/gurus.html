@@ -8,7 +8,7 @@
 {% if consensus %}
 <div class="card" style="margin-bottom:16px">
   <div class="sub" style="margin-bottom:6px">컨센서스 — 최근 분기에 2명 이상이 신규/확대한 종목</div>
-  <table>
+  <table class="sortable">
     <thead><tr><th style="text-align:left">종목</th><th>매니저 수</th><th>합산 증가액</th><th style="text-align:left">누가</th></tr></thead>
     <tbody>
     {% for c in consensus %}
@@ -31,7 +31,7 @@
       <strong>{{ m.name }}</strong>
       <span style="color:var(--muted);font-size:12px">{{ m.quarter }} · 제출 {{ m.filed }}</span>
     </div>
-    <table style="margin-bottom:10px">
+    <table class="sortable" style="margin-bottom:10px">
       <thead><tr><th style="text-align:left">보유 상위</th><th>비중</th><th>평가액</th></tr></thead>
       <tbody>
       {% for h in m.holdings %}

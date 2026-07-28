@@ -275,9 +275,13 @@
     height: 380,
   });
   const S = {{ trend.series|tojson }};
-  const conf = [["foreign", "#3987e5"], ["institution", "#e66767"], ["individual", "#898781"]];
-  for (const [k, color] of conf) {
-    const s = chart.addLineSeries({ color, lineWidth: 2, priceLineVisible: false, lastValueVisible: false });
+  // 색상 + **선 스타일**로 이중 구분 — 적록색맹(남성 약 8%)에겐 파랑·빨강이 비슷하게 보인다.
+  // lineStyle: 0=실선 2=파선 3=긴파선 (lightweight-charts)
+  const conf = [["foreign", "#3987e5", 0], ["institution", "#e66767", 2],
+                ["individual", "#898781", 3]];
+  for (const [k, color, ls] of conf) {
+    const s = chart.addLineSeries({ color, lineWidth: 2, lineStyle: ls,
+                                    priceLineVisible: false, lastValueVisible: false });
     s.setData(S[k]);
   }
   chart.timeScale().fitContent();

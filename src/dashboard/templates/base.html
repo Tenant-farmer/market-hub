@@ -147,5 +147,55 @@
   <a href="/health" class="{{ 'active' if active=='health' }}">상태</a>
 </nav>
 <main>{% block body %}{% endblock %}</main>
+<script>
+/* 표 정렬 — <table class="sortable">에 붙는다. 서버 왕복 없이 현재 행만 다시 세운다.
+   랭킹·수급 표를 원하는 컬럼으로 못 세우는 게 데이터 대시보드의 실질 불편이었다.
+   숫자는 텍스트에서 뽑아 비교한다(+3.1% / 1,234 / -5 모두 처리). 값이 없는 칸은 항상 뒤로.
+   접근성: aria-sort로 현재 정렬을 알리고 Tab+Enter로도 조작된다. */
+(function () {
+  const num = t => {
+    const m = String(t).replace(/,/g, "").match(/-?\d+(\.\d+)?/);
+    return m ? parseFloat(m[0]) : null;
+  };
+  document.querySelectorAll("table.sortable").forEach(tb => {
+    if (!tb.tHead || !tb.tHead.rows.length || !tb.tBodies.length) return;   // 헤더 없는 표는 건너뜀
+    const heads = [...tb.tHead.rows[0].cells];
+    heads.forEach((th, i) => {
+      if (th.dataset.nosort !== undefined) return;
+      th.tabIndex = 0;
+      th.style.cursor = "pointer";
+      th.setAttribute("aria-sort", "none");
+      th.insertAdjacentHTML("beforeend", ' <span class="sort-ar" style="color:var(--baseline)">↕</span>');
+      const go = () => {
+        const desc = th.getAttribute("aria-sort") !== "descending";
+        const body = tb.tBodies[0];
+        [...body.rows]
+          .map(r => [r, r.cells[i] ? r.cells[i].innerText.trim() : ""])
+          .sort((a, b) => {
+            const x = num(a[1]), y = num(b[1]);
+            if (x === null && y === null) return a[1].localeCompare(b[1], "ko") * (desc ? -1 : 1);
+            if (x === null) return 1;          // 빈 칸은 방향과 무관하게 뒤로
+            if (y === null) return -1;
+            return (desc ? y - x : x - y);
+          })
+          .forEach(p => body.appendChild(p[0]));
+        heads.forEach(h => {
+          h.setAttribute("aria-sort", "none");
+          const a = h.querySelector(".sort-ar");
+          if (a) { a.textContent = "↕"; a.style.color = "var(--baseline)"; }
+        });
+        th.setAttribute("aria-sort", desc ? "descending" : "ascending");
+        const ar = th.querySelector(".sort-ar");
+        ar.textContent = desc ? "↓" : "↑";
+        ar.style.color = "var(--accent)";
+      };
+      th.addEventListener("click", go);
+      th.addEventListener("keydown", e => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); }
+      });
+    });
+  });
+})();
+</script>
 </body>
 </html>
