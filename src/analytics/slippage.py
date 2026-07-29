@@ -122,6 +122,7 @@ def analyze(con, since: str = "2026-07-23") -> dict:
         tot = sum(x["amount"] for x in xs)
         return sum(x[key] * x["amount"] for x in xs) / tot if tot else 0.0
 
+    emits = [t for t in trades if t["how"] == "emit"]
     buys = [t for t in trades if t["action"] == "buy"]
     sells = [t for t in trades if t["action"] == "sell"]
     krt = [t for t in trades if t["kr"]]
@@ -141,6 +142,13 @@ def analyze(con, since: str = "2026-07-23") -> dict:
             "best": min(trades, key=lambda t: t["total"]),
             "amount": sum(t["amount"] for t in trades),
             "n_emit": sum(1 for t in trades if t["how"] == "emit"),
+            # **emit 기준만 따로** — 판정은 이 값으로 한다.
+            # 당일종가 기준은 장중 드리프트가 섞여 슬리피지가 아니다. 특히 2026-07-29처럼
+            # 코스피가 -10.84% 빠진 날엔 "종가보다 싸게 팔았다"가 실행품질이 아니라
+            # 그냥 하락장이라는 뜻이 된다(실측: 혼합 -227bp vs emit-only는 별개 값).
+            "emit_wavg": _wavg(emits, "total") if emits else None,
+            "emit_avg": _avg(emits, "total") if emits else None,
+            "emit_amount": sum(t["amount"] for t in emits),
         },
     }
 
@@ -161,7 +169,9 @@ def verdict(summary) -> str:
         return (f"판정 보류 — emit 기준 표본 0건 (당일종가 기준 {summary['total_wavg']*100:+.0f}bp는 "
                 f"장중 드리프트 포함이라 슬리피지 아님). 확정비용만 KR 왕복 "
                 f"{ROUNDTRIP_KR*100:.0f}bp")
-    bp = summary["total_wavg"] * 100          # % → bp
+    # **emit 표본만** 쓴다. 원래 n_emit 유무만 확인하고 정작 숫자는 전체 혼합값을 썼다 —
+    # docstring이 경고한 함정에 코드가 그대로 빠져 있었다(2026-07-29 발견).
+    bp = summary["emit_wavg"] * 100           # % → bp
     if bp <= 20:
         return f"양호 ({bp:.0f}bp) — 백테스트 가정(5bp) 대비 여유, 알파 유지 가능"
     if bp <= 50:
@@ -196,7 +206,11 @@ if __name__ == "__main__":
     tag = "" if s["n_emit"] else "   ← 장중드리프트 포함(참고치)"
     print(f"  체결편차 (단순평균) : {s['slip_avg']:+.3f}%  ({s['slip_avg']*100:+.0f}bp)")
     print(f"  체결편차 (금액가중) : {s['slip_wavg']:+.3f}%  ({s['slip_wavg']*100:+.0f}bp){tag}")
-    print(f"  + 세금·수수료 포함  : {s['total_wavg']:+.3f}%  ({s['total_wavg']*100:+.0f}bp)")
+    print(f"  + 세금·수수료 포함  : {s['total_wavg']:+.3f}%  ({s['total_wavg']*100:+.0f}bp)"
+          f"   ← 두 기준 혼합, 판정에 쓰지 않음")
+    if s.get("emit_wavg") is not None:
+        print(f"  ▶ emit 기준만       : {s['emit_wavg']:+.3f}%  ({s['emit_wavg']*100:+.0f}bp)"
+              f"  · {s['n_emit']}건 / {s['emit_amount']:,.0f}  ← **판정 근거**")
     print(f"  확정비용(KR 왕복)   : {ROUNDTRIP_KR:+.3f}%  ({ROUNDTRIP_KR*100:+.0f}bp) — 세금·수수료만")
     print()
     if s["buy_slip"] is not None:

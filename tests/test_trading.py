@@ -1018,3 +1018,22 @@ def test_snapshot_does_not_hold_write_lock_across_network(monkeypatch, tmp_path)
     probe.close()
     con.close()
     assert not blocked, "브로커 API 호출 중에 쓰기 락이 잡혀 있다 — 엔진이 넘어진다"
+
+def test_slippage_verdict_uses_emit_samples_only():
+    """실사고 회귀: 판정이 **혼합 표본**으로 계산되고 있었다 (2026-07-29 발견).
+
+    `verdict()`는 emit 표본 유무만 확인하고 정작 숫자는 `total_wavg`(emit+당일종가 전체)를
+    썼다. 당일종가 기준은 장중 드리프트라 슬리피지가 아니다 — 코스피가 -10.84% 빠진 날
+    "종가보다 싸게 팔았다"는 실행품질이 아니라 그냥 하락장이라는 뜻이다.
+    실측 그날: 혼합 -218bp(비용이 음수라는 비현실적 값) vs emit 기준 +6bp.
+    """
+    from src.analytics import slippage
+
+    mixed = {"n_emit": 14, "total_wavg": -2.185, "emit_wavg": 0.059}   # 혼합은 터무니없는 값
+    v = slippage.verdict(mixed)
+    assert "6bp" in v, f"emit 기준(+6bp)으로 판정해야 한다 — 실제: {v}"
+    assert "-218" not in v and "-2.185" not in v, "혼합값이 판정에 새어들면 안 된다"
+
+    # emit 표본이 없으면 여전히 판정 보류
+    none_emit = {"n_emit": 0, "total_wavg": -2.185, "emit_wavg": None}
+    assert "판정 보류" in slippage.verdict(none_emit)
