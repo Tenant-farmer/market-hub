@@ -269,7 +269,11 @@ def build_text(con) -> str:
                   "AND run_at >= replace(datetime('now','localtime','-1 day'),' ','T')")
         ords = c24("SELECT COUNT(*) c FROM orders "
                    "WHERE created_at >= replace(datetime('now','localtime','-1 day'),' ','T')")
+        # **status='alert'만** 센다. 조건이 없어서 watchdog 기록이면 뭐든 셌고,
+        # 2026-07-28에 status='resolved'(원인 규명 완료)를 도입하자 그 해소 기록까지
+        # 경보로 잡혀 "🚨경보 1"이 떴다 — 실제 경보는 0건이었다(사용자 지적 2026-07-29).
         wd = c24("SELECT COUNT(*) c FROM collector_runs WHERE collector='watchdog' "
+                 "AND status='alert' "
                  "AND run_at >= replace(datetime('now','localtime','-1 day'),' ','T')")
         gates = (f"청산 {'ON' if _os.getenv('EXIT_ENABLED') == '1' else 'off'}"
                  f"·진입 {'ON' if _os.getenv('SIGNAL_ENTRY_ENABLED') == '1' else 'off'}")

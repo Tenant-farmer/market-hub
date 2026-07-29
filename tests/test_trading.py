@@ -838,13 +838,15 @@ def test_trade_alert_layout_pnl_open_trades_collapsed(con, monkeypatch):
         ("2026-07-23", "kiwoom", 500_000_000, 0, 100_000),
         ("2026-07-27", "kiwoom", 499_000_000, 0, -50_000),
         ("2026-07-28", "kiwoom", 498_000_000, 0, -80_000)])
+    # 주문 시각은 **상대값**이어야 한다 — notify_new_orders가 '최근 24h'만 보므로
+    # 날짜를 박아두면 그 날짜가 지나는 순간 테스트가 썩는다(2026-07-29 실제로 깨짐)
+    from datetime import datetime, timedelta
+    _t = (datetime.now() - timedelta(hours=2)).isoformat(timespec="minutes")
     con.executemany(
         "INSERT INTO orders (client_order_id, broker, ticker, action, qty, price, status, "
         "message, created_at) VALUES (?,?,?,?,?,?,?,?,?)", [
-            ("o1", "kiwoom", "005930", "buy", 10, 70000, "filled", "1 filled 10@70000",
-             "2026-07-28T10:00"),
-            ("o2", "kiwoom", "000660", "buy", 5, 200000, "rejected", "잔고부족",
-             "2026-07-28T10:01")])
+            ("o1", "kiwoom", "005930", "buy", 10, 70000, "filled", "1 filled 10@70000", _t),
+            ("o2", "kiwoom", "000660", "buy", 5, 200000, "rejected", "잔고부족", _t)])
     con.commit()
 
     sent = []
