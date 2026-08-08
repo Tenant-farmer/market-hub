@@ -1039,3 +1039,84 @@ def test_slippage_verdict_uses_emit_samples_only():
     # emit 표본이 없으면 여전히 판정 보류
     none_emit = {"n_emit": 0, "total_wavg": -2.185, "emit_wavg": None}
     assert "판정 보류" in slippage.verdict(none_emit)
+
+class _StopLoop(Exception):
+    """워커 루프를 한 바퀴만 돌리기 위한 신호 (time.sleep에서 던진다)."""
+
+
+def _run_worker_once(monkeypatch, tmp_path, env: dict):
+    """worker.main()을 **한 바퀴만** 실행하고 무엇이 호출됐는지 돌려준다.
+
+    게이트 안쪽 코드는 함수로 분리돼 있지 않아 루프를 직접 돌려야만 검증된다.
+    2026-08-08 사고(판정 미발송)가 정확히 '게이트 안쪽이 테스트에서 한 번도 실행 안 됨'
+    이었으므로, 여기서는 **루프 본문을 실제로 통과시키는 것**이 목적이다.
+    """
+    from src import db as _db
+    from src.trading import engine, worker
+
+    monkeypatch.setenv("MARKET_HUB_DB", str(tmp_path / "w.db"))
+    for k in ("EXIT_ENABLED", "SIGNAL_ENTRY_ENABLED", "ROTATION_ENABLED",
+              "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"):
+        monkeypatch.delenv(k, raising=False)
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+
+    c = _db.connect()
+    c.execute("CREATE TABLE IF NOT EXISTS collector_runs (id INTEGER PRIMARY KEY, "
+              "collector TEXT, run_at TEXT, status TEXT, rows INT, message TEXT)")
+    c.commit()
+    c.close()
+
+    calls = []
+    monkeypatch.setattr(engine, "process_once", lambda: {"processed": 0, "rejected": 0})
+    monkeypatch.setattr(worker, "_install_exit_hooks", lambda: None)
+    monkeypatch.setattr(worker, "_touch_alive", lambda: None)
+
+    import src.trading.exits as ex
+    import src.trading.leader_rotation as lr
+    import src.trading.reconcile as rc
+    import src.trading.signal_entry as se
+    monkeypatch.setattr(ex, "check_exits", lambda: calls.append("exit") or [])
+    monkeypatch.setattr(se, "check_entry", lambda: calls.append("entry") or None)
+    monkeypatch.setattr(rc, "reconcile", lambda: calls.append("reconcile") or [])
+    monkeypatch.setattr(lr, "evaluate", lambda market=None: calls.append(f"rot:{market}") or None)
+
+    def _sleep(_s):
+        raise _StopLoop
+    monkeypatch.setattr(worker.time, "sleep", _sleep)
+
+    try:
+        worker.main()
+    except _StopLoop:
+        pass
+    return calls
+
+
+def test_worker_gate_exit_enabled(monkeypatch, tmp_path):
+    """EXIT_ENABLED — 자동청산. **실제 돈이 움직이는 경로**인데 테스트가 없었다."""
+    on = _run_worker_once(monkeypatch, tmp_path, {"EXIT_ENABLED": "1"})
+    assert "exit" in on, "게이트 ON이면 청산 점검이 실행돼야 한다"
+    off = _run_worker_once(monkeypatch, tmp_path, {})
+    assert "exit" not in off, "게이트 OFF면 청산 점검이 실행되면 안 된다"
+
+
+def test_worker_gate_signal_entry_enabled(monkeypatch, tmp_path):
+    """SIGNAL_ENTRY_ENABLED — 매수신호 진입."""
+    on = _run_worker_once(monkeypatch, tmp_path, {"SIGNAL_ENTRY_ENABLED": "1"})
+    assert "entry" in on
+    off = _run_worker_once(monkeypatch, tmp_path, {})
+    assert "entry" not in off
+
+
+def test_worker_gate_rotation_enabled(monkeypatch, tmp_path):
+    """ROTATION_ENABLED — 주도주 로테이션. US·KR 두 시장을 모두 평가해야 한다."""
+    on = _run_worker_once(monkeypatch, tmp_path, {"ROTATION_ENABLED": "1"})
+    assert "rot:US" in on and "rot:KR" in on, f"US·KR 둘 다 평가해야 한다 — {on}"
+    off = _run_worker_once(monkeypatch, tmp_path, {})
+    assert not [c for c in off if c.startswith("rot:")]
+
+
+def test_worker_reconcile_always_runs(monkeypatch, tmp_path):
+    """체결 동기화는 **게이트가 없다** — 주문을 내지 않으므로 항상 돌아야 안전하다."""
+    calls = _run_worker_once(monkeypatch, tmp_path, {})
+    assert "reconcile" in calls, "게이트 없이 항상 실행돼야 한다"

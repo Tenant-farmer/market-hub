@@ -2,6 +2,7 @@
 import sqlite3
 
 import pandas as pd
+import pytest
 
 from src.analytics import store
 from src.analytics.data import _trim_ragged_tail
@@ -186,3 +187,46 @@ def test_no_bare_datetime_comparison_in_source():
             if "datetime('now'" in line and "replace(datetime" not in line:
                 bad.append(f"{f.relative_to(root)}:{i}")
     assert not bad, f"형식 불일치 위험: {bad}"
+
+def test_krx_login_gate_raises_without_credentials(monkeypatch):
+    """KRX 로그인 게이트 — 자격증명 없으면 **명확한 메시지로 즉시 실패**해야 한다.
+
+    조용히 빈 결과를 돌려주면 '수집 0건'이 정상처럼 보인다(가장 나쁜 실패 모드).
+    """
+    from src.collectors import krx_util
+
+    monkeypatch.delenv("KRX_ID", raising=False)
+    monkeypatch.delenv("KRX_PW", raising=False)
+    with pytest.raises(RuntimeError, match="KRX_ID"):
+        krx_util.require_login()
+
+    monkeypatch.setenv("KRX_ID", "u")
+    monkeypatch.setenv("KRX_PW", "p")
+    krx_util.require_login()                      # 둘 다 있으면 통과 (예외 없음)
+
+
+def test_errlog_writes_when_not_under_pytest(monkeypatch, tmp_path):
+    """errlog 기록 경로 — 테스트 중엔 `PYTEST_CURRENT_TEST` 때문에 **항상 건너뛴다**.
+
+    즉 운영에서만 도는 코드라 검증된 적이 없었다(2026-08-08 게이트 감사에서 발견).
+    변수를 지우고 실제 기록이 남는지 본다.
+    """
+    import src.errlog as el
+
+    monkeypatch.setenv("MARKET_HUB_DB", str(tmp_path / "e.db"))
+    from src import db as _db
+    c = _db.connect()
+    c.execute("CREATE TABLE IF NOT EXISTS collector_runs (id INTEGER PRIMARY KEY, "
+              "collector TEXT, run_at TEXT, status TEXT, rows INT, message TEXT)")
+    c.commit()
+    c.close()
+
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    el._LAST.clear()                              # 쿨다운 초기화
+    el.swallow("테스트지점", ValueError("샘플 오류"))
+
+    c = _db.connect()
+    rows = c.execute("SELECT collector, message FROM collector_runs").fetchall()
+    c.close()
+    assert rows, "PYTEST_CURRENT_TEST가 없으면 실제로 기록돼야 한다"
+    assert "ValueError" in rows[0]["message"] and "샘플 오류" in rows[0]["message"]
