@@ -235,7 +235,12 @@ def main():
         con2 = db.connect()
         _send_daily_reports(con2, now.hour)
         # 판정 자동 발송 — 1차는 날짜, 2차는 **표본 충족**이 조건이라 사람이 기억할 수 없다
-        if morning:
+        #
+        # 2026-08-08 사고: main()을 쪼개며 `morning` 지역변수를 `s["morning"]`으로 바꿨는데
+        # **이 줄만 놓쳤다**. NameError가 263회 났고 그 자리에서 hourly가 끊겨
+        # **8/6 1차 판정이 발송되지 않았다**. 라우팅 잠금 테스트는 이 블록을 못 봤다 —
+        # 테스트가 TELEGRAM_BOT_TOKEN을 지워서 if문 안으로 들어가지 않았기 때문이다.
+        if s["morning"]:
             from src.jobs import verdict_alert
 
             try:

@@ -575,3 +575,51 @@ def test_earnings_review_suppresses_heads_up(monkeypatch, tmp_path):
 
     assert not any("KO" in m for m in heads), "리뷰가 나간 KO는 예고가 생략돼야 한다"
     assert any("XX" in m for m in heads), "리뷰가 없는 종목은 예고라도 가야 한다"
+
+def test_hourly_reaches_verdict_alert_in_morning(monkeypatch, tmp_path):
+    """실사고 회귀: 판정 발송 블록이 **테스트에 한 번도 안 걸렸다** (2026-08-08).
+
+    main()을 쪼개며 `morning` → `s["morning"]`으로 바꿨는데 이 줄만 놓쳐 NameError가 263회.
+    그 자리에서 hourly가 끊겨 **8/6 1차 판정이 발송되지 않았다**.
+    기존 라우팅 테스트는 TELEGRAM_BOT_TOKEN을 지워서 이 if문 안으로 들어가지 않았다 —
+    "테스트가 통과했다"가 "그 코드가 실행됐다"를 뜻하지 않는다.
+    """
+    import sys
+    from datetime import datetime
+
+    from src import db as _db
+    from src.collectors import base
+    from src.jobs import hourly
+
+    monkeypatch.setenv("MARKET_HUB_DB", str(tmp_path / "v.db"))
+    c = _db.connect()
+    c.execute("CREATE TABLE IF NOT EXISTS collector_runs (id INTEGER PRIMARY KEY, "
+              "collector TEXT, run_at TEXT, status TEXT, rows INT, message TEXT)")
+    c.commit()
+    c.close()
+
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "x")      # **토큰이 있는 경로**를 탄다
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "y")
+    monkeypatch.setattr(base, "run_collector", lambda name, fn: None)
+    monkeypatch.setattr(hourly, "_ran_today", lambda c, n: True)
+    monkeypatch.setattr(hourly, "_send_daily_reports", lambda c, h: None)
+    import src.jobs.watchdog as wd
+    import src.trading.portfolio as pf
+    monkeypatch.setattr(wd, "check_engine", lambda c: 0)
+    monkeypatch.setattr(pf, "snapshot", lambda c: 0)
+
+    called = []
+    import src.jobs.verdict_alert as va
+    monkeypatch.setattr(va, "run", lambda con, **k: called.append(1) or 0)
+
+    class _Now(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 8, 6, 7, 5)          # 아침 슬롯
+    monkeypatch.setattr(hourly, "datetime", _Now)
+    sys.modules.setdefault("analyze", type(sys)("analyze"))
+    sys.modules["analyze"].run_us = lambda: None
+    sys.modules["analyze"].run_kr = lambda: None
+
+    hourly.main()                                       # NameError면 여기서 터진다
+    assert called, "아침 슬롯에서 verdict_alert.run이 호출돼야 한다"

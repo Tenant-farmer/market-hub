@@ -882,12 +882,14 @@ def test_trade_alert_splits_blocks_by_market(con, monkeypatch):
     """
     from src.jobs import trade_alerts
 
+    # 시각은 상대값 — notify_new_orders가 24h 창을 보므로 날짜를 박으면 테스트가 썩는다
+    from datetime import datetime, timedelta
+    _t = (datetime.now() - timedelta(hours=2)).isoformat(timespec="minutes")
     con.executemany(
         "INSERT INTO orders (client_order_id, broker, ticker, action, qty, price, status, "
         "message, created_at) VALUES (?,?,?,?,?,?,?,?,?)", [
-            ("k1", "kiwoom", "010170", "buy", 100, 10000, "filled", "1 filled 100@10000",
-             "2026-07-29T10:00"),
-            ("u1", "alpaca", "DVA", "buy", 4, 250, "filled", None, "2026-07-29T10:00")])
+            ("k1", "kiwoom", "010170", "buy", 100, 10000, "filled", "1 filled 100@10000", _t),
+            ("u1", "alpaca", "DVA", "buy", 4, 250, "filled", None, _t)])
     con.commit()
     sent = []
     monkeypatch.setattr("src.notify.send", lambda t, **k: sent.append(t) or True)
